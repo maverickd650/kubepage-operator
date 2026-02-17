@@ -91,7 +91,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if apierrors.IsNotFound(err) {
 			// If the custom resource is not found then it usually means that it was deleted or not created
 			// In this way, we will stop the reconciliation
-			log.Info("instance resource not found. Ignoring since object must be deleted")
+			log.Info("Instance resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -121,7 +121,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// occur before the custom resource is deleted.
 	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers
 	if !controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
-		log.Info("Adding Finalizer for Instance")
+		log.Info("Adding finalizer for Instance")
 		controllerutil.AddFinalizer(instance, instanceFinalizer)
 		if err = r.Update(ctx, instance); err != nil {
 			log.Error(err, "Failed to update custom resource to add finalizer")
@@ -134,7 +134,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	isInstanceMarkedToBeDeleted := instance.GetDeletionTimestamp() != nil
 	if isInstanceMarkedToBeDeleted {
 		if controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
-			log.Info("Performing Finalizer Operations for Instance before delete CR")
+			log.Info("Performing finalizer operations for Instance before deleting CR")
 
 			// Let's add here a status "Downgrade" to reflect that this resource began its process to be terminated.
 			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeDegradedInstance,
@@ -172,7 +172,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				return ctrl.Result{}, err
 			}
 
-			log.Info("Removing Finalizer for Instance after successfully perform the operations")
+			log.Info("Removing finalizer for Instance after successfully performing the operations")
 			if ok := controllerutil.RemoveFinalizer(instance, instanceFinalizer); !ok {
 				err = fmt.Errorf("finalizer for Instance was not removed")
 				log.Error(err, "Failed to remove finalizer for Instance")
