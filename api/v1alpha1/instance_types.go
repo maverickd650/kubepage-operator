@@ -34,6 +34,7 @@ type EnvValue struct {
 	// +optional
 	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
 }
+
 // InstanceSpec defines the desired state of Instance
 type InstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
