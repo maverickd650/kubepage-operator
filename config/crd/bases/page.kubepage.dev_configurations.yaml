@@ -39,9 +39,51 @@ spec:
           spec:
             description: spec defines the desired state of Configuration
             properties:
-              foo:
-                description: foo is an example field of Configuration. Edit configuration_types.go
-                  to remove/update
+              background:
+                description: Background specifies specific background attributes
+                items:
+                  description: Background specifies specific background attributes
+                  properties:
+                    blur:
+                      description: Apply a backdrop blur
+                      format: int32
+                      type: integer
+                    brightness:
+                      description: Modify brightness
+                      format: int32
+                      type: integer
+                    image:
+                      description: For a custom image instead of plain colour background
+                        provide a full URL to the image or a path to the image e.g.
+                        /app/public/images
+                      type: string
+                    opacity:
+                      description: Modify opacity of the background
+                      format: int32
+                      type: integer
+                    saturate:
+                      description: Apply a saturation
+                      format: int32
+                      type: integer
+                  type: object
+                type: array
+              cardBlur:
+                description: Apply a blur to the service and bookmark cards, this
+                  is compatible with the background filters.
+                type: string
+              description:
+                description: Customise the page description
+                type: string
+              favicon:
+                description: Specify a custom favicon instead of the included one,
+                  this can be a full URL or path to the file e.g. /app/images
+                type: string
+              startUrl:
+                default: /
+                description: Customise the start url if required. Default is "/".
+                type: string
+              title:
+                description: Customise the page title
                 type: string
             type: object
           status:

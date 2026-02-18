@@ -27,23 +27,23 @@ import (
 type BackgroundSpec struct {
 	// For a custom image instead of plain colour background provide a full URL to the image or a path to the image e.g. /app/public/images
 	// +optional
-	image *string `json:"image,omitempty"`
+	Image *string `json:"image,omitempty"`
 
 	// Apply a backdrop blur
 	// +optional
-	blur *int32 `json:"blur,omitempty"`
+	Blur *int32 `json:"blur,omitempty"`
 
 	// Apply a saturation
 	// +optional
-	saturate *int32 `json:"saturate,omitempty"`
+	Saturate *int32 `json:"saturate,omitempty"`
 
 	// Modify brightness
 	// +optional
-	brightness *int32 `json:"brightness,omitempty"`
+	Brightness *int32 `json:"brightness,omitempty"`
 
 	// Modify opacity of the background
 	// +optional
-	opacity *int32 `json:"opacity,omitempty"`
+	Opacity *int32 `json:"opacity,omitempty"`
 }
 
 // ConfigurationSpec defines the desired state of Configuration
@@ -55,28 +55,28 @@ type ConfigurationSpec struct {
 
 	// Customise the page title
 	// +optional
-	title *string `json:"title,omitempty"`
+	Title *string `json:"title,omitempty"`
 
 	// Customise the page description
 	// +optional
-	description *string `json:"description,omitempty"`
+	Description *string `json:"description,omitempty"`
 
 	// Customise the start url if required. Default is "/".
 	// +optional
 	// +kubebuilder:default="/"
-	startUrl *string `json:"startUrl,omitempty"`
+	StartUrl *string `json:"startUrl,omitempty"`
 
 	// Background specifies specific background attributes
 	// +optional
-	background []BackgroundSpec `json:"background,omitempty"`
+	Background []BackgroundSpec `json:"background,omitempty"`
 
 	// Apply a blur to the service and bookmark cards, this is compatible with the background filters.
 	// +optional
-	cardBlur *string `json:"cardBlur,omitempty"`
+	CardBlur *string `json:"cardBlur,omitempty"`
 
 	// Specify a custom favicon instead of the included one, this can be a full URL or path to the file e.g. /app/images
 	// +optional
-	favicon *string `json:"favicon,omitempty"`
+	Favicon *string `json:"favicon,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.
