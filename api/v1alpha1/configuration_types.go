@@ -23,6 +23,29 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// Background specifies specific background attributes
+type BackgroundSpec struct {
+	// For a custom image instead of plain colour background provide a full URL to the image or a path to the image e.g. /app/public/images
+	// +optional
+	image *string `json:"image,omitempty"`
+
+	// Apply a backdrop blur
+	// +optional
+	blur *int32 `json:"blur,omitempty"`
+
+	// Apply a saturation
+	// +optional
+	saturate *int32 `json:"saturate,omitempty"`
+
+	// Modify brightness
+	// +optional
+	brightness *int32 `json:"brightness,omitempty"`
+
+	// Modify opacity of the background
+	// +optional
+	opacity *int32 `json:"opacity,omitempty"`
+}
+
 // ConfigurationSpec defines the desired state of Configuration
 type ConfigurationSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -30,9 +53,30 @@ type ConfigurationSpec struct {
 	// The following markers will use OpenAPI v3 schema to validate the value
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
-	// foo is an example field of Configuration. Edit configuration_types.go to remove/update
+	// Customise the page title
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	title *string `json:"title,omitempty"`
+
+	// Customise the page description
+	// +optional
+	description *string `json:"description,omitempty"`
+
+	// Customise the start url if required. Default is "/".
+	// +optional
+	// +kubebuilder:default="/"
+	startUrl *string `json:"startUrl,omitempty"`
+
+	// Background specifies specific background attributes
+	// +optional
+	background []BackgroundSpec `json:"background,omitempty"`
+
+	// Apply a blur to the service and bookmark cards, this is compatible with the background filters.
+	// +optional
+	cardBlur *string `json:"cardBlur,omitempty"`
+
+	// Specify a custom favicon instead of the included one, this can be a full URL or path to the file e.g. /app/images
+	// +optional
+	favicon *string `json:"favicon,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.
