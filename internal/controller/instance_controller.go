@@ -1,19 +1,3 @@
-/*
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package controller
 
 import (
@@ -41,6 +25,8 @@ import (
 )
 
 const instanceFinalizer = "page.kubepage.dev/finalizer"
+
+const instanceContainerName = "instance"
 
 // Definitions to manage status conditions
 const (
@@ -78,7 +64,7 @@ type InstanceReconciler struct {
 // For further info:
 // - About Operator Pattern: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
 // - About Controllers: https://kubernetes.io/docs/concepts/architecture/controller/
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.1/pkg/reconcile
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/reconcile
 func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -100,7 +86,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	if len(instance.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance, Status: metav1.ConditionUnknown, Reason: reasonReconciling, Message: "Starting reconciliation"})
 		if err = r.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Failed to update Instance status")
 			return ctrl.Result{}, err
@@ -138,7 +124,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 			// Let's add here a status "Downgrade" to reflect that this resource began its process to be terminated.
 			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeDegradedInstance,
-				Status: metav1.ConditionUnknown, Reason: "Finalizing",
+				Status: metav1.ConditionUnknown, Reason: reasonFinalizing,
 				Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", instance.Name)})
 
 			if err := r.Status().Update(ctx, instance); err != nil {
@@ -164,7 +150,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 
 			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeDegradedInstance,
-				Status: metav1.ConditionTrue, Reason: "Finalizing",
+				Status: metav1.ConditionTrue, Reason: reasonFinalizing,
 				Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", instance.Name)})
 
 			if err := r.Status().Update(ctx, instance); err != nil {
@@ -198,7 +184,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 			// The following implementation will update the status
 			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
+				Status: metav1.ConditionFalse, Reason: reasonReconciling,
 				Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", instance.Name, err)})
 
 			if err := r.Status().Update(ctx, instance); err != nil {
@@ -273,7 +259,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// The following implementation will update the status
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-		Status: metav1.ConditionTrue, Reason: "Reconciling",
+		Status: metav1.ConditionTrue, Reason: reasonReconciling,
 		Message: fmt.Sprintf("Deployment for custom resource (%s) with %d replicas created successfully", instance.Name, desiredReplicas)})
 
 	if err := r.Status().Update(ctx, instance); err != nil {
@@ -369,7 +355,7 @@ func (r *InstanceReconciler) deploymentForInstance(
 					},
 					Containers: []corev1.Container{{
 						Image:           image,
-						Name:            "instance",
+						Name:            instanceContainerName,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						// Ensure restrictive context for the container
 						// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
@@ -385,7 +371,7 @@ func (r *InstanceReconciler) deploymentForInstance(
 						},
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: instance.Spec.ContainerPort,
-							Name:          "instance",
+							Name:          instanceContainerName,
 						}},
 					}},
 				},

@@ -68,7 +68,10 @@ spec:
         env:
         - name: INSTANCE_IMAGE
           value: ghcr.io/maverickd650/kubepage:0.0.1
-        ports: []
+        ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
