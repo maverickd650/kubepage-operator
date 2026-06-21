@@ -47,6 +47,7 @@ rules:
 - apiGroups:
   - page.kubepage.dev
   resources:
+  - bookmarks
   - configurations
   - instances
   - serviceentries
@@ -61,6 +62,7 @@ rules:
 - apiGroups:
   - page.kubepage.dev
   resources:
+  - bookmarks/finalizers
   - configurations/finalizers
   - instances/finalizers
   - serviceentries/finalizers
@@ -69,6 +71,7 @@ rules:
 - apiGroups:
   - page.kubepage.dev
   resources:
+  - bookmarks/status
   - configurations/status
   - instances/status
   - serviceentries/status

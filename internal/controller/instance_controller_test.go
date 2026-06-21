@@ -530,4 +530,90 @@ var _ = Describe("Instance controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &pagev1alpha1.Instance{})).To(Succeed())
 		})
 	})
+
+	Context("Instance controller Bookmark rendering test", func() {
+
+		const (
+			InstanceName    = "test-instance-bookmarks"
+			bookmarkCRName  = "bm"
+			bookmarkCRName2 = "bm2"
+		)
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      InstanceName,
+			Namespace: InstanceName,
+		}
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-bookmarks-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+
+			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
+
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+			_ = os.Unsetenv("INSTANCE_IMAGE")
+		})
+
+		It("renders bookmarks.yaml from bound Bookmarks", func() {
+			bm1 := &pagev1alpha1.Bookmark{
+				ObjectMeta: metav1.ObjectMeta{Name: bookmarkCRName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.BookmarkSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Developer",
+					Name:        "Github",
+					Href:        "https://github.com/",
+					Abbr:        ptr.To("GH"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, bm1)).To(Succeed())
+
+			bm2 := &pagev1alpha1.Bookmark{
+				ObjectMeta: metav1.ObjectMeta{Name: bookmarkCRName2, Namespace: namespace.Name},
+				Spec: pagev1alpha1.BookmarkSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Social",
+					Name:        "Reddit",
+					Href:        "https://reddit.com/",
+					Description: ptr.To("The front page of the internet"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, bm2)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("bookmarks.yaml contains both rendered groups/bookmarks")
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+			}).Should(Succeed())
+			bookmarksYAML, ok := cm.Data["bookmarks.yaml"]
+			Expect(ok).To(BeTrue())
+			Expect(bookmarksYAML).To(ContainSubstring("Developer"))
+			Expect(bookmarksYAML).To(ContainSubstring("Github"))
+			Expect(bookmarksYAML).To(ContainSubstring("Social"))
+			Expect(bookmarksYAML).To(ContainSubstring("Reddit"))
+		})
+	})
 })

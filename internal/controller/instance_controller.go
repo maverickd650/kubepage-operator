@@ -73,6 +73,7 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=configurations,verbs=get;list;watch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=serviceentries,verbs=get;list;watch
+// +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -350,6 +351,41 @@ func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instan
 			return renderedConfig{}, fmt.Errorf("rendering services.yaml: %w", err)
 		}
 		data["services.yaml"] = string(servicesYAML)
+	}
+
+	var bookmarks pagev1alpha1.BookmarkList
+	if err := r.List(ctx, &bookmarks, client.InNamespace(instance.Namespace)); err != nil {
+		return renderedConfig{}, fmt.Errorf("listing Bookmarks: %w", err)
+	}
+
+	var boundBookmarks []pagev1alpha1.Bookmark
+	for _, b := range bookmarks.Items {
+		if b.Spec.InstanceRef.Name == instance.Name {
+			boundBookmarks = append(boundBookmarks, b)
+		}
+	}
+	if len(boundBookmarks) > 0 {
+		// Deterministic rendering order: Bookmark names, not list order.
+		slices.SortFunc(boundBookmarks, func(a, b pagev1alpha1.Bookmark) int { return strings.Compare(a.Name, b.Name) })
+
+		inputs := make([]render.BookmarkInput, 0, len(boundBookmarks))
+		for _, b := range boundBookmarks {
+			inputs = append(inputs, render.BookmarkInput{
+				Group:       b.Spec.Group,
+				Name:        b.Spec.Name,
+				Order:       b.Spec.Order,
+				Href:        b.Spec.Href,
+				Abbr:        b.Spec.Abbr,
+				Icon:        b.Spec.Icon,
+				Description: b.Spec.Description,
+			})
+		}
+
+		bookmarksYAML, err := render.Bookmarks(inputs)
+		if err != nil {
+			return renderedConfig{}, fmt.Errorf("rendering bookmarks.yaml: %w", err)
+		}
+		data["bookmarks.yaml"] = string(bookmarksYAML)
 	}
 
 	return renderedConfig{data: data, secretSources: secretSources, secretEnv: secretEnv}, nil
@@ -786,6 +822,10 @@ func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&pagev1alpha1.ServiceEntry{},
 			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(s *pagev1alpha1.ServiceEntry) string { return s.Spec.InstanceRef.Name })),
+		).
+		Watches(
+			&pagev1alpha1.Bookmark{},
+			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(b *pagev1alpha1.Bookmark) string { return b.Spec.InstanceRef.Name })),
 		).
 		Complete(r)
 }
