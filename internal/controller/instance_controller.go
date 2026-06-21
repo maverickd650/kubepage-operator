@@ -74,6 +74,7 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=configurations,verbs=get;list;watch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=serviceentries,verbs=get;list;watch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks,verbs=get;list;watch
+// +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -266,11 +267,12 @@ func (r *InstanceReconciler) doFinalizerOperationsForInstance(cr *pagev1alpha1.I
 		cr.Namespace)
 }
 
-// renderConfigForInstance renders the homepage config files for instance:
-// kubernetes.yaml (always disabled for now; Phase 4 may enable it for an
-// InfoWidget of type "kubernetes", per the operator's CRD-only discovery
-// posture) and settings.yaml from the Configuration bound to instance, if
-// any. It returns the ConfigMap data ready to write as-is.
+// renderConfigForInstance renders every homepage config file from the config
+// CRDs bound to instance: settings.yaml (Configuration), services.yaml
+// (ServiceEntry), bookmarks.yaml (Bookmark), widgets.yaml (InfoWidget), and
+// kubernetes.yaml (disabled unless an InfoWidget of type "kubernetes" is
+// bound, per the operator's CRD-only discovery posture, D5). It returns the
+// ConfigMap data ready to write as-is.
 // renderedConfig is the result of rendering all of an Instance's bound
 // config CRDs: the ConfigMap data, plus whatever the Deployment needs to
 // back any secret references those CRDs made (volume sources + env vars).
@@ -283,12 +285,7 @@ type renderedConfig struct {
 func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (renderedConfig, error) {
 	log := logf.FromContext(ctx)
 	data := map[string]string{}
-
-	kubeYAML, err := render.KubernetesDisabled()
-	if err != nil {
-		return renderedConfig{}, fmt.Errorf("rendering kubernetes.yaml: %w", err)
-	}
-	data["kubernetes.yaml"] = string(kubeYAML)
+	projection := newSecretProjection()
 
 	var configs pagev1alpha1.ConfigurationList
 	if err := r.List(ctx, &configs, client.InNamespace(instance.Namespace)); err != nil {
@@ -334,17 +331,14 @@ func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instan
 		}
 	}
 
-	var secretSources []corev1.VolumeProjection
-	var secretEnv []corev1.EnvVar
 	if len(boundServices) > 0 {
 		// Deterministic rendering order: ServiceEntry names, not list order.
 		slices.SortFunc(boundServices, func(a, b pagev1alpha1.ServiceEntry) int { return strings.Compare(a.Name, b.Name) })
 
-		inputs, sources, env, err := r.buildServiceInputs(ctx, instance.Namespace, boundServices)
+		inputs, err := r.buildServiceInputs(ctx, instance.Namespace, boundServices, projection)
 		if err != nil {
 			return renderedConfig{}, fmt.Errorf("resolving ServiceEntries: %w", err)
 		}
-		secretSources, secretEnv = sources, env
 
 		servicesYAML, err := render.Services(inputs)
 		if err != nil {
@@ -388,6 +382,54 @@ func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instan
 		data["bookmarks.yaml"] = string(bookmarksYAML)
 	}
 
+	var infoWidgets pagev1alpha1.InfoWidgetList
+	if err := r.List(ctx, &infoWidgets, client.InNamespace(instance.Namespace)); err != nil {
+		return renderedConfig{}, fmt.Errorf("listing InfoWidgets: %w", err)
+	}
+
+	var boundWidgets []pagev1alpha1.InfoWidget
+	for _, w := range infoWidgets.Items {
+		if w.Spec.InstanceRef.Name == instance.Name {
+			boundWidgets = append(boundWidgets, w)
+		}
+	}
+
+	// kubernetes.yaml stays disabled (D5: CRD-only discovery) unless an
+	// InfoWidget of type "kubernetes" is bound, in which case homepage needs
+	// its own cluster connection to fetch the stats that widget displays.
+	// "cluster" mode (the in-cluster service account) is the only sensible
+	// choice here since homepage always runs in-cluster in this operator.
+	// Provisioning the RBAC the homepage pod needs for that connection
+	// (nodes/pods/metrics.k8s.io get;list) is deliberately left to the
+	// deployer rather than auto-granted by this controller — see
+	// IMPLEMENTATION_PLAN.md's Risks section.
+	kubeMode := "disabled"
+	if slices.ContainsFunc(boundWidgets, func(w pagev1alpha1.InfoWidget) bool { return w.Spec.Type == "kubernetes" }) {
+		kubeMode = "cluster"
+	}
+	kubeYAML, err := render.Kubernetes(kubeMode)
+	if err != nil {
+		return renderedConfig{}, fmt.Errorf("rendering kubernetes.yaml: %w", err)
+	}
+	data["kubernetes.yaml"] = string(kubeYAML)
+
+	if len(boundWidgets) > 0 {
+		// Deterministic rendering order: InfoWidget names, not list order.
+		slices.SortFunc(boundWidgets, func(a, b pagev1alpha1.InfoWidget) int { return strings.Compare(a.Name, b.Name) })
+
+		inputs, err := r.buildWidgetInputs(ctx, instance.Namespace, boundWidgets, projection)
+		if err != nil {
+			return renderedConfig{}, fmt.Errorf("resolving InfoWidgets: %w", err)
+		}
+
+		widgetsYAML, err := render.Widgets(inputs)
+		if err != nil {
+			return renderedConfig{}, fmt.Errorf("rendering widgets.yaml: %w", err)
+		}
+		data["widgets.yaml"] = string(widgetsYAML)
+	}
+
+	secretSources, secretEnv := projection.finalize()
 	return renderedConfig{data: data, secretSources: secretSources, secretEnv: secretEnv}, nil
 }
 
@@ -826,6 +868,10 @@ func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&pagev1alpha1.Bookmark{},
 			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(b *pagev1alpha1.Bookmark) string { return b.Spec.InstanceRef.Name })),
+		).
+		Watches(
+			&pagev1alpha1.InfoWidget{},
+			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(w *pagev1alpha1.InfoWidget) string { return w.Spec.InstanceRef.Name })),
 		).
 		Complete(r)
 }

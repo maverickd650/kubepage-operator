@@ -457,7 +457,7 @@ var _ = Describe("Instance controller", func() {
 						Type: "sonarr",
 						URL:  ptr.To("http://sonarr.example.com"),
 						Secrets: map[string]pagev1alpha1.SecretValueSource{
-							"key": {SecretKeyRef: &corev1.SecretKeySelector{
+							testSecretConfigField: {SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 								Key:                  testSecretAPIKeyField,
 							}},
@@ -512,7 +512,7 @@ var _ = Describe("Instance controller", func() {
 					Widgets: []pagev1alpha1.ServiceWidget{{
 						Type: "sonarr",
 						Secrets: map[string]pagev1alpha1.SecretValueSource{
-							"key": {SecretKeyRef: &corev1.SecretKeySelector{
+							testSecretConfigField: {SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{Name: testDoesNotExistInstanceName},
 								Key:                  testSecretAPIKeyField,
 							}},
@@ -614,6 +614,119 @@ var _ = Describe("Instance controller", func() {
 			Expect(bookmarksYAML).To(ContainSubstring("Github"))
 			Expect(bookmarksYAML).To(ContainSubstring("Social"))
 			Expect(bookmarksYAML).To(ContainSubstring("Reddit"))
+		})
+	})
+
+	Context("Instance controller InfoWidget rendering test", func() {
+
+		const (
+			InstanceName = "test-instance-widgets"
+			widgetCRName = "wg"
+			secretName   = "openmeteo-credentials"
+		)
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      InstanceName,
+			Namespace: InstanceName,
+		}
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-widgets-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+
+			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
+
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+			_ = os.Unsetenv("INSTANCE_IMAGE")
+		})
+
+		It("renders widgets.yaml and resolves a secretKeyRef into a mounted-file placeholder, leaving kubernetes.yaml disabled", func() {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace.Name},
+				Data:       map[string][]byte{testSecretAPIKeyField: []byte("super-secret")},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			widget := &pagev1alpha1.InfoWidget{
+				ObjectMeta: metav1.ObjectMeta{Name: widgetCRName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.InfoWidgetSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Type:        "openmeteo",
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						testSecretConfigField: {SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  testSecretAPIKeyField,
+						}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("widgets.yaml contains the rendered widget and a {{HOMEPAGE_FILE_*}} placeholder, not the raw secret")
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+			}).Should(Succeed())
+			widgetsYAML, ok := cm.Data["widgets.yaml"]
+			Expect(ok).To(BeTrue())
+			Expect(widgetsYAML).To(ContainSubstring("openmeteo"))
+			Expect(widgetsYAML).To(MatchRegexp(`key: '?\{\{HOMEPAGE_FILE_[0-9A-F]+\}\}'?`))
+			Expect(widgetsYAML).NotTo(ContainSubstring("super-secret"))
+
+			By("kubernetes.yaml stays disabled since no InfoWidget of type kubernetes is bound")
+			Expect(cm.Data["kubernetes.yaml"]).To(ContainSubstring("disabled"))
+
+			By("the Deployment mounts an aggregated secrets volume and the matching HOMEPAGE_FILE_* env var")
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", secretsVolumeName)))
+		})
+
+		It("switches kubernetes.yaml to cluster mode when an InfoWidget of type kubernetes is bound", func() {
+			widget := &pagev1alpha1.InfoWidget{
+				ObjectMeta: metav1.ObjectMeta{Name: widgetCRName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.InfoWidgetSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Type:        "kubernetes",
+				},
+			}
+			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+			}).Should(Succeed())
+			Expect(cm.Data["kubernetes.yaml"]).To(ContainSubstring("cluster"))
 		})
 	})
 })

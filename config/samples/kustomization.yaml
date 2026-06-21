@@ -4,4 +4,5 @@ resources:
 - page_v1alpha1_configuration.yaml
 - page_v1alpha1_serviceentry.yaml
 - page_v1alpha1_bookmark.yaml
+- page_v1alpha1_infowidget.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

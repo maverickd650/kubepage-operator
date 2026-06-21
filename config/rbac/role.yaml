@@ -49,6 +49,7 @@ rules:
   resources:
   - bookmarks
   - configurations
+  - infowidgets
   - instances
   - serviceentries
   verbs:
@@ -64,6 +65,7 @@ rules:
   resources:
   - bookmarks/finalizers
   - configurations/finalizers
+  - infowidgets/finalizers
   - instances/finalizers
   - serviceentries/finalizers
   verbs:
@@ -73,6 +75,7 @@ rules:
   resources:
   - bookmarks/status
   - configurations/status
+  - infowidgets/status
   - instances/status
   - serviceentries/status
   verbs:

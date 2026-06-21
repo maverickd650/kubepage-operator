@@ -5,4 +5,5 @@ package controller
 const (
 	testDoesNotExistInstanceName = "does-not-exist"
 	testSecretAPIKeyField        = "apikey"
+	testSecretConfigField        = "key"
 )

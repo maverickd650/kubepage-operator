@@ -1,0 +1,14 @@
+apiVersion: page.kubepage.dev/v1alpha1
+kind: InfoWidget
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: infowidget-sample
+spec:
+  instanceRef:
+    name: instance-sample
+  type: resources
+  options:
+    cpu: true
+    memory: true
