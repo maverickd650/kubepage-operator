@@ -1,0 +1,5 @@
+- Media:
+  - Sonarr:
+      description: Series management
+      href: http://sonarr.example.com
+      icon: sonarr.png

@@ -1,0 +1,11 @@
+- Alpha:
+  - First:
+      href: http://a1.example.com
+  - Second:
+      href: http://a2.example.com
+- Beta:
+  - OnlyOne:
+      href: http://b.example.com
+- Zeta:
+  - NoOrderService:
+      href: http://z.example.com

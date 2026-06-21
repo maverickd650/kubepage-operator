@@ -12,6 +12,7 @@ import (
 // Instance must exist in the same namespace as the object carrying this ref.
 type InstanceRef struct {
 	// Name of the Instance this object belongs to.
+	// +kubebuilder:validation:MinLength=1
 	// +required
 	Name string `json:"name"`
 }

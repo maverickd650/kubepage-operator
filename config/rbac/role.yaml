@@ -20,6 +20,7 @@ rules:
   - ""
   resources:
   - pods
+  - secrets
   verbs:
   - get
   - list
@@ -48,6 +49,7 @@ rules:
   resources:
   - configurations
   - instances
+  - serviceentries
   verbs:
   - create
   - delete
@@ -61,6 +63,7 @@ rules:
   resources:
   - configurations/finalizers
   - instances/finalizers
+  - serviceentries/finalizers
   verbs:
   - update
 - apiGroups:
@@ -68,6 +71,7 @@ rules:
   resources:
   - configurations/status
   - instances/status
+  - serviceentries/status
   verbs:
   - get
   - patch

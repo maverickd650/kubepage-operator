@@ -4,6 +4,7 @@
 resources:
 - bases/page.kubepage.dev_instances.yaml
 - bases/page.kubepage.dev_configurations.yaml
+- bases/page.kubepage.dev_serviceentries.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

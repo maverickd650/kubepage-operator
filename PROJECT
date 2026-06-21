@@ -41,4 +41,13 @@ resources:
   kind: Configuration
   path: github.com/maverickd650/kubepage-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: kubepage.dev
+  group: page
+  kind: ServiceEntry
+  path: github.com/maverickd650/kubepage-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

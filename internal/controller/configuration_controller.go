@@ -2,11 +2,9 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -17,10 +15,6 @@ import (
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
-
-// typeAvailableConfiguration represents whether a Configuration's
-// instanceRef resolves to an existing Instance.
-const typeAvailableConfiguration = "Available"
 
 // ConfigurationReconciler reconciles a Configuration object.
 //
@@ -47,30 +41,19 @@ func (r *ConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	cfg := &pagev1alpha1.Configuration{}
 	if err := r.Get(ctx, req.NamespacedName, cfg); err != nil {
-		if apierrors.IsNotFound(err) {
+		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		log.Error(err, "Failed to get Configuration")
 		return ctrl.Result{}, err
 	}
 
-	instance := &pagev1alpha1.Instance{}
-	err := r.Get(ctx, types.NamespacedName{Name: cfg.Spec.InstanceRef.Name, Namespace: cfg.Namespace}, instance)
-	switch {
-	case apierrors.IsNotFound(err):
-		meta.SetStatusCondition(&cfg.Status.Conditions, metav1.Condition{
-			Type: typeAvailableConfiguration, Status: metav1.ConditionFalse, Reason: reasonInstanceNotFound,
-			Message: fmt.Sprintf("Instance %q referenced by instanceRef does not exist in namespace %q", cfg.Spec.InstanceRef.Name, cfg.Namespace),
-		})
-	case err != nil:
+	cond, err := boundInstanceCondition(ctx, r.Client, cfg.Namespace, cfg.Spec.InstanceRef.Name)
+	if err != nil {
 		log.Error(err, "Failed to get referenced Instance")
 		return ctrl.Result{}, err
-	default:
-		meta.SetStatusCondition(&cfg.Status.Conditions, metav1.Condition{
-			Type: typeAvailableConfiguration, Status: metav1.ConditionTrue, Reason: reasonReconciling,
-			Message: fmt.Sprintf("Bound to Instance %q", cfg.Spec.InstanceRef.Name),
-		})
 	}
+	meta.SetStatusCondition(&cfg.Status.Conditions, cond)
 
 	if err := r.Status().Update(ctx, cfg); err != nil {
 		log.Error(err, "Failed to update Configuration status")

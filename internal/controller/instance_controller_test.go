@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -392,6 +393,141 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
 				g.Expect(dep.Spec.Template.Annotations[configHashAnnotation]).NotTo(Equal(firstHash))
 			}).Should(Succeed())
+		})
+	})
+
+	Context("Instance controller ServiceEntry rendering test", func() {
+
+		const (
+			InstanceName  = "test-instance-services"
+			serviceCRName = "svc"
+			secretName    = "sonarr-credentials"
+		)
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      InstanceName,
+			Namespace: InstanceName,
+		}
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-services-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+
+			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
+
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+			_ = os.Unsetenv("INSTANCE_IMAGE")
+		})
+
+		It("renders services.yaml and resolves a widget secretKeyRef into a mounted-file placeholder", func() {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace.Name},
+				Data:       map[string][]byte{testSecretAPIKeyField: []byte("super-secret")},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			entry := &pagev1alpha1.ServiceEntry{
+				ObjectMeta: metav1.ObjectMeta{Name: serviceCRName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.ServiceEntrySpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Media",
+					Name:        "Sonarr",
+					Href:        ptr.To("http://sonarr.example.com"),
+					Widgets: []pagev1alpha1.ServiceWidget{{
+						Type: "sonarr",
+						URL:  ptr.To("http://sonarr.example.com"),
+						Secrets: map[string]pagev1alpha1.SecretValueSource{
+							"key": {SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+								Key:                  testSecretAPIKeyField,
+							}},
+						},
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("services.yaml contains the rendered group/service and a {{HOMEPAGE_FILE_*}} placeholder, not the raw secret")
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+			}).Should(Succeed())
+			servicesYAML, ok := cm.Data["services.yaml"]
+			Expect(ok).To(BeTrue())
+			Expect(servicesYAML).To(ContainSubstring("Media"))
+			Expect(servicesYAML).To(ContainSubstring("Sonarr"))
+			Expect(servicesYAML).To(MatchRegexp(`key: '?\{\{HOMEPAGE_FILE_[0-9A-F]+\}\}'?`))
+			Expect(servicesYAML).NotTo(ContainSubstring("super-secret"))
+
+			By("the Deployment mounts an aggregated secrets volume and the matching HOMEPAGE_FILE_* env var")
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", secretsVolumeName)))
+			container := dep.Spec.Template.Spec.Containers[0]
+			Expect(container.VolumeMounts).To(ContainElement(HaveField("Name", secretsVolumeName)))
+
+			var fileEnv *corev1.EnvVar
+			for i := range container.Env {
+				if strings.HasPrefix(container.Env[i].Name, "HOMEPAGE_FILE_") {
+					fileEnv = &container.Env[i]
+				}
+			}
+			Expect(fileEnv).NotTo(BeNil(), "expected a HOMEPAGE_FILE_* env var")
+			Expect(servicesYAML).To(ContainSubstring(fileEnv.Name))
+		})
+
+		It("fails to render and surfaces an error when the referenced Secret does not exist", func() {
+			entry := &pagev1alpha1.ServiceEntry{
+				ObjectMeta: metav1.ObjectMeta{Name: serviceCRName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.ServiceEntrySpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Media",
+					Name:        "Sonarr",
+					Widgets: []pagev1alpha1.ServiceWidget{{
+						Type: "sonarr",
+						Secrets: map[string]pagev1alpha1.SecretValueSource{
+							"key": {SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: testDoesNotExistInstanceName},
+								Key:                  testSecretAPIKeyField,
+							}},
+						},
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does-not-exist"))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &pagev1alpha1.Instance{})).To(Succeed())
 		})
 	})
 })

@@ -72,9 +72,11 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=configurations,verbs=get;list;watch
+// +kubebuilder:rbac:groups=page.kubepage.dev,resources=serviceentries,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -200,7 +202,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// ensure the owned ConfigMap matches. This happens before the Deployment
 	// so its pod template's config-hash annotation always reflects the
 	// ConfigMap content it's about to be (or already is) mounting.
-	configHash, err := r.reconcileConfigMap(ctx, instance)
+	rc, configHash, err := r.reconcileConfigMap(ctx, instance)
 	if err != nil {
 		log.Error(err, "Failed to reconcile ConfigMap for Instance")
 
@@ -219,7 +221,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Define the Deployment we want on the cluster, create it if it doesn't
 	// exist yet, or reconcile drift (replica count or pod template, including
 	// the config-hash annotation) if it does.
-	result, handled, err := r.reconcileDeployment(ctx, instance, configHash)
+	result, handled, err := r.reconcileDeployment(ctx, instance, configHash, rc.secretSources, rc.secretEnv)
 	if handled {
 		return result, err
 	}
@@ -268,19 +270,28 @@ func (r *InstanceReconciler) doFinalizerOperationsForInstance(cr *pagev1alpha1.I
 // InfoWidget of type "kubernetes", per the operator's CRD-only discovery
 // posture) and settings.yaml from the Configuration bound to instance, if
 // any. It returns the ConfigMap data ready to write as-is.
-func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (map[string]string, error) {
+// renderedConfig is the result of rendering all of an Instance's bound
+// config CRDs: the ConfigMap data, plus whatever the Deployment needs to
+// back any secret references those CRDs made (volume sources + env vars).
+type renderedConfig struct {
+	data          map[string]string
+	secretSources []corev1.VolumeProjection
+	secretEnv     []corev1.EnvVar
+}
+
+func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (renderedConfig, error) {
 	log := logf.FromContext(ctx)
 	data := map[string]string{}
 
 	kubeYAML, err := render.KubernetesDisabled()
 	if err != nil {
-		return nil, fmt.Errorf("rendering kubernetes.yaml: %w", err)
+		return renderedConfig{}, fmt.Errorf("rendering kubernetes.yaml: %w", err)
 	}
 	data["kubernetes.yaml"] = string(kubeYAML)
 
 	var configs pagev1alpha1.ConfigurationList
 	if err := r.List(ctx, &configs, client.InNamespace(instance.Namespace)); err != nil {
-		return nil, fmt.Errorf("listing Configurations: %w", err)
+		return renderedConfig{}, fmt.Errorf("listing Configurations: %w", err)
 	}
 
 	var bound []pagev1alpha1.Configuration
@@ -289,30 +300,59 @@ func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instan
 			bound = append(bound, c)
 		}
 	}
-	if len(bound) == 0 {
-		return data, nil
+	if len(bound) > 0 {
+		// Exactly one Configuration is expected per Instance. If more than one
+		// references the same Instance, pick deterministically (lexicographically
+		// first by name) rather than erroring the whole reconcile, and surface
+		// the ambiguity via an event.
+		slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
+		if len(bound) > 1 {
+			log.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
+				"Instance", instance.Name, "chosen", bound[0].Name)
+			r.Recorder.Eventf(instance, nil, corev1.EventTypeWarning, "AmbiguousConfiguration", "Reconcile",
+				"Multiple Configuration objects reference Instance %s; using %s and ignoring the rest",
+				instance.Name, bound[0].Name)
+		}
+
+		settingsYAML, err := render.Settings(&bound[0].Spec)
+		if err != nil {
+			return renderedConfig{}, fmt.Errorf("rendering settings.yaml: %w", err)
+		}
+		data["settings.yaml"] = string(settingsYAML)
 	}
 
-	// Exactly one Configuration is expected per Instance. If more than one
-	// references the same Instance, pick deterministically (lexicographically
-	// first by name) rather than erroring the whole reconcile, and surface
-	// the ambiguity via an event.
-	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
-	if len(bound) > 1 {
-		log.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
-			"Instance", instance.Name, "chosen", bound[0].Name)
-		r.Recorder.Eventf(instance, nil, corev1.EventTypeWarning, "AmbiguousConfiguration", "Reconcile",
-			"Multiple Configuration objects reference Instance %s; using %s and ignoring the rest",
-			instance.Name, bound[0].Name)
+	var serviceEntries pagev1alpha1.ServiceEntryList
+	if err := r.List(ctx, &serviceEntries, client.InNamespace(instance.Namespace)); err != nil {
+		return renderedConfig{}, fmt.Errorf("listing ServiceEntries: %w", err)
 	}
 
-	settingsYAML, err := render.Settings(&bound[0].Spec)
-	if err != nil {
-		return nil, fmt.Errorf("rendering settings.yaml: %w", err)
+	var boundServices []pagev1alpha1.ServiceEntry
+	for _, s := range serviceEntries.Items {
+		if s.Spec.InstanceRef.Name == instance.Name {
+			boundServices = append(boundServices, s)
+		}
 	}
-	data["settings.yaml"] = string(settingsYAML)
 
-	return data, nil
+	var secretSources []corev1.VolumeProjection
+	var secretEnv []corev1.EnvVar
+	if len(boundServices) > 0 {
+		// Deterministic rendering order: ServiceEntry names, not list order.
+		slices.SortFunc(boundServices, func(a, b pagev1alpha1.ServiceEntry) int { return strings.Compare(a.Name, b.Name) })
+
+		inputs, sources, env, err := r.buildServiceInputs(ctx, instance.Namespace, boundServices)
+		if err != nil {
+			return renderedConfig{}, fmt.Errorf("resolving ServiceEntries: %w", err)
+		}
+		secretSources, secretEnv = sources, env
+
+		servicesYAML, err := render.Services(inputs)
+		if err != nil {
+			return renderedConfig{}, fmt.Errorf("rendering services.yaml: %w", err)
+		}
+		data["services.yaml"] = string(servicesYAML)
+	}
+
+	return renderedConfig{data: data, secretSources: secretSources, secretEnv: secretEnv}, nil
 }
 
 // configMapForInstance returns the ConfigMap object holding data, owned by instance.
@@ -333,17 +373,17 @@ func (r *InstanceReconciler) configMapForInstance(instance *pagev1alpha1.Instanc
 // reconcileConfigMap renders instance's config and ensures the owned
 // ConfigMap matches, creating or updating it as needed. It returns a hash of
 // the rendered data for use as the Deployment's config-hash annotation.
-func (r *InstanceReconciler) reconcileConfigMap(ctx context.Context, instance *pagev1alpha1.Instance) (string, error) {
+func (r *InstanceReconciler) reconcileConfigMap(ctx context.Context, instance *pagev1alpha1.Instance) (renderedConfig, string, error) {
 	log := logf.FromContext(ctx)
 
-	configData, err := r.renderConfigForInstance(ctx, instance)
+	rc, err := r.renderConfigForInstance(ctx, instance)
 	if err != nil {
-		return "", err
+		return renderedConfig{}, "", err
 	}
 
-	cm, err := r.configMapForInstance(instance, configData)
+	cm, err := r.configMapForInstance(instance, rc.data)
 	if err != nil {
-		return "", err
+		return renderedConfig{}, "", err
 	}
 
 	foundCM := &corev1.ConfigMap{}
@@ -352,18 +392,18 @@ func (r *InstanceReconciler) reconcileConfigMap(ctx context.Context, instance *p
 	case apierrors.IsNotFound(err):
 		log.Info("Creating a new ConfigMap", "ConfigMap.Namespace", cm.Namespace, "ConfigMap.Name", cm.Name)
 		if err := r.Create(ctx, cm); err != nil {
-			return "", fmt.Errorf("creating ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
+			return renderedConfig{}, "", fmt.Errorf("creating ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
 		}
 	case err != nil:
-		return "", fmt.Errorf("getting ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
+		return renderedConfig{}, "", fmt.Errorf("getting ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
 	case !maps.Equal(foundCM.Data, cm.Data):
 		foundCM.Data = cm.Data
 		if err := r.Update(ctx, foundCM); err != nil {
-			return "", fmt.Errorf("updating ConfigMap %s/%s: %w", foundCM.Namespace, foundCM.Name, err)
+			return renderedConfig{}, "", fmt.Errorf("updating ConfigMap %s/%s: %w", foundCM.Namespace, foundCM.Name, err)
 		}
 	}
 
-	return hashConfigData(configData), nil
+	return rc, hashConfigData(rc.data), nil
 }
 
 // hashConfigData returns a deterministic short hash of data, used as the
@@ -390,10 +430,16 @@ func hashConfigData(data map[string]string) string {
 // handled is true when the caller should return (result, err) immediately;
 // when false, the Deployment was already up to date and the caller should
 // continue with its own logic (e.g. updating the Instance's status).
-func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pagev1alpha1.Instance, configHash string) (result ctrl.Result, handled bool, err error) {
+func (r *InstanceReconciler) reconcileDeployment(
+	ctx context.Context,
+	instance *pagev1alpha1.Instance,
+	configHash string,
+	secretSources []corev1.VolumeProjection,
+	secretEnv []corev1.EnvVar,
+) (result ctrl.Result, handled bool, err error) {
 	log := logf.FromContext(ctx)
 
-	desiredDep, err := r.deploymentForInstance(instance, configHash)
+	desiredDep, err := r.deploymentForInstance(instance, configHash, secretSources, secretEnv)
 	if err != nil {
 		log.Error(err, "Failed to define new Deployment resource for Instance")
 
@@ -480,7 +526,11 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 
 // deploymentForInstance returns a Instance Deployment object
 func (r *InstanceReconciler) deploymentForInstance(
-	instance *pagev1alpha1.Instance, configHash string) (*appsv1.Deployment, error) {
+	instance *pagev1alpha1.Instance,
+	configHash string,
+	secretSources []corev1.VolumeProjection,
+	secretEnv []corev1.EnvVar,
+) (*appsv1.Deployment, error) {
 	ls := labelsForInstance()
 
 	// Get the Operand image
@@ -572,23 +622,13 @@ func (r *InstanceReconciler) deploymentForInstance(
 							ContainerPort: instance.Spec.ContainerPort,
 							Name:          instanceContainerName,
 						}},
-						Env:            envForInstance(instance),
+						Env:            append(envForInstance(instance), secretEnv...),
 						ReadinessProbe: instance.Spec.ReadinessProbe,
 						LivenessProbe:  instance.Spec.LivenessProbe,
 						Resources:      instance.Spec.Resources,
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      configVolumeName,
-							MountPath: configMountPath,
-						}},
+						VolumeMounts:   volumeMountsForInstance(secretSources),
 					}},
-					Volumes: []corev1.Volume{{
-						Name: configVolumeName,
-						VolumeSource: corev1.VolumeSource{
-							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: instance.Name},
-							},
-						},
-					}},
+					Volumes: volumesForInstance(instance, secretSources),
 				},
 			},
 		},
@@ -614,6 +654,45 @@ func envForInstance(instance *pagev1alpha1.Instance) []corev1.EnvVar {
 		env = append(env, corev1.EnvVar{Name: "HOMEPAGE_ALLOWED_HOSTS", Value: instance.Spec.AllowedHosts})
 	}
 	return append(env, instance.Spec.Env...)
+}
+
+// volumesForInstance returns the config ConfigMap volume, plus the
+// aggregated secrets projected volume if any ServiceEntry widget referenced
+// a Secret.
+func volumesForInstance(instance *pagev1alpha1.Instance, secretSources []corev1.VolumeProjection) []corev1.Volume {
+	volumes := []corev1.Volume{{
+		Name: configVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: instance.Name},
+			},
+		},
+	}}
+	if len(secretSources) > 0 {
+		volumes = append(volumes, corev1.Volume{
+			Name: secretsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{Sources: secretSources},
+			},
+		})
+	}
+	return volumes
+}
+
+// volumeMountsForInstance mirrors volumesForInstance for the container side.
+func volumeMountsForInstance(secretSources []corev1.VolumeProjection) []corev1.VolumeMount {
+	mounts := []corev1.VolumeMount{{
+		Name:      configVolumeName,
+		MountPath: configMountPath,
+	}}
+	if len(secretSources) > 0 {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      secretsVolumeName,
+			MountPath: secretsMountPath,
+			ReadOnly:  true,
+		})
+	}
+	return mounts
 }
 
 // mergeOverride layers override onto a copy of base, field by field: any
@@ -697,21 +776,37 @@ func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// cluster state aligns with the desired state. See that the ownerRef was set when each was created.
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
-		// Watch Configuration objects and reconcile the Instance each one's
-		// instanceRef names, so a Configuration change re-renders that
-		// Instance's config without waiting for the Instance itself to change.
+		// Watch the config CRDs and reconcile the Instance each one's
+		// instanceRef names, so a change to either re-renders that Instance's
+		// config without waiting for the Instance itself to change.
 		Watches(
 			&pagev1alpha1.Configuration{},
-			handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
-				cfg, ok := obj.(*pagev1alpha1.Configuration)
-				if !ok || cfg.Spec.InstanceRef.Name == "" {
-					return nil
-				}
-				return []reconcile.Request{{NamespacedName: types.NamespacedName{
-					Name:      cfg.Spec.InstanceRef.Name,
-					Namespace: cfg.Namespace,
-				}}}
-			}),
+			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(c *pagev1alpha1.Configuration) string { return c.Spec.InstanceRef.Name })),
+		).
+		Watches(
+			&pagev1alpha1.ServiceEntry{},
+			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(s *pagev1alpha1.ServiceEntry) string { return s.Spec.InstanceRef.Name })),
 		).
 		Complete(r)
+}
+
+// mapToInstance builds a handler.MapFunc that enqueues the Instance named by
+// extract(obj) (in obj's own namespace), for watching a config CRD that
+// carries an InstanceRef. Returns no requests if obj isn't a T or its
+// instanceRef name is empty.
+func mapToInstance[T client.Object](extract func(T) string) handler.MapFunc {
+	return func(_ context.Context, obj client.Object) []reconcile.Request {
+		t, ok := obj.(T)
+		if !ok {
+			return nil
+		}
+		name := extract(t)
+		if name == "" {
+			return nil
+		}
+		return []reconcile.Request{{NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: t.GetNamespace(),
+		}}}
+	}
 }

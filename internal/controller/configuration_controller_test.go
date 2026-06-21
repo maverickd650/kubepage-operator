@@ -48,7 +48,7 @@ var _ = Describe("Configuration Controller", func() {
 			cfg := &pagev1alpha1.Configuration{
 				ObjectMeta: metav1.ObjectMeta{Name: configCfgName, Namespace: namespaceName},
 				Spec: pagev1alpha1.ConfigurationSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: "does-not-exist"},
+					InstanceRef: pagev1alpha1.InstanceRef{Name: testDoesNotExistInstanceName},
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
@@ -61,7 +61,7 @@ var _ = Describe("Configuration Controller", func() {
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: configCfgName, Namespace: namespaceName}, cfg)).To(Succeed())
 			Expect(cfg.Status.Conditions).To(ContainElement(
-				HaveField("Type", Equal(typeAvailableConfiguration))))
+				HaveField("Type", Equal(typeAvailableBound))))
 			cond := cfg.Status.Conditions[0]
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal(reasonInstanceNotFound))
@@ -90,7 +90,7 @@ var _ = Describe("Configuration Controller", func() {
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: configCfg2Name, Namespace: namespaceName}, cfg)).To(Succeed())
 			Expect(cfg.Status.Conditions).To(ContainElement(
-				HaveField("Type", Equal(typeAvailableConfiguration))))
+				HaveField("Type", Equal(typeAvailableBound))))
 			cond := cfg.Status.Conditions[0]
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal(reasonReconciling))
