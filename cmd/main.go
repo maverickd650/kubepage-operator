@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -21,6 +22,7 @@ import (
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 	"github.com/maverickd650/kubepage-operator/internal/controller"
+	"github.com/maverickd650/kubepage-operator/internal/dashboard"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -36,8 +38,16 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-// nolint:gocyclo
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "dashboard" {
+		runDashboard(os.Args[2:])
+		return
+	}
+	runManager()
+}
+
+// nolint:gocyclo
+func runManager() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
@@ -212,6 +222,41 @@ func main() {
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "Failed to run manager")
+		os.Exit(1)
+	}
+}
+
+// runDashboard serves the native dashboard (D11 / Phase 6.0) for a single
+// Instance: a per-Instance Deployment runs the same image with `dashboard`
+// as its first argument instead of the manager's reconcile loop.
+func runDashboard(args []string) {
+	fs := flag.NewFlagSet("dashboard", flag.ExitOnError)
+	var namespace, instanceName, addr string
+	var pollInterval time.Duration
+	fs.StringVar(&namespace, "namespace", "", "Namespace of the Instance to serve a dashboard for.")
+	fs.StringVar(&instanceName, "instance-name", "", "Name of the Instance to serve a dashboard for.")
+	fs.StringVar(&addr, "addr", ":8080", "The address the dashboard HTTP server binds to.")
+	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
+	opts := zap.Options{Development: true}
+	opts.BindFlags(fs)
+	_ = fs.Parse(args)
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if namespace == "" || instanceName == "" {
+		setupLog.Error(nil, "--namespace and --instance-name are required")
+		os.Exit(1)
+	}
+
+	if err := dashboard.Run(ctrl.SetupSignalHandler(), dashboard.Options{
+		RestConfig:   ctrl.GetConfigOrDie(),
+		Scheme:       scheme,
+		Namespace:    namespace,
+		InstanceName: instanceName,
+		Addr:         addr,
+		PollInterval: pollInterval,
+	}); err != nil {
+		setupLog.Error(err, "Failed to run dashboard")
 		os.Exit(1)
 	}
 }

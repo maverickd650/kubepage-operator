@@ -1,0 +1,17 @@
+{{range .Groups}}
+  <h2>{{.Name}}</h2>
+  <div class="grid">
+    {{range .Cards}}
+      <div class="card" id="card-{{.Key}}">
+        <h3>{{.ServiceName}}</h3>
+        {{if .Err}}
+          <div class="err">{{.Err}}</div>
+        {{else}}
+          {{range .Fields}}
+            <div class="field"><span class="label">{{.Label}}</span><span>{{.Value}}</span></div>
+          {{end}}
+        {{end}}
+      </div>
+    {{end}}
+  </div>
+{{end}}

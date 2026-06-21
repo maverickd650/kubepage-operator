@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>kubepage</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    body { margin: 0; padding: 2rem; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+    h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin: 1.5rem 0 0.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+    .card { background: #1e293b; border-radius: 0.5rem; padding: 1rem; }
+    .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .field { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.15rem 0; color: #cbd5e1; }
+    .field .label { color: #94a3b8; }
+    .err { color: #f87171; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div id="cards" hx-get="/fragment" hx-trigger="load, every {{.RefreshSeconds}}s" hx-swap="innerHTML"></div>
+</body>
+</html>
