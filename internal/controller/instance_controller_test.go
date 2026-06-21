@@ -270,4 +270,128 @@ var _ = Describe("Instance controller", func() {
 			Expect(container.Resources.Requests).To(Equal(resources.Requests))
 		})
 	})
+
+	Context("Instance controller config rendering test", func() {
+
+		const (
+			InstanceName = "test-instance-config"
+			configCRName = "cfg"
+		)
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			By("Creating the Namespace to perform the tests")
+			// GenerateName, not a fixed Name: this Context runs multiple Its,
+			// and envtest doesn't run a namespace controller, so a Delete in
+			// AfterEach never actually completes before the next spec's
+			// BeforeEach tries to reuse the same name (see the note on the
+			// "Instance controller test" Context above re: envtest's
+			// namespace-deletion limitations).
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "test-instance-config-",
+				},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+
+			By("Setting the Image ENV VAR which stores the Operand image")
+			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+			_ = os.Unsetenv("INSTANCE_IMAGE")
+		})
+
+		It("renders an owned ConfigMap with kubernetes.yaml disabled even with no Configuration bound", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("the ConfigMap exists, is owned by the Instance, and has kubernetes.yaml disabled but no settings.yaml")
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+			}).Should(Succeed())
+			Expect(cm.Data).To(HaveKeyWithValue("kubernetes.yaml", "mode: disabled\n"))
+			Expect(cm.Data).NotTo(HaveKey("settings.yaml"))
+			Expect(cm.OwnerReferences).To(ContainElement(HaveField("Name", InstanceName)))
+
+			By("the Deployment mounts the ConfigMap and carries a config-hash annotation")
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("ConfigMap.LocalObjectReference.Name", InstanceName)))
+			Expect(dep.Spec.Template.Spec.Containers[0].VolumeMounts).To(ContainElement(HaveField("MountPath", configMountPath)))
+			Expect(dep.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+		})
+
+		It("renders settings.yaml from the bound Configuration and updates the ConfigMap and rollout hash when it changes", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			cfg := &pagev1alpha1.Configuration{
+				ObjectMeta: metav1.ObjectMeta{Name: configCRName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.ConfigurationSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Title:       ptr.To("My Homepage"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+			}).Should(Succeed())
+			// startUrl is present because the CRD defaults it to "/" server-side.
+			Expect(cm.Data).To(HaveKeyWithValue("settings.yaml", "startUrl: /\ntitle: My Homepage\n"))
+
+			dep := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			firstHash := dep.Spec.Template.Annotations[configHashAnnotation]
+			Expect(firstHash).NotTo(BeEmpty())
+
+			By("changing the Configuration and reconciling again")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: configCRName, Namespace: namespace.Name}, cfg)).To(Succeed())
+			cfg.Spec.Title = ptr.To("Updated Title")
+			Expect(k8sClient.Update(ctx, cfg)).To(Succeed())
+
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+				g.Expect(cm.Data).To(HaveKeyWithValue("settings.yaml", "startUrl: /\ntitle: Updated Title\n"))
+			}).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Annotations[configHashAnnotation]).NotTo(Equal(firstHash))
+			}).Should(Succeed())
+		})
+	})
 })

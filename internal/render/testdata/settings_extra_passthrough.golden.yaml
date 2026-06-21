@@ -1,0 +1,5 @@
+providers:
+  openweathermap: apikey123
+quicklaunch:
+  hideVisitURL: true
+title: Typed Title Wins

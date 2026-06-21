@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -8,41 +9,47 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Background specifies specific background attributes
+// BackgroundSpec specifies a background image and the filters applied over it.
+// See https://gethomepage.dev/configs/settings/#background-image
 type BackgroundSpec struct {
-	// For a custom image instead of plain colour background provide a full URL to the image or a path to the image e.g. /app/public/images
+	// Full URL or path (relative to /app/public) to the background image.
 	// +optional
 	Image *string `json:"image,omitempty"`
 
-	// Apply a backdrop blur
+	// Backdrop blur, a Tailwind backdrop-blur size keyword (e.g. "sm", "md", "xl", "").
 	// +optional
-	Blur *int32 `json:"blur,omitempty"`
+	Blur *string `json:"blur,omitempty"`
 
-	// Apply a saturation
+	// Backdrop saturate percentage (Tailwind backdrop-saturate scale, e.g. 0, 50, 100).
 	// +optional
 	Saturate *int32 `json:"saturate,omitempty"`
 
-	// Modify brightness
+	// Backdrop brightness percentage (Tailwind backdrop-brightness scale, e.g. 0, 50, 75).
 	// +optional
 	Brightness *int32 `json:"brightness,omitempty"`
 
-	// Modify opacity of the background
+	// Opacity to blend the background image with the background color, 0-100.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
 	// +optional
 	Opacity *int32 `json:"opacity,omitempty"`
 }
 
-// ConfigurationSpec defines the desired state of Configuration
+// ConfigurationSpec defines the desired state of Configuration, rendered into
+// the target Instance's settings.yaml. Common, frequently-set options are
+// typed below; anything else supported by homepage's settings.yaml can be
+// supplied via Extra (see its doc comment) rather than waiting for it to be
+// added here.
 type ConfigurationSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// InstanceRef names the Instance this Configuration applies to.
+	// +required
+	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Customise the page title
+	// Customise the page title.
 	// +optional
 	Title *string `json:"title,omitempty"`
 
-	// Customise the page description
+	// Customise the page description.
 	// +optional
 	Description *string `json:"description,omitempty"`
 
@@ -51,17 +58,60 @@ type ConfigurationSpec struct {
 	// +kubebuilder:default="/"
 	StartUrl *string `json:"startUrl,omitempty"`
 
-	// Background specifies specific background attributes
+	// Background image and filters, used instead of the solid theme color.
 	// +optional
-	Background []BackgroundSpec `json:"background,omitempty"`
+	Background *BackgroundSpec `json:"background,omitempty"`
 
-	// Apply a blur to the service and bookmark cards, this is compatible with the background filters.
+	// Apply a blur filter to the service and bookmark cards. A Tailwind
+	// backdrop-blur size keyword (e.g. "xs", "md"). Incompatible with the
+	// background blur/saturate/brightness filters.
 	// +optional
 	CardBlur *string `json:"cardBlur,omitempty"`
 
-	// Specify a custom favicon instead of the included one, this can be a full URL or path to the file e.g. /app/images
+	// Specify a custom favicon instead of the included one; a full URL or a
+	// path relative to /app/public.
 	// +optional
 	Favicon *string `json:"favicon,omitempty"`
+
+	// Fixed theme, disabling the theme switcher. One of "light" or "dark".
+	// +kubebuilder:validation:Enum=light;dark
+	// +optional
+	Theme *string `json:"theme,omitempty"`
+
+	// Fixed color palette, disabling the palette switcher.
+	// +kubebuilder:validation:Enum=slate;gray;zinc;neutral;stone;amber;yellow;lime;green;emerald;teal;cyan;sky;blue;indigo;violet;purple;fuchsia;pink;rose;red;white
+	// +optional
+	Color *string `json:"color,omitempty"`
+
+	// Header style for service/bookmark group headers.
+	// +kubebuilder:validation:Enum=underlined;boxed;clean;boxedWidgets
+	// +optional
+	HeaderStyle *string `json:"headerStyle,omitempty"`
+
+	// UI language, e.g. "en", "fr", "de".
+	// +optional
+	Language *string `json:"language,omitempty"`
+
+	// Default link target for service/bookmark hrefs.
+	// +kubebuilder:validation:Enum=_blank;_self;_top
+	// +optional
+	Target *string `json:"target,omitempty"`
+
+	// Use the entire window width instead of a centered, constrained layout.
+	// +optional
+	FullWidth *bool `json:"fullWidth,omitempty"`
+
+	// Hide the homepage release version shown at the bottom of the page.
+	// +optional
+	HideVersion *bool `json:"hideVersion,omitempty"`
+
+	// Extra carries any settings.yaml keys not modeled as typed fields above
+	// (e.g. providers, pwa, quicklaunch, layout, blockHighlights). Keys here
+	// are merged into the rendered settings.yaml; a key also set by a typed
+	// field above is overridden by the typed field's value.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +optional
+	Extra *apiextensionsv1.JSON `json:"extra,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.

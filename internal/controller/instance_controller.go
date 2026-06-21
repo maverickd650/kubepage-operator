@@ -2,10 +2,13 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,14 +24,30 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
+	"github.com/maverickd650/kubepage-operator/internal/render"
 )
 
 const instanceFinalizer = "page.kubepage.dev/finalizer"
 
 const instanceContainerName = "instance"
+
+const (
+	// configVolumeName/configMountPath mount the rendered config ConfigMap
+	// into the homepage container at the path it reads config files from.
+	configVolumeName = "config"
+	configMountPath  = "/app/config"
+
+	// configHashAnnotation records a hash of the rendered config on the pod
+	// template, so a Configuration change (which only touches the ConfigMap)
+	// still triggers a rollout even though homepage also hot-reloads files
+	// on its own.
+	configHashAnnotation = "page.kubepage.dev/config-hash"
+)
 
 // Definitions to manage status conditions
 const (
@@ -52,8 +71,10 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances/finalizers,verbs=update
+// +kubebuilder:rbac:groups=page.kubepage.dev,resources=configurations,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -175,88 +196,38 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	// Check if the deployment already exists, if not create a new one
-	found := &appsv1.Deployment{}
-	err = r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
-	if err != nil && apierrors.IsNotFound(err) {
-		// Define a new deployment
-		dep, err := r.deploymentForInstance(instance)
-		if err != nil {
-			log.Error(err, "Failed to define new Deployment resource for Instance")
+	// Render the bound Configuration (if any) into homepage's config files and
+	// ensure the owned ConfigMap matches. This happens before the Deployment
+	// so its pod template's config-hash annotation always reflects the
+	// ConfigMap content it's about to be (or already is) mounting.
+	configHash, err := r.reconcileConfigMap(ctx, instance)
+	if err != nil {
+		log.Error(err, "Failed to reconcile ConfigMap for Instance")
 
-			// The following implementation will update the status
-			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-				Status: metav1.ConditionFalse, Reason: reasonReconciling,
-				Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", instance.Name, err)})
+		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
+			Status: metav1.ConditionFalse, Reason: reasonReconciling,
+			Message: fmt.Sprintf("Failed to render configuration for the custom resource (%s): (%s)", instance.Name, err)})
 
-			if err := r.Status().Update(ctx, instance); err != nil {
-				log.Error(err, "Failed to update Instance status")
-				return ctrl.Result{}, err
-			}
-
-			return ctrl.Result{}, err
+		if serr := r.Status().Update(ctx, instance); serr != nil {
+			log.Error(serr, "Failed to update Instance status")
+			return ctrl.Result{}, serr
 		}
 
-		log.Info("Creating a new Deployment",
-			"Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-		if err = r.Create(ctx, dep); err != nil {
-			log.Error(err, "Failed to create new Deployment",
-				"Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-			return ctrl.Result{}, err
-		}
-
-		// Deployment created successfully
-		// We will requeue the reconciliation so that we can ensure the state
-		// and move forward for the next operations
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if err != nil {
-		log.Error(err, "Failed to get Deployment")
-		// Let's return the error for the reconciliation be re-triggered again
 		return ctrl.Result{}, err
+	}
+
+	// Define the Deployment we want on the cluster, create it if it doesn't
+	// exist yet, or reconcile drift (replica count or pod template, including
+	// the config-hash annotation) if it does.
+	result, handled, err := r.reconcileDeployment(ctx, instance, configHash)
+	if handled {
+		return result, err
 	}
 
 	// If the size is not defined in the Custom Resource then we will set the desired replicas to 0
 	var desiredReplicas int32 = 0
 	if instance.Spec.Size != nil {
 		desiredReplicas = *instance.Spec.Size
-	}
-
-	// The CRD API defines that the Instance type have a InstanceSpec.Size field
-	// to set the quantity of Deployment instances to the desired state on the cluster.
-	// Therefore, the following code will ensure the Deployment size is the same as defined
-	// via the Size spec of the Custom Resource which we are reconciling.
-	if found.Spec.Replicas == nil || *found.Spec.Replicas != desiredReplicas {
-		found.Spec.Replicas = ptr.To(desiredReplicas)
-		if err = r.Update(ctx, found); err != nil {
-			log.Error(err, "Failed to update Deployment",
-				"Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
-
-			// Re-fetch the instance Custom Resource before updating the status
-			// so that we have the latest state of the resource on the cluster and we will avoid
-			// raising the error "the object has been modified, please apply
-			// your changes to the latest version and try again" which would re-trigger the reconciliation
-			if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
-				log.Error(err, "Failed to re-fetch instance")
-				return ctrl.Result{}, err
-			}
-
-			// The following implementation will update the status
-			meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-				Status: metav1.ConditionFalse, Reason: "Resizing",
-				Message: fmt.Sprintf("Failed to update the size for the custom resource (%s): (%s)", instance.Name, err)})
-
-			if err := r.Status().Update(ctx, instance); err != nil {
-				log.Error(err, "Failed to update Instance status")
-				return ctrl.Result{}, err
-			}
-
-			return ctrl.Result{}, err
-		}
-
-		// Now, that we update the size we want to requeue the reconciliation
-		// so that we can ensure that we have the latest state of the resource before
-		// update. Also, it will help ensure the desired state on the cluster
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// The following implementation will update the status
@@ -292,9 +263,224 @@ func (r *InstanceReconciler) doFinalizerOperationsForInstance(cr *pagev1alpha1.I
 		cr.Namespace)
 }
 
+// renderConfigForInstance renders the homepage config files for instance:
+// kubernetes.yaml (always disabled for now; Phase 4 may enable it for an
+// InfoWidget of type "kubernetes", per the operator's CRD-only discovery
+// posture) and settings.yaml from the Configuration bound to instance, if
+// any. It returns the ConfigMap data ready to write as-is.
+func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (map[string]string, error) {
+	log := logf.FromContext(ctx)
+	data := map[string]string{}
+
+	kubeYAML, err := render.KubernetesDisabled()
+	if err != nil {
+		return nil, fmt.Errorf("rendering kubernetes.yaml: %w", err)
+	}
+	data["kubernetes.yaml"] = string(kubeYAML)
+
+	var configs pagev1alpha1.ConfigurationList
+	if err := r.List(ctx, &configs, client.InNamespace(instance.Namespace)); err != nil {
+		return nil, fmt.Errorf("listing Configurations: %w", err)
+	}
+
+	var bound []pagev1alpha1.Configuration
+	for _, c := range configs.Items {
+		if c.Spec.InstanceRef.Name == instance.Name {
+			bound = append(bound, c)
+		}
+	}
+	if len(bound) == 0 {
+		return data, nil
+	}
+
+	// Exactly one Configuration is expected per Instance. If more than one
+	// references the same Instance, pick deterministically (lexicographically
+	// first by name) rather than erroring the whole reconcile, and surface
+	// the ambiguity via an event.
+	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
+	if len(bound) > 1 {
+		log.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
+			"Instance", instance.Name, "chosen", bound[0].Name)
+		r.Recorder.Eventf(instance, nil, corev1.EventTypeWarning, "AmbiguousConfiguration", "Reconcile",
+			"Multiple Configuration objects reference Instance %s; using %s and ignoring the rest",
+			instance.Name, bound[0].Name)
+	}
+
+	settingsYAML, err := render.Settings(&bound[0].Spec)
+	if err != nil {
+		return nil, fmt.Errorf("rendering settings.yaml: %w", err)
+	}
+	data["settings.yaml"] = string(settingsYAML)
+
+	return data, nil
+}
+
+// configMapForInstance returns the ConfigMap object holding data, owned by instance.
+func (r *InstanceReconciler) configMapForInstance(instance *pagev1alpha1.Instance, data map[string]string) (*corev1.ConfigMap, error) {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		},
+		Data: data,
+	}
+	if err := ctrl.SetControllerReference(instance, cm, r.Scheme); err != nil {
+		return nil, err
+	}
+	return cm, nil
+}
+
+// reconcileConfigMap renders instance's config and ensures the owned
+// ConfigMap matches, creating or updating it as needed. It returns a hash of
+// the rendered data for use as the Deployment's config-hash annotation.
+func (r *InstanceReconciler) reconcileConfigMap(ctx context.Context, instance *pagev1alpha1.Instance) (string, error) {
+	log := logf.FromContext(ctx)
+
+	configData, err := r.renderConfigForInstance(ctx, instance)
+	if err != nil {
+		return "", err
+	}
+
+	cm, err := r.configMapForInstance(instance, configData)
+	if err != nil {
+		return "", err
+	}
+
+	foundCM := &corev1.ConfigMap{}
+	err = r.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, foundCM)
+	switch {
+	case apierrors.IsNotFound(err):
+		log.Info("Creating a new ConfigMap", "ConfigMap.Namespace", cm.Namespace, "ConfigMap.Name", cm.Name)
+		if err := r.Create(ctx, cm); err != nil {
+			return "", fmt.Errorf("creating ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
+		}
+	case err != nil:
+		return "", fmt.Errorf("getting ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
+	case !maps.Equal(foundCM.Data, cm.Data):
+		foundCM.Data = cm.Data
+		if err := r.Update(ctx, foundCM); err != nil {
+			return "", fmt.Errorf("updating ConfigMap %s/%s: %w", foundCM.Namespace, foundCM.Name, err)
+		}
+	}
+
+	return hashConfigData(configData), nil
+}
+
+// hashConfigData returns a deterministic short hash of data, used as the
+// pod template's config-hash annotation value.
+func hashConfigData(data map[string]string) string {
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(data[k]))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// reconcileDeployment ensures the Deployment for instance exists and matches
+// the desired state (replicas, pod template incl. configHash annotation).
+// handled is true when the caller should return (result, err) immediately;
+// when false, the Deployment was already up to date and the caller should
+// continue with its own logic (e.g. updating the Instance's status).
+func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pagev1alpha1.Instance, configHash string) (result ctrl.Result, handled bool, err error) {
+	log := logf.FromContext(ctx)
+
+	desiredDep, err := r.deploymentForInstance(instance, configHash)
+	if err != nil {
+		log.Error(err, "Failed to define new Deployment resource for Instance")
+
+		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
+			Status: metav1.ConditionFalse, Reason: reasonReconciling,
+			Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", instance.Name, err)})
+
+		if serr := r.Status().Update(ctx, instance); serr != nil {
+			log.Error(serr, "Failed to update Instance status")
+			return ctrl.Result{}, true, serr
+		}
+
+		return ctrl.Result{}, true, err
+	}
+
+	found := &appsv1.Deployment{}
+	err = r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+	if err != nil && apierrors.IsNotFound(err) {
+		log.Info("Creating a new Deployment",
+			"Deployment.Namespace", desiredDep.Namespace, "Deployment.Name", desiredDep.Name)
+		if err = r.Create(ctx, desiredDep); err != nil {
+			log.Error(err, "Failed to create new Deployment",
+				"Deployment.Namespace", desiredDep.Namespace, "Deployment.Name", desiredDep.Name)
+			return ctrl.Result{}, true, err
+		}
+
+		// Deployment created successfully
+		// We will requeue the reconciliation so that we can ensure the state
+		// and move forward for the next operations
+		return ctrl.Result{RequeueAfter: time.Minute}, true, nil
+	} else if err != nil {
+		log.Error(err, "Failed to get Deployment")
+		// Let's return the error for the reconciliation be re-triggered again
+		return ctrl.Result{}, true, err
+	}
+
+	// Reconcile drift: the Deployment exists, but its replica count or
+	// config-hash annotation (set after a Configuration change) no longer
+	// matches the desired state. We deliberately don't DeepEqual the whole
+	// pod template against a freshly-built one: the API server fills in
+	// defaults (RestartPolicy, DNSPolicy, etc.) on the stored object that a
+	// bare struct literal never has, which would make every comparison show
+	// spurious drift. The config-hash annotation is the one signal we fully
+	// control and need: it only changes when rendered config actually does.
+	replicasChanged := found.Spec.Replicas == nil || desiredDep.Spec.Replicas == nil || *found.Spec.Replicas != *desiredDep.Spec.Replicas
+	hashChanged := found.Spec.Template.Annotations[configHashAnnotation] != configHash
+	if !replicasChanged && !hashChanged {
+		return ctrl.Result{}, false, nil
+	}
+
+	found.Spec.Replicas = desiredDep.Spec.Replicas
+	found.Spec.Template = desiredDep.Spec.Template
+	if err = r.Update(ctx, found); err != nil {
+		log.Error(err, "Failed to update Deployment",
+			"Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+
+		// Re-fetch the instance Custom Resource before updating the status
+		// so that we have the latest state of the resource on the cluster and we will avoid
+		// raising the error "the object has been modified, please apply
+		// your changes to the latest version and try again" which would re-trigger the reconciliation
+		if gerr := r.Get(ctx, client.ObjectKeyFromObject(instance), instance); gerr != nil {
+			log.Error(gerr, "Failed to re-fetch instance")
+			return ctrl.Result{}, true, gerr
+		}
+
+		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
+			Status: metav1.ConditionFalse, Reason: "Resizing",
+			Message: fmt.Sprintf("Failed to update the size for the custom resource (%s): (%s)", instance.Name, err)})
+
+		if serr := r.Status().Update(ctx, instance); serr != nil {
+			log.Error(serr, "Failed to update Instance status")
+			return ctrl.Result{}, true, serr
+		}
+
+		return ctrl.Result{}, true, err
+	}
+
+	// Now that we've updated the Deployment we want to requeue the
+	// reconciliation so that we can ensure that we have the latest state of
+	// the resource before update. Also, it will help ensure the desired
+	// state on the cluster
+	return ctrl.Result{Requeue: true}, true, nil
+}
+
 // deploymentForInstance returns a Instance Deployment object
 func (r *InstanceReconciler) deploymentForInstance(
-	instance *pagev1alpha1.Instance) (*appsv1.Deployment, error) {
+	instance *pagev1alpha1.Instance, configHash string) (*appsv1.Deployment, error) {
 	ls := labelsForInstance()
 
 	// Get the Operand image
@@ -318,8 +504,14 @@ func (r *InstanceReconciler) deploymentForInstance(
 					// ls is layered on top of user labels so the selector
 					// (which matches on ls) can never be broken by a
 					// colliding user-supplied label.
-					Labels:      mergeLabels(instance.Spec.Labels, ls),
-					Annotations: instance.Spec.Annotations,
+					Labels: mergeStringMaps(instance.Spec.Labels, ls),
+					// configHashAnnotation is layered on top of user
+					// annotations so it always reflects the mounted
+					// ConfigMap's actual content, triggering a rollout on
+					// every Configuration change.
+					Annotations: mergeStringMaps(instance.Spec.Annotations, map[string]string{
+						configHashAnnotation: configHash,
+					}),
 				},
 				Spec: corev1.PodSpec{
 					HostUsers: instance.Spec.HostUsers,
@@ -384,6 +576,18 @@ func (r *InstanceReconciler) deploymentForInstance(
 						ReadinessProbe: instance.Spec.ReadinessProbe,
 						LivenessProbe:  instance.Spec.LivenessProbe,
 						Resources:      instance.Spec.Resources,
+						VolumeMounts: []corev1.VolumeMount{{
+							Name:      configVolumeName,
+							MountPath: configMountPath,
+						}},
+					}},
+					Volumes: []corev1.Volume{{
+						Name: configVolumeName,
+						VolumeSource: corev1.VolumeSource{
+							ConfigMap: &corev1.ConfigMapVolumeSource{
+								LocalObjectReference: corev1.LocalObjectReference{Name: instance.Name},
+							},
+						},
 					}},
 				},
 			},
@@ -437,13 +641,13 @@ func mergeOverride[T any](base T, override *T) *T {
 	return &result
 }
 
-// mergeLabels returns a new map containing userLabels overlaid with
-// builtinLabels, so builtin labels (used as the Deployment selector) always
-// win on key collisions.
-func mergeLabels(userLabels, builtinLabels map[string]string) map[string]string {
-	merged := make(map[string]string, len(userLabels)+len(builtinLabels))
-	maps.Copy(merged, userLabels)
-	maps.Copy(merged, builtinLabels)
+// mergeStringMaps returns a new map containing userValues overlaid with
+// builtinValues, so builtin values (e.g. the Deployment selector labels, or
+// the config-hash annotation) always win on key collisions.
+func mergeStringMaps(userValues, builtinValues map[string]string) map[string]string {
+	merged := make(map[string]string, len(userValues)+len(builtinValues))
+	maps.Copy(merged, userValues)
+	maps.Copy(merged, builtinValues)
 	return merged
 }
 
@@ -488,9 +692,26 @@ func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// is created, updated, or deleted
 		For(&pagev1alpha1.Instance{}).
 		Named("instance").
-		// Watch the Deployment managed by the InstanceReconciler. If any changes occur to the Deployment
-		// owned and managed by this controller, it will trigger reconciliation, ensuring that the cluster
-		// state aligns with the desired state. See that the ownerRef was set when the Deployment was created.
+		// Watch the Deployment and ConfigMap managed by the InstanceReconciler. If any changes occur to
+		// either, owned and managed by this controller, it will trigger reconciliation, ensuring that the
+		// cluster state aligns with the desired state. See that the ownerRef was set when each was created.
 		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.ConfigMap{}).
+		// Watch Configuration objects and reconcile the Instance each one's
+		// instanceRef names, so a Configuration change re-renders that
+		// Instance's config without waiting for the Instance itself to change.
+		Watches(
+			&pagev1alpha1.Configuration{},
+			handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+				cfg, ok := obj.(*pagev1alpha1.Configuration)
+				if !ok || cfg.Spec.InstanceRef.Name == "" {
+					return nil
+				}
+				return []reconcile.Request{{NamespacedName: types.NamespacedName{
+					Name:      cfg.Spec.InstanceRef.Name,
+					Namespace: cfg.Namespace,
+				}}}
+			}),
+		).
 		Complete(r)
 }

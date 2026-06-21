@@ -40,51 +40,134 @@ spec:
             description: spec defines the desired state of Configuration
             properties:
               background:
-                description: Background specifies specific background attributes
-                items:
-                  description: Background specifies specific background attributes
-                  properties:
-                    blur:
-                      description: Apply a backdrop blur
-                      format: int32
-                      type: integer
-                    brightness:
-                      description: Modify brightness
-                      format: int32
-                      type: integer
-                    image:
-                      description: For a custom image instead of plain colour background
-                        provide a full URL to the image or a path to the image e.g.
-                        /app/public/images
-                      type: string
-                    opacity:
-                      description: Modify opacity of the background
-                      format: int32
-                      type: integer
-                    saturate:
-                      description: Apply a saturation
-                      format: int32
-                      type: integer
-                  type: object
-                type: array
+                description: Background image and filters, used instead of the solid
+                  theme color.
+                properties:
+                  blur:
+                    description: Backdrop blur, a Tailwind backdrop-blur size keyword
+                      (e.g. "sm", "md", "xl", "").
+                    type: string
+                  brightness:
+                    description: Backdrop brightness percentage (Tailwind backdrop-brightness
+                      scale, e.g. 0, 50, 75).
+                    format: int32
+                    type: integer
+                  image:
+                    description: Full URL or path (relative to /app/public) to the
+                      background image.
+                    type: string
+                  opacity:
+                    description: Opacity to blend the background image with the background
+                      color, 0-100.
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                  saturate:
+                    description: Backdrop saturate percentage (Tailwind backdrop-saturate
+                      scale, e.g. 0, 50, 100).
+                    format: int32
+                    type: integer
+                type: object
               cardBlur:
-                description: Apply a blur to the service and bookmark cards, this
-                  is compatible with the background filters.
+                description: |-
+                  Apply a blur filter to the service and bookmark cards. A Tailwind
+                  backdrop-blur size keyword (e.g. "xs", "md"). Incompatible with the
+                  background blur/saturate/brightness filters.
+                type: string
+              color:
+                description: Fixed color palette, disabling the palette switcher.
+                enum:
+                - slate
+                - gray
+                - zinc
+                - neutral
+                - stone
+                - amber
+                - yellow
+                - lime
+                - green
+                - emerald
+                - teal
+                - cyan
+                - sky
+                - blue
+                - indigo
+                - violet
+                - purple
+                - fuchsia
+                - pink
+                - rose
+                - red
+                - white
                 type: string
               description:
-                description: Customise the page description
+                description: Customise the page description.
                 type: string
+              extra:
+                description: |-
+                  Extra carries any settings.yaml keys not modeled as typed fields above
+                  (e.g. providers, pwa, quicklaunch, layout, blockHighlights). Keys here
+                  are merged into the rendered settings.yaml; a key also set by a typed
+                  field above is overridden by the typed field's value.
+                x-kubernetes-preserve-unknown-fields: true
               favicon:
-                description: Specify a custom favicon instead of the included one,
-                  this can be a full URL or path to the file e.g. /app/images
+                description: |-
+                  Specify a custom favicon instead of the included one; a full URL or a
+                  path relative to /app/public.
+                type: string
+              fullWidth:
+                description: Use the entire window width instead of a centered, constrained
+                  layout.
+                type: boolean
+              headerStyle:
+                description: Header style for service/bookmark group headers.
+                enum:
+                - underlined
+                - boxed
+                - clean
+                - boxedWidgets
+                type: string
+              hideVersion:
+                description: Hide the homepage release version shown at the bottom
+                  of the page.
+                type: boolean
+              instanceRef:
+                description: InstanceRef names the Instance this Configuration applies
+                  to.
+                properties:
+                  name:
+                    description: Name of the Instance this object belongs to.
+                    type: string
+                required:
+                - name
+                type: object
+              language:
+                description: UI language, e.g. "en", "fr", "de".
                 type: string
               startUrl:
                 default: /
                 description: Customise the start url if required. Default is "/".
                 type: string
-              title:
-                description: Customise the page title
+              target:
+                description: Default link target for service/bookmark hrefs.
+                enum:
+                - _blank
+                - _self
+                - _top
                 type: string
+              theme:
+                description: Fixed theme, disabling the theme switcher. One of "light"
+                  or "dark".
+                enum:
+                - light
+                - dark
+                type: string
+              title:
+                description: Customise the page title.
+                type: string
+            required:
+            - instanceRef
             type: object
           status:
             description: status defines the observed state of Configuration

@@ -1,0 +1,18 @@
+background:
+  blur: sm
+  brightness: 50
+  image: /images/background.png
+  opacity: 50
+  saturate: 50
+cardBlur: xs
+color: slate
+description: A description of my awesome homepage
+favicon: /images/favicon.ico
+fullWidth: true
+headerStyle: boxed
+hideVersion: true
+language: en
+startUrl: /
+target: _blank
+theme: dark
+title: My Homepage
