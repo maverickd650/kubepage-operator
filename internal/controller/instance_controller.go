@@ -3,7 +3,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -313,9 +315,14 @@ func (r *InstanceReconciler) deploymentForInstance(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: ls,
+					// ls is layered on top of user labels so the selector
+					// (which matches on ls) can never be broken by a
+					// colliding user-supplied label.
+					Labels:      mergeLabels(instance.Spec.Labels, ls),
+					Annotations: instance.Spec.Annotations,
 				},
 				Spec: corev1.PodSpec{
+					HostUsers: instance.Spec.HostUsers,
 					// TODO(user): Uncomment the following code to configure the nodeAffinity expression
 					// according to the platforms which are supported by your solution. It is considered
 					// best practice to support multiple architectures. build your manager image using the
@@ -344,7 +351,7 @@ func (r *InstanceReconciler) deploymentForInstance(
 					//		 },
 					//	 },
 					// },
-					SecurityContext: &corev1.PodSecurityContext{
+					SecurityContext: mergeOverride(corev1.PodSecurityContext{
 						RunAsNonRoot: ptr.To(true),
 						// IMPORTANT: seccomProfile was introduced with Kubernetes 1.19
 						// If you are looking for to produce solutions to be supported
@@ -352,14 +359,14 @@ func (r *InstanceReconciler) deploymentForInstance(
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
-					},
+					}, instance.Spec.PodSecurityContext),
 					Containers: []corev1.Container{{
 						Image:           image,
 						Name:            instanceContainerName,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						// Ensure restrictive context for the container
 						// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
-						SecurityContext: &corev1.SecurityContext{
+						SecurityContext: mergeOverride(corev1.SecurityContext{
 							RunAsNonRoot:             ptr.To(true),
 							RunAsUser:                ptr.To(int64(568)),
 							AllowPrivilegeEscalation: ptr.To(false),
@@ -368,12 +375,15 @@ func (r *InstanceReconciler) deploymentForInstance(
 									"ALL",
 								},
 							},
-						},
+						}, instance.Spec.ContainerSecurityContext),
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: instance.Spec.ContainerPort,
 							Name:          instanceContainerName,
 						}},
-						Env: envForInstance(instance),
+						Env:            envForInstance(instance),
+						ReadinessProbe: instance.Spec.ReadinessProbe,
+						LivenessProbe:  instance.Spec.LivenessProbe,
+						Resources:      instance.Spec.Resources,
 					}},
 				},
 			},
@@ -400,6 +410,41 @@ func envForInstance(instance *pagev1alpha1.Instance) []corev1.EnvVar {
 		env = append(env, corev1.EnvVar{Name: "HOMEPAGE_ALLOWED_HOSTS", Value: instance.Spec.AllowedHosts})
 	}
 	return append(env, instance.Spec.Env...)
+}
+
+// mergeOverride layers override onto a copy of base, field by field: any
+// pointer, slice, or map field set (non-nil) in override replaces the
+// corresponding field in base, while every field left nil in override keeps
+// base's value. This lets operator-enforced defaults (e.g. the security
+// hardening below) survive a partial user-supplied PodSecurityContext or
+// SecurityContext instead of being silently dropped by a wholesale
+// replacement.
+func mergeOverride[T any](base T, override *T) *T {
+	result := base
+	if override != nil {
+		rv := reflect.ValueOf(&result).Elem()
+		ov := reflect.ValueOf(*override)
+		for i := 0; i < rv.NumField(); i++ {
+			f := ov.Field(i)
+			switch f.Kind() { //nolint:exhaustive // only pointer/slice/map fields are ever overridden
+			case reflect.Pointer, reflect.Slice, reflect.Map:
+				if !f.IsNil() {
+					rv.Field(i).Set(f)
+				}
+			}
+		}
+	}
+	return &result
+}
+
+// mergeLabels returns a new map containing userLabels overlaid with
+// builtinLabels, so builtin labels (used as the Deployment selector) always
+// win on key collisions.
+func mergeLabels(userLabels, builtinLabels map[string]string) map[string]string {
+	merged := make(map[string]string, len(userLabels)+len(builtinLabels))
+	maps.Copy(merged, userLabels)
+	maps.Copy(merged, builtinLabels)
+	return merged
 }
 
 // labelsForInstance returns the labels for selecting the resources

@@ -11,8 +11,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -130,6 +132,142 @@ var _ = Describe("Instance controller", func() {
 			Expect(conditions).To(HaveLen(1), "Multiple conditions of type %s", typeAvailableInstance)
 			Expect(conditions[0].Status).To(Equal(metav1.ConditionTrue), "condition %s", typeAvailableInstance)
 			Expect(conditions[0].Reason).To(Equal(reasonReconciling), "condition %s", typeAvailableInstance)
+		})
+	})
+
+	Context("Instance controller spec field test", func() {
+
+		const InstanceName = "test-instance-spec-fields"
+
+		ctx := context.Background()
+
+		namespace := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: InstanceName,
+			},
+		}
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      InstanceName,
+			Namespace: InstanceName,
+		}
+
+		BeforeEach(func() {
+			By("Creating the Namespace to perform the tests")
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
+			By("Setting the Image ENV VAR which stores the Operand image")
+			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+			_ = os.Unsetenv("INSTANCE_IMAGE")
+		})
+
+		It("should apply optional spec fields to the generated Deployment", func() {
+			By("creating an Instance with every optional field set, partially overriding the builtin security defaults")
+			readinessProbe := &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt32(3000)},
+				},
+			}
+			livenessProbe := &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(3000)},
+				},
+			}
+			resources := corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("100m"),
+				},
+			}
+
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      InstanceName,
+					Namespace: namespace.Name,
+				},
+				Spec: pagev1alpha1.InstanceSpec{
+					Size:          ptr.To(int32(1)),
+					ContainerPort: 3000,
+					HostUsers:     ptr.To(false),
+					Labels: map[string]string{
+						"team": "platform",
+					},
+					Annotations: map[string]string{
+						"example.com/note": "hello",
+					},
+					PodSecurityContext: &corev1.PodSecurityContext{
+						FSGroup: ptr.To(int64(1000)),
+					},
+					ContainerSecurityContext: &corev1.SecurityContext{
+						ReadOnlyRootFilesystem: ptr.To(true),
+					},
+					ReadinessProbe: readinessProbe,
+					LivenessProbe:  livenessProbe,
+					Resources:      resources,
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			By("Reconciling the custom resource")
+			instanceReconciler := &InstanceReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking the generated Deployment carries the optional fields")
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+
+			By("HostUsers is set on the PodSpec")
+			Expect(dep.Spec.Template.Spec.HostUsers).To(HaveValue(BeFalse()))
+
+			By("user Labels and Annotations are merged into the pod template metadata")
+			Expect(dep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(dep.Spec.Template.ObjectMeta.Annotations).To(HaveKeyWithValue("example.com/note", "hello"))
+
+			By("the builtin selector labels are still present alongside the user labels")
+			Expect(dep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "kubepage-operator"))
+
+			By("PodSecurityContext merges the user override with the builtin defaults")
+			podSC := dep.Spec.Template.Spec.SecurityContext
+			Expect(podSC).NotTo(BeNil())
+			Expect(podSC.FSGroup).To(HaveValue(Equal(int64(1000))))
+			Expect(podSC.RunAsNonRoot).To(HaveValue(BeTrue()), "builtin RunAsNonRoot default must survive a partial override")
+			Expect(podSC.SeccompProfile).NotTo(BeNil(), "builtin SeccompProfile default must survive a partial override")
+
+			By("ContainerSecurityContext merges the user override with the builtin defaults")
+			Expect(dep.Spec.Template.Spec.Containers).To(HaveLen(1))
+			containerSC := dep.Spec.Template.Spec.Containers[0].SecurityContext
+			Expect(containerSC).NotTo(BeNil())
+			Expect(containerSC.ReadOnlyRootFilesystem).To(HaveValue(BeTrue()))
+			Expect(containerSC.RunAsUser).To(HaveValue(Equal(int64(568))), "builtin RunAsUser default must survive a partial override")
+			Expect(containerSC.AllowPrivilegeEscalation).To(HaveValue(BeFalse()), "builtin AllowPrivilegeEscalation default must survive a partial override")
+			Expect(containerSC.Capabilities).NotTo(BeNil())
+			Expect(containerSC.Capabilities.Drop).To(ContainElement(corev1.Capability("ALL")))
+
+			By("ReadinessProbe, LivenessProbe and Resources are set on the container")
+			container := dep.Spec.Template.Spec.Containers[0]
+			Expect(container.ReadinessProbe).NotTo(BeNil())
+			Expect(container.ReadinessProbe.HTTPGet.Path).To(Equal(readinessProbe.HTTPGet.Path))
+			Expect(container.ReadinessProbe.HTTPGet.Port).To(Equal(readinessProbe.HTTPGet.Port))
+			Expect(container.LivenessProbe).NotTo(BeNil())
+			Expect(container.LivenessProbe.HTTPGet.Path).To(Equal(livenessProbe.HTTPGet.Path))
+			Expect(container.LivenessProbe.HTTPGet.Port).To(Equal(livenessProbe.HTTPGet.Port))
+			Expect(container.Resources.Requests).To(Equal(resources.Requests))
 		})
 	})
 })
