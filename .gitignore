@@ -31,6 +31,9 @@ go.work.sum
 # Makefile-managed tool binaries (downloaded via go-install-tool)
 /bin/
 
+# Local-only working notes, never pushed
+/IMPLEMENTATION_PLAN.md
+
 # Editor/IDE
 # .idea/
 # .vscode/
