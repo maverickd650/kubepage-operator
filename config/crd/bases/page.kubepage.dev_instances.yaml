@@ -41,6 +41,14 @@ spec:
           spec:
             description: spec defines the desired state of Instance
             properties:
+              allowedHosts:
+                description: |-
+                  AllowedHosts is a comma-separated list of hostnames homepage will accept
+                  requests for (maps to HOMEPAGE_ALLOWED_HOSTS). Homepage rejects requests
+                  for hosts not in this list, so this must include every hostname/IP used
+                  to reach the dashboard (Service DNS name, Ingress host, port-forward
+                  address, etc).
+                type: string
               annotations:
                 additionalProperties:
                   type: string
@@ -48,7 +56,7 @@ spec:
                 type: object
               appUrl:
                 description: |-
-                  External URL Pocket-id can be reached at
+                  External URL homepage can be reached at
                   See the official documentation for APP_URL
                 type: string
               containerPort:

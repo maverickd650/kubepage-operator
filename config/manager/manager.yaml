@@ -67,7 +67,7 @@ spec:
         name: manager
         env:
         - name: INSTANCE_IMAGE
-          value: ghcr.io/maverickd650/kubepage:0.0.1
+          value: ghcr.io/gethomepage/homepage:v1.13.2
         ports:
         - containerPort: 8081
           name: health

@@ -373,6 +373,7 @@ func (r *InstanceReconciler) deploymentForInstance(
 							ContainerPort: instance.Spec.ContainerPort,
 							Name:          instanceContainerName,
 						}},
+						Env: envForInstance(instance),
 					}},
 				},
 			},
@@ -385,6 +386,20 @@ func (r *InstanceReconciler) deploymentForInstance(
 		return nil, err
 	}
 	return dep, nil
+}
+
+// envForInstance returns the homepage container env: AppURL/AllowedHosts as
+// the homepage-specific env vars they map to, followed by any user-supplied
+// Env entries (which take precedence if names collide, since they're appended last).
+func envForInstance(instance *pagev1alpha1.Instance) []corev1.EnvVar {
+	var env []corev1.EnvVar
+	if instance.Spec.AppURL != "" {
+		env = append(env, corev1.EnvVar{Name: "APP_URL", Value: instance.Spec.AppURL})
+	}
+	if instance.Spec.AllowedHosts != "" {
+		env = append(env, corev1.EnvVar{Name: "HOMEPAGE_ALLOWED_HOSTS", Value: instance.Spec.AllowedHosts})
+	}
+	return append(env, instance.Spec.Env...)
 }
 
 // labelsForInstance returns the labels for selecting the resources

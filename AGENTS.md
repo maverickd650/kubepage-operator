@@ -1,5 +1,9 @@
 # kubepage-operator - AI Agent Guide
 
+> **Building the homepage operator?** Read [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+> first — it holds the locked design decisions, architecture, and the phased slice you should
+> be working on. This file (AGENTS.md) covers kubebuilder mechanics; the plan covers *what* to build.
+
 ## Project Structure
 
 **Single-group layout (default):**

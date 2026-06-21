@@ -9,16 +9,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type EnvValue struct {
-	// Plain text value
-	// +optional
-	Value *string `json:"value,omitempty"`
-
-	// ValueFrom defines the source of the value
-	// +optional
-	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
-}
-
 // InstanceSpec defines the desired state of Instance
 type InstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -36,10 +26,18 @@ type InstanceSpec struct {
 	// +required
 	ContainerPort int32 `json:"containerPort"`
 
-	// External URL Pocket-id can be reached at
+	// External URL homepage can be reached at
 	// See the official documentation for APP_URL
 	// +optional
 	AppURL string `json:"appUrl,omitempty"`
+
+	// AllowedHosts is a comma-separated list of hostnames homepage will accept
+	// requests for (maps to HOMEPAGE_ALLOWED_HOSTS). Homepage rejects requests
+	// for hosts not in this list, so this must include every hostname/IP used
+	// to reach the dashboard (Service DNS name, Ingress host, port-forward
+	// address, etc).
+	// +optional
+	AllowedHosts string `json:"allowedHosts,omitempty"`
 
 	// Additional environment variables to set
 	// Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)
