@@ -17,6 +17,8 @@ type Card struct {
 	ServiceName string
 	WidgetType  string
 	Order       *int32
+	IconURL     string
+	Description string
 
 	Fields    []Field
 	Err       string

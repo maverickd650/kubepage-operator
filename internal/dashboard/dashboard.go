@@ -70,7 +70,13 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	go poller.Run(ctx)
 
-	srv := &Server{Store: store, RefreshSeconds: int(opts.PollInterval.Seconds())}
+	srv := &Server{
+		Store:          store,
+		Reader:         clu.GetClient(),
+		Namespace:      opts.Namespace,
+		InstanceName:   opts.InstanceName,
+		RefreshSeconds: int(opts.PollInterval.Seconds()),
+	}
 	httpServer := &http.Server{Addr: opts.Addr, Handler: srv.Routes()}
 
 	go func() {

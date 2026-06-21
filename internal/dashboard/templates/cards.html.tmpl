@@ -2,8 +2,12 @@
   <h2>{{.Name}}</h2>
   <div class="grid">
     {{range .Cards}}
-      <div class="card" id="card-{{.Key}}">
-        <h3>{{.ServiceName}}</h3>
+      <div class="card" id="card-{{.Key}}" data-name="{{.ServiceName}}" data-description="{{.Description}}">
+        <h3>
+          {{if .IconURL}}<img class="icon" src="{{.IconURL}}" alt="">{{end}}
+          {{.ServiceName}}
+        </h3>
+        {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
         {{if .Err}}
           <div class="err">{{.Err}}</div>
         {{else}}
@@ -12,6 +16,20 @@
           {{end}}
         {{end}}
       </div>
+    {{end}}
+  </div>
+{{end}}
+{{range .BookmarkGroups}}
+  <h2>{{.Name}}</h2>
+  <div class="grid">
+    {{range .Bookmarks}}
+      <a class="card" href="{{.Href}}" data-name="{{.Name}}" data-description="{{.Description}}">
+        <h3>
+          {{if .IconURL}}<img class="icon" src="{{.IconURL}}" alt="">{{end}}
+          {{.Name}}
+        </h3>
+        {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
+      </a>
     {{end}}
   </div>
 {{end}}

@@ -161,6 +161,45 @@ spec:
               language:
                 description: UI language, e.g. "en", "fr", "de".
                 type: string
+              search:
+                description: |-
+                  Search configures the native dashboard's header search box (card
+                  filtering + web-search fallthrough). Has no effect on the
+                  homepage-wrapper render path.
+                properties:
+                  filterCards:
+                    default: true
+                    description: |-
+                      FilterCards enables as-you-type filtering of service and bookmark
+                      cards by name/description, independent of the Enter-to-search
+                      fallthrough.
+                    type: boolean
+                  provider:
+                    default: duckduckgo
+                    description: |-
+                      Provider is the web search engine Enter submits the query to.
+                      "custom" requires URL.
+                    enum:
+                    - duckduckgo
+                    - google
+                    - bing
+                    - custom
+                    type: string
+                  target:
+                    default: _blank
+                    description: |-
+                      Target controls whether the search results page opens in the same tab
+                      or a new one.
+                    enum:
+                    - _blank
+                    - _self
+                    type: string
+                  url:
+                    description: |-
+                      URL is the search endpoint used when Provider is "custom". The query
+                      is appended as a URL-encoded "q" parameter.
+                    type: string
+                type: object
               startUrl:
                 default: /
                 description: Customise the start url if required. Default is "/".

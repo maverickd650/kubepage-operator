@@ -35,6 +35,39 @@ type BackgroundSpec struct {
 	Opacity *int32 `json:"opacity,omitempty"`
 }
 
+// SearchSpec configures the native dashboard's header search box (D11 /
+// Phase 6.1): as-you-type card filtering plus an Enter-to-search fallthrough
+// to a web search provider. This has no homepage settings.yaml equivalent —
+// it's specific to the native dashboard renderer, not rendered into
+// settings.yaml.
+type SearchSpec struct {
+	// Provider is the web search engine Enter submits the query to.
+	// "custom" requires URL.
+	// +kubebuilder:validation:Enum=duckduckgo;google;bing;custom
+	// +kubebuilder:default=duckduckgo
+	// +optional
+	Provider *string `json:"provider,omitempty"`
+
+	// URL is the search endpoint used when Provider is "custom". The query
+	// is appended as a URL-encoded "q" parameter.
+	// +optional
+	URL *string `json:"url,omitempty"`
+
+	// Target controls whether the search results page opens in the same tab
+	// or a new one.
+	// +kubebuilder:validation:Enum=_blank;_self
+	// +kubebuilder:default=_blank
+	// +optional
+	Target *string `json:"target,omitempty"`
+
+	// FilterCards enables as-you-type filtering of service and bookmark
+	// cards by name/description, independent of the Enter-to-search
+	// fallthrough.
+	// +kubebuilder:default=true
+	// +optional
+	FilterCards *bool `json:"filterCards,omitempty"`
+}
+
 // ConfigurationSpec defines the desired state of Configuration, rendered into
 // the target Instance's settings.yaml. Common, frequently-set options are
 // typed below; anything else supported by homepage's settings.yaml can be
@@ -104,6 +137,12 @@ type ConfigurationSpec struct {
 	// Hide the homepage release version shown at the bottom of the page.
 	// +optional
 	HideVersion *bool `json:"hideVersion,omitempty"`
+
+	// Search configures the native dashboard's header search box (card
+	// filtering + web-search fallthrough). Has no effect on the
+	// homepage-wrapper render path.
+	// +optional
+	Search *SearchSpec `json:"search,omitempty"`
 
 	// Extra carries any settings.yaml keys not modeled as typed fields above
 	// (e.g. providers, pwa, quicklaunch, layout, blockHighlights). Keys here

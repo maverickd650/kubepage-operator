@@ -4,6 +4,8 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 //go:embed templates/*.tmpl
@@ -24,7 +26,25 @@ type cardGroup struct {
 // page on refresh, only the data.
 type Server struct {
 	Store          *Store
+	Reader         client.Reader
+	Namespace      string
+	InstanceName   string
 	RefreshSeconds int
+}
+
+// indexData is the page shell's template data: site-wide look (theme/
+// color/background/search) plus the htmx poll interval.
+type indexData struct {
+	Site           Site
+	AccentHex      string
+	RefreshSeconds int
+}
+
+// fragmentData is the polled fragment's template data: the live widget
+// cards plus the static bookmark cards, both grouped for display.
+type fragmentData struct {
+	Groups         []cardGroup
+	BookmarkGroups []BookmarkGroup
 }
 
 func (s *Server) Routes() http.Handler {
@@ -40,15 +60,30 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if refresh <= 0 {
 		refresh = 10
 	}
+
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "index.html.tmpl", struct{ RefreshSeconds int }{refresh}); err != nil {
+	data := indexData{Site: site, AccentHex: AccentHex(site.Color), RefreshSeconds: refresh}
+	if err := templates.ExecuteTemplate(w, "index.html.tmpl", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, "cards.html.tmpl", struct{ Groups []cardGroup }{groupCards(s.Store.Snapshot())}); err != nil {
+	data := fragmentData{Groups: groupCards(s.Store.Snapshot()), BookmarkGroups: site.BookmarkGroups}
+	if err := templates.ExecuteTemplate(w, "cards.html.tmpl", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

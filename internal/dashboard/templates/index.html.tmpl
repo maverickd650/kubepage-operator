@@ -1,21 +1,90 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{if .Site.Language}}{{.Site.Language}}{{else}}en{{end}}" data-theme="{{.Site.Theme}}">
 <head>
   <meta charset="utf-8">
   <title>kubepage</title>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
-    body { margin: 0; padding: 2rem; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
-    h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin: 1.5rem 0 0.5rem; }
+    :root { --accent: {{.AccentHex}}; }
+    [data-theme="dark"] { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --border: #cbd5e1; }
+    [data-theme="light"] { --bg: #f1f5f9; --panel: #ffffff; --text: #0f172a; --muted: #475569; --border: #334155; }
+    body {
+      margin: 0; padding: 2rem; background: var(--bg); color: var(--text);
+      font-family: system-ui, sans-serif;
+      {{if .Site.Background}}
+      background-image: url("{{.Site.Background.Image}}"); background-size: cover; background-position: center;
+      {{end}}
+    }
+    .wrap { max-width: {{if .Site.FullWidth}}none{{else}}1200px{{end}}; margin: 0 auto; }
+    .search-bar { margin-bottom: 1.5rem; }
+    .search-bar input {
+      width: 100%; box-sizing: border-box; padding: 0.6rem 1rem; font-size: 1rem;
+      border: 1px solid var(--border); border-radius: 0.5rem; background: var(--panel); color: var(--text);
+    }
+    .search-bar input:focus { outline: 2px solid var(--accent); }
+    h2 {
+      font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
+      margin: 1.5rem 0 0.5rem;
+      {{if eq .Site.HeaderStyle "underlined"}} border-bottom: 1px solid var(--accent); padding-bottom: 0.25rem; {{end}}
+      {{if eq .Site.HeaderStyle "boxed"}} background: var(--panel); padding: 0.4rem 0.6rem; border-radius: 0.4rem; {{end}}
+    }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
-    .card { background: #1e293b; border-radius: 0.5rem; padding: 1rem; }
-    .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
-    .field { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.15rem 0; color: #cbd5e1; }
-    .field .label { color: #94a3b8; }
+    .card {
+      background: var(--panel); border-radius: 0.5rem; padding: 1rem; display: block; text-decoration: none; color: inherit;
+      {{if .Site.Background}}
+        {{if .Site.Background.Blur}} backdrop-filter: blur(var(--card-blur, 4px)); {{end}}
+        {{if .Site.Background.Opacity}} background-color: color-mix(in srgb, var(--panel) {{.Site.Background.Opacity}}%, transparent); {{end}}
+      {{end}}
+    }
+    .card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .card img.icon { width: 1.2rem; height: 1.2rem; }
+    .field { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.15rem 0; color: var(--border); }
+    .field .label { color: var(--muted); }
+    .desc { font-size: 0.8rem; color: var(--muted); }
     .err { color: #f87171; font-size: 0.85rem; }
   </style>
 </head>
 <body>
-  <div id="cards" hx-get="/fragment" hx-trigger="load, every {{.RefreshSeconds}}s" hx-swap="innerHTML"></div>
+  <div class="wrap">
+    <div class="search-bar">
+      <input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off">
+    </div>
+    <div id="cards" hx-get="/fragment" hx-trigger="load, every {{.RefreshSeconds}}s" hx-swap="innerHTML"></div>
+  </div>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script>
+    const searchConfig = {
+      provider: {{.Site.Search.Provider}},
+      url: {{.Site.Search.URL}},
+      target: {{.Site.Search.Target}},
+      filterCards: {{.Site.Search.FilterCards}}
+    };
+
+    function searchURL(query) {
+      const q = encodeURIComponent(query);
+      switch (searchConfig.provider) {
+        case "google": return "https://www.google.com/search?q=" + q;
+        case "bing": return "https://www.bing.com/search?q=" + q;
+        case "custom": return searchConfig.url + (searchConfig.url.indexOf("?") >= 0 ? "&" : "?") + "q=" + q;
+        default: return "https://duckduckgo.com/?q=" + q;
+      }
+    }
+
+    document.getElementById("search-input").addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      const q = e.target.value.trim();
+      if (!q) return;
+      window.open(searchURL(q), searchConfig.target || "_blank");
+    });
+
+    if (searchConfig.filterCards) {
+      document.getElementById("search-input").addEventListener("input", function (e) {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll("[data-name]").forEach(function (card) {
+          const haystack = (card.dataset.name + " " + (card.dataset.description || "")).toLowerCase();
+          card.style.display = haystack.includes(q) ? "" : "none";
+        });
+      });
+    }
+  </script>
 </body>
 </html>

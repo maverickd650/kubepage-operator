@@ -86,7 +86,11 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		ServiceName: entry.Spec.Name,
 		WidgetType:  widget.Type,
 		Order:       entry.Spec.Order,
+		IconURL:     IconURL(entry.Spec.Icon),
 		UpdatedAt:   time.Now(),
+	}
+	if entry.Spec.Description != nil {
+		card.Description = *entry.Spec.Description
 	}
 
 	impl, ok := Lookup(widget.Type)

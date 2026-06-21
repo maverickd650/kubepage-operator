@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	testNamespace    = "ns"
-	testInstanceName = "main"
-	testGroup        = "Monitoring"
-	testServiceName  = "Prometheus"
-	testWidgetType   = "prometheus"
-	testSecretField  = "token"
+	testNamespace     = "ns"
+	testInstanceName  = "main"
+	testGroup         = "Monitoring"
+	testServiceName   = "Prometheus"
+	testWidgetType    = "prometheus"
+	testSecretField   = "token"
+	testBookmarkGroup = "Reading"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {

@@ -19,6 +19,7 @@ func Settings(spec *pagev1alpha1.ConfigurationSpec) ([]byte, error) {
 	}
 	delete(doc, "instanceRef")
 	delete(doc, "extra")
+	delete(doc, "search")
 
 	if spec.Extra != nil && len(spec.Extra.Raw) > 0 {
 		var extra map[string]any
