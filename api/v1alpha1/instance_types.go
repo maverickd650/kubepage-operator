@@ -76,6 +76,50 @@ type InstanceSpec struct {
 	// Resource requests and limits for the container
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Ingress optionally exposes the homepage Service via an Ingress. Off by
+	// default: most users reach homepage through a Service (port-forward,
+	// LoadBalancer, existing Ingress/Gateway managed outside this operator,
+	// etc.), so this operator shouldn't assume an IngressClass / external-DNS
+	// / cert-manager setup is present.
+	// +optional
+	Ingress *IngressSpec `json:"ingress,omitempty"`
+}
+
+// IngressSpec configures an Ingress exposing the homepage Service.
+type IngressSpec struct {
+	// Enabled creates and manages an Ingress for this Instance when true.
+	// +kubebuilder:default=false
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Host is the hostname routed to the homepage Service.
+	// +required
+	Host string `json:"host"`
+
+	// IngressClassName selects the IngressClass that implements this
+	// Ingress. Leave unset to use the cluster's default IngressClass.
+	// +optional
+	IngressClassName *string `json:"ingressClassName,omitempty"`
+
+	// Annotations to set on the generated Ingress (e.g. a cert-manager
+	// issuer, nginx rewrite rules).
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// TLS terminates TLS for Host using the named Secret. Leave unset to
+	// serve plain HTTP.
+	// +optional
+	TLS *IngressTLSSpec `json:"tls,omitempty"`
+}
+
+// IngressTLSSpec names the Secret holding a TLS certificate/key for an
+// Ingress host.
+type IngressTLSSpec struct {
+	// SecretName is the Secret holding the TLS certificate/key for Host.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	SecretName string `json:"secretName"`
 }
 
 // InstanceStatus defines the observed state of Instance
@@ -85,11 +129,48 @@ type InstanceStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// ObservedGeneration is the most recent generation this status reflects.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// BoundConfigurations is the number of Configuration objects currently
+	// bound to (instanceRef-ing) this Instance.
+	// +optional
+	BoundConfigurations int32 `json:"boundConfigurations,omitempty"`
+
+	// BoundServiceEntries is the number of ServiceEntry objects currently
+	// bound to this Instance.
+	// +optional
+	BoundServiceEntries int32 `json:"boundServiceEntries,omitempty"`
+
+	// BoundBookmarks is the number of Bookmark objects currently bound to
+	// this Instance.
+	// +optional
+	BoundBookmarks int32 `json:"boundBookmarks,omitempty"`
+
+	// BoundInfoWidgets is the number of InfoWidget objects currently bound to
+	// this Instance.
+	// +optional
+	BoundInfoWidgets int32 `json:"boundInfoWidgets,omitempty"`
+
+	// RenderHash is the hash of the most recently rendered homepage config,
+	// also set as the pod template's page.kubepage.dev/config-hash
+	// annotation. Useful to confirm a Deployment rollout actually picked up
+	// a config change.
+	// +optional
+	RenderHash string `json:"renderHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=pageinst
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
+// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=".spec.size"
+// +kubebuilder:printcolumn:name="Services",type=integer,JSONPath=".status.boundServiceEntries"
+// +kubebuilder:printcolumn:name="Bookmarks",type=integer,JSONPath=".status.boundBookmarks"
+// +kubebuilder:printcolumn:name="Widgets",type=integer,JSONPath=".status.boundInfoWidgets"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // Instance is the Schema for the instances API
 type Instance struct {

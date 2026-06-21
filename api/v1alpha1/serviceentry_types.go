@@ -120,6 +120,10 @@ type ServiceEntryStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=psvc
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
+// +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=".spec.instanceRef.name"
+// +kubebuilder:printcolumn:name="Group",type=string,JSONPath=".spec.group"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // ServiceEntry is the Schema for the serviceentries API
 type ServiceEntry struct {

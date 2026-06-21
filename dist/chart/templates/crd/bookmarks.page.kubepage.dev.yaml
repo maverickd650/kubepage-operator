@@ -1,19 +1,22 @@
----
+{{- if .Values.crd.enabled }}
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    {{- if .Values.crd.keep }}
+    "helm.sh/resource-policy": keep
+    {{- end }}
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: serviceentries.page.kubepage.dev
+  name: bookmarks.page.kubepage.dev
 spec:
   group: page.kubepage.dev
   names:
-    kind: ServiceEntry
-    listKind: ServiceEntryList
-    plural: serviceentries
+    kind: Bookmark
+    listKind: BookmarkList
+    plural: bookmarks
     shortNames:
-    - psvc
-    singular: serviceentry
+    - pbmk
+    singular: bookmark
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -32,7 +35,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ServiceEntry is the Schema for the serviceentries API
+        description: Bookmark is the Schema for the bookmarks API
         properties:
           apiVersion:
             description: |-
@@ -52,24 +55,30 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of ServiceEntry
+            description: spec defines the desired state of Bookmark
             properties:
+              abbr:
+                description: |-
+                  Abbr is a two-letter abbreviation shown when Icon is not set. If both
+                  are set, Icon takes precedence.
+                type: string
               description:
+                description: Description overrides the default hostname-derived description.
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) services.yaml group this entry
+                  Group is the name of the (top-level) bookmarks.yaml group this entry
                   belongs to. Entries sharing a Group are rendered together.
                 minLength: 1
                 type: string
-              hideErrors:
-                type: boolean
               href:
+                description: Href is the bookmark's link target.
+                minLength: 1
                 type: string
               icon:
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this ServiceEntry belongs
+                description: InstanceRef names the Instance this Bookmark belongs
                   to.
                 properties:
                   name:
@@ -80,127 +89,28 @@ spec:
                 - name
                 type: object
               name:
-                description: Name is the service's display name (the card title).
+                description: Name is the bookmark's display name.
                 minLength: 1
                 type: string
               order:
                 description: |-
                   Order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
-                  inherent ordering but services.yaml's groups/entries are an ordered
+                  inherent ordering but bookmarks.yaml's groups/entries are an ordered
                   list. Purely an operator-side rendering concern; not a homepage field.
                 format: int32
                 type: integer
-              ping:
-                description: Ping monitors host availability via ICMP ping.
-                type: string
-              showStats:
-                type: boolean
-              siteMonitor:
-                description: SiteMonitor checks a URL's availability via HTTP HEAD
-                  (falling back to GET).
-                type: string
-              statusStyle:
-                description: |-
-                  StatusStyle overrides the global statusStyle for this service's
-                  docker/k8s status, site monitor, and ping indicators.
-                enum:
-                - dot
-                - basic
-                type: string
-              target:
-                description: Target overrides the link target for this service's href.
-                enum:
-                - _blank
-                - _self
-                - _top
-                type: string
-              widgets:
-                description: |-
-                  Widgets attached to this service. Zero, one, or many are allowed;
-                  rendered as homepage's singular widget: key for exactly one, or
-                  widgets: for more than one.
-                items:
-                  description: |-
-                    ServiceWidget configures a homepage service-card widget. Type and URL are
-                    typed because nearly every widget has them; everything else (fields,
-                    headers, highlight, valueOnly, and the long tail of widget-specific knobs)
-                    goes in Config. Secret-bearing fields (e.g. "key") go in Secrets instead of
-                    Config: the operator resolves them into a mounted-file placeholder rather
-                    than storing the value inline.
-                  properties:
-                    config:
-                      description: |-
-                        Remaining widget fields not covered above (fields, headers, highlight,
-                        valueOnly, and any widget-type-specific options).
-                      x-kubernetes-preserve-unknown-fields: true
-                    secrets:
-                      additionalProperties:
-                        description: |-
-                          SecretValueSource is an inline value or a reference to a key in a Secret,
-                          used for any config field that may hold a credential (e.g. a widget API
-                          key). Exactly one of Value or SecretKeyRef should be set; SecretKeyRef
-                          takes precedence if both are set.
-                        properties:
-                          secretKeyRef:
-                            description: SecretKeyRef selects a key of a Secret in
-                              the same namespace.
-                            properties:
-                              key:
-                                description: The key of the secret to select from.  Must
-                                  be a valid secret key.
-                                type: string
-                              name:
-                                default: ""
-                                description: |-
-                                  Name of the referent.
-                                  This field is effectively required, but due to backwards compatibility is
-                                  allowed to be empty. Instances of this type with an empty value here are
-                                  almost certainly wrong.
-                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                type: string
-                              optional:
-                                description: Specify whether the Secret or its key
-                                  must be defined
-                                type: boolean
-                            required:
-                            - key
-                            type: object
-                            x-kubernetes-map-type: atomic
-                          value:
-                            description: |-
-                              Value is a literal value. Avoid this for real credentials; prefer
-                              SecretKeyRef so the value isn't stored in the CR.
-                            type: string
-                        type: object
-                      description: |-
-                        Secret-bearing widget fields (commonly "key", sometimes "username"/
-                        "password"/"token" depending on widget type), resolved via a mounted
-                        Secret file rather than stored inline.
-                      type: object
-                    type:
-                      description: |-
-                        Widget type, e.g. "sonarr", "uptimekuma". See homepage's widget docs
-                        for the full list.
-                      minLength: 1
-                      type: string
-                    url:
-                      description: Base URL the widget talks to.
-                      type: string
-                  required:
-                  - type
-                  type: object
-                type: array
             required:
             - group
+            - href
             - instanceRef
             - name
             type: object
           status:
-            description: status defines the observed state of ServiceEntry
+            description: status defines the observed state of Bookmark
             properties:
               conditions:
-                description: conditions represent the current state of the ServiceEntry
+                description: conditions represent the current state of the Bookmark
                   resource.
                 items:
                   description: Condition contains details for one aspect of the current
@@ -268,3 +178,4 @@ spec:
     storage: true
     subresources:
       status: {}
+{{- end }}

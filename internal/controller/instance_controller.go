@@ -14,6 +14,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,6 +81,8 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -228,11 +231,27 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return result, err
 	}
 
+	// Ensure the homepage Service (always) and Ingress (only if the user
+	// opted in via spec.ingress.enabled) match the desired state.
+	if err := r.reconcileService(ctx, instance); err != nil {
+		return r.failAvailable(ctx, instance, "Service", err)
+	}
+	if err := r.reconcileIngress(ctx, instance); err != nil {
+		return r.failAvailable(ctx, instance, "Ingress", err)
+	}
+
 	// If the size is not defined in the Custom Resource then we will set the desired replicas to 0
 	var desiredReplicas int32 = 0
 	if instance.Spec.Size != nil {
 		desiredReplicas = *instance.Spec.Size
 	}
+
+	instance.Status.ObservedGeneration = instance.Generation
+	instance.Status.BoundConfigurations = rc.boundCounts.configurations
+	instance.Status.BoundServiceEntries = rc.boundCounts.serviceEntries
+	instance.Status.BoundBookmarks = rc.boundCounts.bookmarks
+	instance.Status.BoundInfoWidgets = rc.boundCounts.infoWidgets
+	instance.Status.RenderHash = configHash
 
 	// The following implementation will update the status
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
@@ -245,6 +264,25 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// failAvailable sets the Available condition to False with err's message
+// (identifying which resource kind failed) and updates status, returning the
+// error so the caller can return it from Reconcile unchanged.
+func (r *InstanceReconciler) failAvailable(ctx context.Context, instance *pagev1alpha1.Instance, resource string, err error) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	log.Error(err, fmt.Sprintf("Failed to reconcile %s for Instance", resource))
+
+	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
+		Status: metav1.ConditionFalse, Reason: reasonReconciling,
+		Message: fmt.Sprintf("Failed to reconcile %s for the custom resource (%s): (%s)", resource, instance.Name, err)})
+
+	if serr := r.Status().Update(ctx, instance); serr != nil {
+		log.Error(serr, "Failed to update Instance status")
+		return ctrl.Result{}, serr
+	}
+
+	return ctrl.Result{}, err
 }
 
 // finalizeInstance will perform the required operations before delete the CR.
@@ -280,6 +318,16 @@ type renderedConfig struct {
 	data          map[string]string
 	secretSources []corev1.VolumeProjection
 	secretEnv     []corev1.EnvVar
+	boundCounts   boundCounts
+}
+
+// boundCounts is how many of each config CRD kind are currently bound to an
+// Instance, surfaced in its status (see pagev1alpha1.InstanceStatus).
+type boundCounts struct {
+	configurations int32
+	serviceEntries int32
+	bookmarks      int32
+	infoWidgets    int32
 }
 
 func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (renderedConfig, error) {
@@ -430,7 +478,13 @@ func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instan
 	}
 
 	secretSources, secretEnv := projection.finalize()
-	return renderedConfig{data: data, secretSources: secretSources, secretEnv: secretEnv}, nil
+	counts := boundCounts{
+		configurations: int32(len(bound)),
+		serviceEntries: int32(len(boundServices)),
+		bookmarks:      int32(len(boundBookmarks)),
+		infoWidgets:    int32(len(boundWidgets)),
+	}
+	return renderedConfig{data: data, secretSources: secretSources, secretEnv: secretEnv, boundCounts: counts}, nil
 }
 
 // configMapForInstance returns the ConfigMap object holding data, owned by instance.
@@ -854,6 +908,8 @@ func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// cluster state aligns with the desired state. See that the ownerRef was set when each was created.
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Service{}).
+		Owns(&networkingv1.Ingress{}).
 		// Watch the config CRDs and reconcile the Instance each one's
 		// instanceRef names, so a change to either re-renders that Instance's
 		// config without waiting for the Instance itself to change.

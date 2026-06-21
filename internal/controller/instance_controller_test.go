@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -727,6 +728,130 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
 			}).Should(Succeed())
 			Expect(cm.Data["kubernetes.yaml"]).To(ContainSubstring("cluster"))
+		})
+	})
+
+	Context("Instance controller exposure and status test", func() {
+
+		const InstanceName = "test-instance-exposure"
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      InstanceName,
+			Namespace: InstanceName,
+		}
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-exposure-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+
+			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+			_ = os.Unsetenv("INSTANCE_IMAGE")
+		})
+
+		It("creates a Service fronting the Deployment and populates bound-count/render-hash status", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			bm := &pagev1alpha1.Bookmark{
+				ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: namespace.Name},
+				Spec: pagev1alpha1.BookmarkSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Developer",
+					Name:        "Github",
+					Href:        "https://github.com/",
+				},
+			}
+			Expect(k8sClient.Create(ctx, bm)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			// The first Reconcile creates the Deployment and returns early
+			// (reconcileDeployment's "handled" requeue path); Service/Ingress
+			// reconciliation and status population happen after that point,
+			// so a second call is needed for them to run.
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("a ClusterIP Service is created selecting the Instance's pods")
+			svc := &corev1.Service{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, svc)).To(Succeed())
+			}).Should(Succeed())
+			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", int32(3000))))
+			Expect(svc.Spec.Selector).To(Equal(labelsForInstance()))
+
+			By("status reflects the bound Bookmark count and a non-empty render hash")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			Expect(instance.Status.BoundBookmarks).To(Equal(int32(1)))
+			Expect(instance.Status.BoundConfigurations).To(Equal(int32(0)))
+			Expect(instance.Status.RenderHash).NotTo(BeEmpty())
+			Expect(instance.Status.ObservedGeneration).To(Equal(instance.Generation))
+		})
+
+		It("creates an Ingress when spec.ingress.enabled is true and removes it when toggled off", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.InstanceSpec{
+					Size:          ptr.To(int32(1)),
+					ContainerPort: 3000,
+					Ingress: &pagev1alpha1.IngressSpec{
+						Enabled: true,
+						Host:    "homepage.example.com",
+						TLS:     &pagev1alpha1.IngressTLSSpec{SecretName: "homepage-tls"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			// See the comment in the previous It: the first Reconcile only
+			// creates the Deployment and returns early.
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("the Ingress is created with the configured host, backend Service, and TLS")
+			ing := &networkingv1.Ingress{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, ing)).To(Succeed())
+			}).Should(Succeed())
+			Expect(ing.Spec.Rules).To(HaveLen(1))
+			Expect(ing.Spec.Rules[0].Host).To(Equal("homepage.example.com"))
+			Expect(ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name).To(Equal(InstanceName))
+			Expect(ing.Spec.TLS).To(ContainElement(HaveField("SecretName", "homepage-tls")))
+
+			By("disabling spec.ingress.enabled removes the Ingress")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Ingress.Enabled = false
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, typeNamespacedName, &networkingv1.Ingress{}))).To(BeTrue())
+			}).Should(Succeed())
 		})
 	})
 })

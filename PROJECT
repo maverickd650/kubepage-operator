@@ -20,6 +20,9 @@ plugins:
         image: ghcr.io/maverickd650/kubepage:0.0.1
         runAsUser: "568"
       version: v1alpha1
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: dist
 projectName: kubepage-operator
 repo: github.com/maverickd650/kubepage-operator
 resources:
