@@ -13,3 +13,7 @@
 # Re-include embedded dashboard templates (internal/dashboard/server.go
 # //go:embed templates/*.tmpl)
 !**/templates/*.tmpl
+
+# Re-include embedded dashboard fonts (internal/dashboard/server.go
+# //go:embed assets/*.woff2)
+!**/assets/*.woff2
