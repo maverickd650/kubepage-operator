@@ -2,25 +2,45 @@ name: Lint
 
 on:
   push:
+    branches: [main]
+    paths-ignore: ["**.md"]
   pull_request:
+    paths-ignore: ["**.md"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
 
 jobs:
   lint:
-    name: Run on Ubuntu
+    permissions:
+      contents: read
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          go-version-file: go.mod
+          persist-credentials: false
 
-      # Run via `make lint` rather than golangci-lint-action: this module
-      # enables the logcheck module plugin (.custom-gcl.yml / .golangci.yml),
-      # which only exists in a custom-built golangci-lint binary. The Makefile
-      # target builds that custom binary with the toolchain pinned in go.mod,
-      # so the linter is both built with a new-enough Go and has logcheck.
+      - name: Setup Mise
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install_args: --locked
+
+      - name: Cache Go modules and build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: Check linter configuration
+        run: mise run lint-config
+
       - name: Run linter
-        run: make lint
+        run: mise run lint

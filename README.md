@@ -65,10 +65,10 @@ port-forward or your own externally-managed routing.
 
 ```sh
 # Install the CRDs
-make install
+mise run install
 
 # Deploy the controller (build/push your own image, or use an already-published one)
-make deploy IMG=<some-registry>/kubepage-operator:tag
+IMG=<some-registry>/kubepage-operator:tag mise run deploy
 
 # Apply the sample Instance plus one of every config CRD
 kubectl apply -k config/samples/
@@ -89,23 +89,29 @@ bound counts; the dashboard Service is reachable by port-forwarding it
 
 ```sh
 kubectl delete -k config/samples/
-make uninstall   # removes the CRDs
-make undeploy     # removes the controller
+mise run uninstall   # removes the CRDs
+mise run undeploy    # removes the controller
 ```
 
 ## Development
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+
-- kubectl version v1.11.3+
-- Access to a Kubernetes v1.11.3+ cluster
+Tooling is managed by [mise](https://mise.jdx.dev) — it pins every tool version
+(Go, golangci-lint, controller-gen, kustomize, helm, kind, etc.) in
+[`.mise/config.toml`](.mise/config.toml), so local development matches CI
+exactly. Docker and access to a Kubernetes v1.11.3+ cluster are the only other
+prerequisites.
+
+```sh
+curl https://mise.run | sh   # one-time: install mise
+mise install                 # install the pinned toolchain
+mise tasks                   # list available tasks
+```
 
 ### Build and run
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/kubepage-operator:tag
-make deploy IMG=<some-registry>/kubepage-operator:tag
+IMG=<some-registry>/kubepage-operator:tag mise run docker-build docker-push
+IMG=<some-registry>/kubepage-operator:tag mise run deploy
 ```
 
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself
@@ -115,8 +121,8 @@ After editing `*_types.go` or `+kubebuilder` markers, regenerate CRDs/RBAC and
 DeepCopy methods, then lint and test:
 
 ```sh
-make manifests generate
-make lint-fix test
+mise run manifests generate
+mise run lint-fix test
 ```
 
 See [`AGENTS.md`](AGENTS.md) for the full kubebuilder mechanics this project
@@ -127,7 +133,7 @@ follows (project structure, never-hand-edit files, RBAC marker conventions).
 ### As a YAML bundle (Kustomize)
 
 ```sh
-make build-installer IMG=<some-registry>/kubepage-operator:tag
+IMG=<some-registry>/kubepage-operator:tag mise run build-installer
 ```
 
 This generates `dist/install.yaml`, containing every resource needed to
@@ -159,7 +165,7 @@ afterwards.
 
 ## Contributing
 
-Issues and PRs welcome. Run `make help` for the full list of `make` targets,
+Issues and PRs welcome. Run `mise tasks` for the full list of mise tasks,
 and see [`AGENTS.md`](AGENTS.md) before touching generated files or CRD
 markers.
 

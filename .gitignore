@@ -28,7 +28,7 @@ go.work.sum
 # env file
 .env
 
-# Makefile-managed tool binaries (downloaded via go-install-tool)
+# mise task output / local tool binaries
 /bin/
 
 # Local-only working notes, never pushed
@@ -36,4 +36,4 @@ go.work.sum
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
