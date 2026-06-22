@@ -304,7 +304,7 @@ var _ = Describe("Instance controller", func() {
 			_ = k8sClient.Delete(ctx, namespace)
 		})
 
-		It("creates a ServiceAccount, Role, and RoleBinding granting the dashboard pod read access to the config CRDs and Secrets", func() {
+		It("creates a ServiceAccount, Role, and RoleBinding granting the dashboard pod read access to the config CRDs, and no Secret access when nothing references one", func() {
 			instance := &pagev1alpha1.Instance{
 				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
 				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
@@ -322,13 +322,13 @@ var _ = Describe("Instance controller", func() {
 			}).Should(Succeed())
 			Expect(sa.OwnerReferences).To(ContainElement(HaveField("Name", InstanceName)))
 
-			By("a Role grants get/list/watch on the config CRDs and Secrets")
+			By("a Role grants get/list/watch on the config CRDs but no Secret access")
 			role := &rbacv1.Role{}
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
 			}).Should(Succeed())
 			Expect(role.Rules).To(ContainElement(HaveField("Resources", ContainElement("serviceentries"))))
-			Expect(role.Rules).To(ContainElement(HaveField("Resources", ContainElement("secrets"))))
+			Expect(role.Rules).NotTo(ContainElement(HaveField("Resources", ContainElement("secrets"))))
 
 			By("a RoleBinding binds the Role to the ServiceAccount")
 			rb := &rbacv1.RoleBinding{}
@@ -337,6 +337,61 @@ var _ = Describe("Instance controller", func() {
 			}).Should(Succeed())
 			Expect(rb.RoleRef.Name).To(Equal(InstanceName))
 			Expect(rb.Subjects).To(ContainElement(HaveField("Name", InstanceName)))
+		})
+
+		It("scopes the dashboard Role's Secret access to exactly the Secrets its widgets reference", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			url := "http://prometheus.example.com"
+			entry := &pagev1alpha1.ServiceEntry{
+				ObjectMeta: metav1.ObjectMeta{Name: "prom", Namespace: namespace.Name},
+				Spec: pagev1alpha1.ServiceEntrySpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Monitoring",
+					Name:        "Prometheus",
+					Widgets: []pagev1alpha1.ServiceWidget{{
+						Type: "prometheus",
+						URL:  &url,
+						Secrets: map[string]pagev1alpha1.SecretValueSource{
+							"token": {SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "prom-creds"},
+								Key:                  "token",
+							}},
+						},
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("the Role grants get on only the referenced Secret, scoped via resourceNames, with no list/watch")
+			role := &rbacv1.Role{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
+				g.Expect(role.Rules).To(ContainElement(SatisfyAll(
+					HaveField("Resources", ContainElement("secrets")),
+					HaveField("ResourceNames", ConsistOf("prom-creds")),
+					HaveField("Verbs", ConsistOf("get")),
+				)))
+			}).Should(Succeed())
+
+			By("dropping the widget's secret ref removes the Secret rule on the next reconcile")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "prom", Namespace: namespace.Name}, entry)).To(Succeed())
+			entry.Spec.Widgets[0].Secrets = nil
+			Expect(k8sClient.Update(ctx, entry)).To(Succeed())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
+				g.Expect(role.Rules).NotTo(ContainElement(HaveField("Resources", ContainElement("secrets"))))
+			}).Should(Succeed())
 		})
 
 		It("creates cluster-scoped metrics RBAC only while a kubemetrics InfoWidget is bound", func() {
