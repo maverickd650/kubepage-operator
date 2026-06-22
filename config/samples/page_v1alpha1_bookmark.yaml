@@ -1,0 +1,14 @@
+apiVersion: page.kubepage.dev/v1alpha1
+kind: Bookmark
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: bookmark-sample
+spec:
+  instanceRef:
+    name: instance-sample
+  group: Developer
+  name: Github
+  href: https://github.com/
+  abbr: GH

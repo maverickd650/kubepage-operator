@@ -1,0 +1,10 @@
+# Teaches kustomize that a ValidatingAdmissionPolicyBinding's spec.policyName
+# references a ValidatingAdmissionPolicy by name, so a namePrefix/nameSuffix
+# applied to the policy is mirrored onto the binding's policyName and the two
+# stay linked.
+nameReference:
+  - kind: ValidatingAdmissionPolicy
+    group: admissionregistration.k8s.io
+    fieldSpecs:
+      - kind: ValidatingAdmissionPolicyBinding
+        path: spec/policyName
