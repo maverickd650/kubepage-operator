@@ -80,8 +80,10 @@ spec:
                   description: |-
                     SecretValueSource is an inline value or a reference to a key in a Secret,
                     used for any config field that may hold a credential (e.g. a widget API
-                    key). Exactly one of Value or SecretKeyRef should be set; SecretKeyRef
-                    takes precedence if both are set.
+                    key). Exactly one of Value or SecretKeyRef must be set; this is enforced at
+                    admission by a ValidatingAdmissionPolicy (config/admission), so neither a
+                    secret that sets both nor one that sets neither reaches the dashboard, which
+                    resolves whichever is set in-process at poll time.
                   properties:
                     secretKeyRef:
                       description: SecretKeyRef selects a key of a Secret in the same

@@ -30,6 +30,18 @@ carries an `instanceRef.name` naming the `Instance` it belongs to, and any
 namespace-matching is implicit: they must live in the same namespace as that
 `Instance`.
 
+### Admission validation
+
+Beyond the CRD schemas, the operator ships
+[`ValidatingAdmissionPolicies`](config/admission/secret_source_policy.yaml)
+(CEL, no webhook server or certificates to manage) that reject invalid configs
+at apply time. Currently they enforce that every secret-bearing field
+(`SecretValueSource`) sets exactly one of `value` or `secretKeyRef`, so a
+missing or ambiguous credential surfaces as a `kubectl apply` error rather than
+a broken widget card at poll time. These require **Kubernetes v1.30+**
+(`ValidatingAdmissionPolicy` is GA from 1.30); on the Helm chart they can be
+turned off with `--set admissionPolicies.enabled=false`.
+
 ### Exposing the dashboard
 
 Every `Instance` always gets a ClusterIP `Service`. To expose it beyond the

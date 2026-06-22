@@ -17,7 +17,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Run via `make lint` rather than golangci-lint-action: this module
+      # enables the logcheck module plugin (.custom-gcl.yml / .golangci.yml),
+      # which only exists in a custom-built golangci-lint binary. The Makefile
+      # target builds that custom binary with the toolchain pinned in go.mod,
+      # so the linter is both built with a new-enough Go and has logcheck.
       - name: Run linter
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.7.2
+        run: make lint
