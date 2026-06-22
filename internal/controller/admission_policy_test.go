@@ -27,6 +27,9 @@ const (
 	// secretField is reused as both the widget's secret field name and the
 	// referenced key within the Secret; the policy doesn't care which.
 	secretField = "token"
+	// policyInstanceRef is the instanceRef.name the policy-test fixtures use;
+	// the admission policies never resolve it, so it need not exist.
+	policyInstanceRef = "demo"
 )
 
 // These specs verify the shipped ValidatingAdmissionPolicies
@@ -119,7 +122,7 @@ func serviceEntryWithSecret(name string, src *pagev1alpha1.SecretValueSource) *p
 	return &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "demo"},
+			InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
 			Group:       "media",
 			Name:        name,
 			Widgets:     []pagev1alpha1.ServiceWidget{widget},
@@ -133,7 +136,7 @@ func infoWidgetWithSecret(name string, src *pagev1alpha1.SecretValueSource) *pag
 	return &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "demo"},
+			InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
 			Type:        "openmeteo",
 			Secrets:     map[string]pagev1alpha1.SecretValueSource{secretField: *src},
 		},
