@@ -48,27 +48,90 @@ var clusterMetricsRules = []rbacv1.PolicyRule{
 	},
 }
 
-// dashboardRules are the permissions the dashboard pod needs in its
-// Instance's own namespace: read access to the config CRDs it renders
-// (internal/dashboard's LoadSite and Poller, both cache-backed Lists) and to
-// Secrets (Poller.resolveSecret, deliberately via a separate uncached
-// client — see internal/dashboard/poller.go — but it still needs the RBAC
-// regardless of which client object performs the Get). Namespace-scoped
-// rather than reusing the manager's own cluster-wide ClusterRole: the
-// dashboard pod only ever needs its own namespace, and granting it the
-// manager's full cluster-wide permissions would be a privilege escalation
-// for no functional benefit.
-var dashboardRules = []rbacv1.PolicyRule{
-	{
-		APIGroups: []string{pagev1alpha1.GroupVersion.Group},
-		Resources: []string{"configurations", "serviceentries", "bookmarks", "infowidgets"},
-		Verbs:     []string{verbGet, verbList, verbWatch},
-	},
-	{
-		APIGroups: []string{""},
-		Resources: []string{"secrets"},
-		Verbs:     []string{verbGet, verbList, verbWatch},
-	},
+// dashboardConfigRule is the read access the dashboard pod needs in its
+// Instance's own namespace to the config CRDs it renders (internal/dashboard's
+// LoadSite and Poller, both cache-backed Lists). Namespace-scoped rather than
+// reusing the manager's own cluster-wide ClusterRole: the dashboard pod only
+// ever needs its own namespace, and granting it the manager's full
+// cluster-wide permissions would be a privilege escalation for no functional
+// benefit.
+var dashboardConfigRule = rbacv1.PolicyRule{
+	APIGroups: []string{pagev1alpha1.GroupVersion.Group},
+	Resources: []string{"configurations", "serviceentries", "bookmarks", "infowidgets"},
+	Verbs:     []string{verbGet, verbList, verbWatch},
+}
+
+// dashboardRoles builds the per-Instance Role's rules: always read access to
+// the config CRDs (dashboardConfigRule), plus get access to exactly the
+// Secrets referenced by the Instance's widgets (secretNames, already sorted
+// and de-duplicated). The Secret rule is scoped with resourceNames and
+// limited to get: the Poller only ever Gets a referenced Secret
+// (internal/dashboard/poller.go resolveSecret, via a separate uncached
+// client), and RBAC resourceNames can't restrict list/watch — so the
+// dashboard pod can read only the credentials it actually uses, not every
+// Secret in the namespace. When nothing references a Secret the rule is
+// omitted entirely, since an empty resourceNames would instead mean "all
+// Secrets" — the opposite of the intent.
+func dashboardRoles(secretNames []string) []rbacv1.PolicyRule {
+	rules := []rbacv1.PolicyRule{dashboardConfigRule}
+	if len(secretNames) > 0 {
+		rules = append(rules, rbacv1.PolicyRule{
+			APIGroups:     []string{""},
+			Resources:     []string{"secrets"},
+			Verbs:         []string{verbGet},
+			ResourceNames: secretNames,
+		})
+	}
+	return rules
+}
+
+// referencedSecretNames returns the sorted, de-duplicated set of Secret names
+// that ServiceEntries and InfoWidgets bound to instance reference via a
+// secretKeyRef. It's what scopes the dashboard pod's Secret access (see
+// dashboardRoles); the InstanceReconciler already re-reconciles on
+// ServiceEntry/InfoWidget changes (SetupWithManager Watches), so the Role's
+// scoped list stays in sync as widgets add or drop credential refs.
+func (r *InstanceReconciler) referencedSecretNames(ctx context.Context, instance *pagev1alpha1.Instance) ([]string, error) {
+	names := map[string]struct{}{}
+
+	var entries pagev1alpha1.ServiceEntryList
+	if err := r.List(ctx, &entries, client.InNamespace(instance.Namespace)); err != nil {
+		return nil, fmt.Errorf("listing ServiceEntries: %w", err)
+	}
+	for _, e := range entries.Items {
+		if e.Spec.InstanceRef.Name != instance.Name {
+			continue
+		}
+		for _, w := range e.Spec.Widgets {
+			for _, src := range w.Secrets {
+				if src.SecretKeyRef != nil {
+					names[src.SecretKeyRef.Name] = struct{}{}
+				}
+			}
+		}
+	}
+
+	var infoWidgets pagev1alpha1.InfoWidgetList
+	if err := r.List(ctx, &infoWidgets, client.InNamespace(instance.Namespace)); err != nil {
+		return nil, fmt.Errorf("listing InfoWidgets: %w", err)
+	}
+	for _, w := range infoWidgets.Items {
+		if w.Spec.InstanceRef.Name != instance.Name {
+			continue
+		}
+		for _, src := range w.Spec.Secrets {
+			if src.SecretKeyRef != nil {
+				names[src.SecretKeyRef.Name] = struct{}{}
+			}
+		}
+	}
+
+	out := make([]string, 0, len(names))
+	for n := range names {
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // reconcileDashboardRBAC ensures the per-Instance ServiceAccount, Role, and
@@ -110,16 +173,21 @@ func (r *InstanceReconciler) reconcileServiceAccount(ctx context.Context, instan
 func (r *InstanceReconciler) reconcileRole(ctx context.Context, instance *pagev1alpha1.Instance) error {
 	log := logf.FromContext(ctx)
 
+	secretNames, err := r.referencedSecretNames(ctx, instance)
+	if err != nil {
+		return err
+	}
+
 	desired := &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
-		Rules:      dashboardRules,
+		Rules:      dashboardRoles(secretNames),
 	}
 	if err := ctrl.SetControllerReference(instance, desired, r.Scheme); err != nil {
 		return err
 	}
 
 	found := &rbacv1.Role{}
-	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, found)
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, found)
 	switch {
 	case apierrors.IsNotFound(err):
 		log.Info("Creating a new Role", "Role.Namespace", desired.Namespace, "Role.Name", desired.Name)
@@ -177,7 +245,8 @@ func policyRulesEqual(a, b []rbacv1.PolicyRule) bool {
 	for i := range a {
 		if !stringSlicesEqualSorted(a[i].APIGroups, b[i].APIGroups) ||
 			!stringSlicesEqualSorted(a[i].Resources, b[i].Resources) ||
-			!stringSlicesEqualSorted(a[i].Verbs, b[i].Verbs) {
+			!stringSlicesEqualSorted(a[i].Verbs, b[i].Verbs) ||
+			!stringSlicesEqualSorted(a[i].ResourceNames, b[i].ResourceNames) {
 			return false
 		}
 	}

@@ -86,7 +86,14 @@ func Run(ctx context.Context, opts Options) error {
 		InstanceName:   opts.InstanceName,
 		RefreshSeconds: int(opts.PollInterval.Seconds()),
 	}
-	httpServer := &http.Server{Addr: opts.Addr, Handler: srv.Routes()}
+	httpServer := &http.Server{
+		Addr:              opts.Addr,
+		Handler:           srv.Routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 
 	go func() {
 		<-ctx.Done()

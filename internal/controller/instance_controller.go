@@ -85,6 +85,12 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=metrics.k8s.io,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+// Secrets get is needed only so the manager can delegate it: it provisions a
+// per-Instance Role granting the dashboard pod get on the specific Secrets its
+// widgets reference (internal/controller/instance_rbac.go), and the API
+// server's privilege-escalation check requires the manager to hold a verb to
+// grant it. The manager itself never reads Secret contents.
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete

@@ -20,10 +20,10 @@ import (
 //
 // Thin, like ConfigurationReconciler, ServiceEntryReconciler, and
 // BookmarkReconciler: it only validates that instanceRef resolves to an
-// existing Instance and reflects that in status. The native dashboard
-// (internal/dashboard) doesn't render InfoWidget yet (see
-// IMPLEMENTATION_PLAN.md's Phase 6 risk notes); this CRD and its thin
-// controller are kept for when header-widget support is added.
+// existing Instance and reflects that in status. Actually polling and
+// rendering an InfoWidget (datetime, greeting, openmeteo, kubemetrics)
+// happens in the native dashboard's poller (internal/dashboard/poller.go),
+// which reads InfoWidgets directly through its own namespace-scoped cache.
 type InfoWidgetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
