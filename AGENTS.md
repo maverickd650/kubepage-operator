@@ -305,6 +305,29 @@ export IMG=<registry>/<project>:<version>
 make docker-build docker-push IMG=$IMG
 ```
 
+## Commit Messages & Releases
+
+This repo uses [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release.yaml`,
+`release-please-config.json`) to compute version bumps and changelogs from commit history. PRs are merged with a
+merge commit (not squashed), so **every commit message on `main` matters**, not just the PR title.
+
+**Every commit message and PR title must follow [Conventional Commits](https://www.conventionalcommits.org/):**
+
+```
+<type>(<optional scope>)!: <description>
+```
+
+- **Allowed types**: `feat`, `fix`, `chore`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `revert`
+- `feat` triggers a minor bump, `fix` a patch bump (pre-1.0: `feat` bumps the minor per `bump-minor-pre-major`)
+- Add `!` after the type/scope (e.g. `feat!:`) or a `BREAKING CHANGE:` footer for breaking changes
+- `.github/workflows/commitlint.yml` enforces this on every PR (PR title + every non-merge commit) — a non-compliant
+  message will fail CI
+
+**When committing as an agent (Claude or otherwise):**
+- Write the commit subject as `type: description` (or `type(scope): description`), imperative mood, no trailing period
+- Use `fix:` for bug fixes, `feat:` for new capability, `chore:`/`docs:`/`ci:`/`refactor:`/`test:` for everything else
+- Give PRs a Conventional Commits-style title too — it's checked by CI independently of the commits inside
+
 ## References
 
 ### Essential Reading
