@@ -2,19 +2,16 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"maps"
-	"os"
 	"reflect"
-	"slices"
 	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,27 +25,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
-	"github.com/maverickd650/kubepage-operator/internal/render"
 )
 
 const instanceFinalizer = "page.kubepage.dev/finalizer"
 
 const instanceContainerName = "instance"
-
-const (
-	// configVolumeName/configMountPath mount the rendered config ConfigMap
-	// into the homepage container at the path it reads config files from.
-	configVolumeName = "config"
-	configMountPath  = "/app/config"
-
-	// configHashAnnotation records a hash of the rendered config on the pod
-	// template, so a Configuration change (which only touches the ConfigMap)
-	// still triggers a rollout even though homepage also hot-reloads files
-	// on its own.
-	configHashAnnotation = "page.kubepage.dev/config-hash"
-)
 
 // Definitions to manage status conditions
 const (
@@ -63,6 +47,23 @@ type InstanceReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
+
+	// DashboardImage is the image the dashboard Deployment runs (D11 / Phase
+	// 6.4): the manager's own image, running the same binary's `dashboard`
+	// subcommand rather than a separately-pinned operand image. Resolved
+	// once at manager startup (see cmd/main.go) since there is no
+	// environment variable or kustomize image-transformer hook that
+	// surfaces a running pod's own image to itself.
+	DashboardImage string
+
+	// GatewayAPIEnabled records whether the cluster has Gateway API CRDs
+	// installed, checked once via discovery at manager startup (see
+	// cmd/main.go). Gateway API is an optional, separately-installed CRD
+	// set; without this check, registering a watch for HTTPRoute on a
+	// cluster that doesn't have it would crash the manager at startup
+	// rather than degrade gracefully for the (likely common) case of a user
+	// who only wants Ingress.
+	GatewayAPIEnabled bool
 }
 
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
@@ -78,11 +79,12 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -203,41 +205,36 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	// Render the bound Configuration (if any) into homepage's config files and
-	// ensure the owned ConfigMap matches. This happens before the Deployment
-	// so its pod template's config-hash annotation always reflects the
-	// ConfigMap content it's about to be (or already is) mounting.
-	rc, configHash, err := r.reconcileConfigMap(ctx, instance)
-	if err != nil {
-		log.Error(err, "Failed to reconcile ConfigMap for Instance")
-
-		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-			Status: metav1.ConditionFalse, Reason: reasonReconciling,
-			Message: fmt.Sprintf("Failed to render configuration for the custom resource (%s): (%s)", instance.Name, err)})
-
-		if serr := r.Status().Update(ctx, instance); serr != nil {
-			log.Error(serr, "Failed to update Instance status")
-			return ctrl.Result{}, serr
-		}
-
-		return ctrl.Result{}, err
+	// Ensure the per-Instance ServiceAccount/Role/RoleBinding the dashboard
+	// pod authenticates as, before the Deployment that references it.
+	if err := r.reconcileDashboardRBAC(ctx, instance); err != nil {
+		return r.failAvailable(ctx, instance, "RBAC", err)
 	}
 
 	// Define the Deployment we want on the cluster, create it if it doesn't
-	// exist yet, or reconcile drift (replica count or pod template, including
-	// the config-hash annotation) if it does.
-	result, handled, err := r.reconcileDeployment(ctx, instance, configHash, rc.secretSources, rc.secretEnv)
+	// exist yet, or reconcile drift (replica count or image) if it does.
+	result, handled, err := r.reconcileDeployment(ctx, instance)
 	if handled {
 		return result, err
 	}
 
-	// Ensure the homepage Service (always) and Ingress (only if the user
-	// opted in via spec.ingress.enabled) match the desired state.
+	// Ensure the dashboard Service (always), Ingress (only if the user opted
+	// in via spec.ingress.enabled), and HTTPRoute (only if opted in via
+	// spec.gateway.enabled, and only if Gateway API CRDs are installed)
+	// match the desired state.
 	if err := r.reconcileService(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "Service", err)
 	}
 	if err := r.reconcileIngress(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "Ingress", err)
+	}
+	if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
+		return r.failAvailable(ctx, instance, "HTTPRoute", err)
+	}
+
+	counts, err := r.boundCountsForInstance(ctx, instance)
+	if err != nil {
+		return r.failAvailable(ctx, instance, "bound config CRDs", err)
 	}
 
 	// If the size is not defined in the Custom Resource then we will set the desired replicas to 0
@@ -247,11 +244,10 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	instance.Status.ObservedGeneration = instance.Generation
-	instance.Status.BoundConfigurations = rc.boundCounts.configurations
-	instance.Status.BoundServiceEntries = rc.boundCounts.serviceEntries
-	instance.Status.BoundBookmarks = rc.boundCounts.bookmarks
-	instance.Status.BoundInfoWidgets = rc.boundCounts.infoWidgets
-	instance.Status.RenderHash = configHash
+	instance.Status.BoundConfigurations = counts.configurations
+	instance.Status.BoundServiceEntries = counts.serviceEntries
+	instance.Status.BoundBookmarks = counts.bookmarks
+	instance.Status.BoundInfoWidgets = counts.infoWidgets
 
 	// The following implementation will update the status
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
@@ -305,24 +301,13 @@ func (r *InstanceReconciler) doFinalizerOperationsForInstance(cr *pagev1alpha1.I
 		cr.Namespace)
 }
 
-// renderConfigForInstance renders every homepage config file from the config
-// CRDs bound to instance: settings.yaml (Configuration), services.yaml
-// (ServiceEntry), bookmarks.yaml (Bookmark), widgets.yaml (InfoWidget), and
-// kubernetes.yaml (disabled unless an InfoWidget of type "kubernetes" is
-// bound, per the operator's CRD-only discovery posture, D5). It returns the
-// ConfigMap data ready to write as-is.
-// renderedConfig is the result of rendering all of an Instance's bound
-// config CRDs: the ConfigMap data, plus whatever the Deployment needs to
-// back any secret references those CRDs made (volume sources + env vars).
-type renderedConfig struct {
-	data          map[string]string
-	secretSources []corev1.VolumeProjection
-	secretEnv     []corev1.EnvVar
-	boundCounts   boundCounts
-}
-
 // boundCounts is how many of each config CRD kind are currently bound to an
-// Instance, surfaced in its status (see pagev1alpha1.InstanceStatus).
+// Instance, surfaced in its status (see pagev1alpha1.InstanceStatus). Unlike
+// the pre-Phase-6.4 homepage-wrapper path, this is purely informational now:
+// the dashboard pod reads these same CRDs live through its own
+// controller-runtime cache (internal/dashboard), so a Configuration/
+// ServiceEntry/Bookmark/InfoWidget change needs no Instance-mediated
+// re-render or rollout to take effect.
 type boundCounts struct {
 	configurations int32
 	serviceEntries int32
@@ -330,248 +315,60 @@ type boundCounts struct {
 	infoWidgets    int32
 }
 
-func (r *InstanceReconciler) renderConfigForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (renderedConfig, error) {
-	log := logf.FromContext(ctx)
-	data := map[string]string{}
-	projection := newSecretProjection()
-
+// boundCountsForInstance counts the config CRDs bound to instance, for
+// status visibility (kubectl get/describe) without having to cross-reference
+// every config CRD's own instanceRef by hand.
+func (r *InstanceReconciler) boundCountsForInstance(ctx context.Context, instance *pagev1alpha1.Instance) (boundCounts, error) {
 	var configs pagev1alpha1.ConfigurationList
 	if err := r.List(ctx, &configs, client.InNamespace(instance.Namespace)); err != nil {
-		return renderedConfig{}, fmt.Errorf("listing Configurations: %w", err)
+		return boundCounts{}, fmt.Errorf("listing Configurations: %w", err)
 	}
-
-	var bound []pagev1alpha1.Configuration
-	for _, c := range configs.Items {
-		if c.Spec.InstanceRef.Name == instance.Name {
-			bound = append(bound, c)
-		}
-	}
-	if len(bound) > 0 {
-		// Exactly one Configuration is expected per Instance. If more than one
-		// references the same Instance, pick deterministically (lexicographically
-		// first by name) rather than erroring the whole reconcile, and surface
-		// the ambiguity via an event.
-		slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
-		if len(bound) > 1 {
-			log.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
-				"Instance", instance.Name, "chosen", bound[0].Name)
-			r.Recorder.Eventf(instance, nil, corev1.EventTypeWarning, "AmbiguousConfiguration", "Reconcile",
-				"Multiple Configuration objects reference Instance %s; using %s and ignoring the rest",
-				instance.Name, bound[0].Name)
-		}
-
-		settingsYAML, err := render.Settings(&bound[0].Spec)
-		if err != nil {
-			return renderedConfig{}, fmt.Errorf("rendering settings.yaml: %w", err)
-		}
-		data["settings.yaml"] = string(settingsYAML)
-	}
-
 	var serviceEntries pagev1alpha1.ServiceEntryList
 	if err := r.List(ctx, &serviceEntries, client.InNamespace(instance.Namespace)); err != nil {
-		return renderedConfig{}, fmt.Errorf("listing ServiceEntries: %w", err)
+		return boundCounts{}, fmt.Errorf("listing ServiceEntries: %w", err)
 	}
-
-	var boundServices []pagev1alpha1.ServiceEntry
-	for _, s := range serviceEntries.Items {
-		if s.Spec.InstanceRef.Name == instance.Name {
-			boundServices = append(boundServices, s)
-		}
-	}
-
-	if len(boundServices) > 0 {
-		// Deterministic rendering order: ServiceEntry names, not list order.
-		slices.SortFunc(boundServices, func(a, b pagev1alpha1.ServiceEntry) int { return strings.Compare(a.Name, b.Name) })
-
-		inputs, err := r.buildServiceInputs(ctx, instance.Namespace, boundServices, projection)
-		if err != nil {
-			return renderedConfig{}, fmt.Errorf("resolving ServiceEntries: %w", err)
-		}
-
-		servicesYAML, err := render.Services(inputs)
-		if err != nil {
-			return renderedConfig{}, fmt.Errorf("rendering services.yaml: %w", err)
-		}
-		data["services.yaml"] = string(servicesYAML)
-	}
-
 	var bookmarks pagev1alpha1.BookmarkList
 	if err := r.List(ctx, &bookmarks, client.InNamespace(instance.Namespace)); err != nil {
-		return renderedConfig{}, fmt.Errorf("listing Bookmarks: %w", err)
+		return boundCounts{}, fmt.Errorf("listing Bookmarks: %w", err)
 	}
-
-	var boundBookmarks []pagev1alpha1.Bookmark
-	for _, b := range bookmarks.Items {
-		if b.Spec.InstanceRef.Name == instance.Name {
-			boundBookmarks = append(boundBookmarks, b)
-		}
-	}
-	if len(boundBookmarks) > 0 {
-		// Deterministic rendering order: Bookmark names, not list order.
-		slices.SortFunc(boundBookmarks, func(a, b pagev1alpha1.Bookmark) int { return strings.Compare(a.Name, b.Name) })
-
-		inputs := make([]render.BookmarkInput, 0, len(boundBookmarks))
-		for _, b := range boundBookmarks {
-			inputs = append(inputs, render.BookmarkInput{
-				Group:       b.Spec.Group,
-				Name:        b.Spec.Name,
-				Order:       b.Spec.Order,
-				Href:        b.Spec.Href,
-				Abbr:        b.Spec.Abbr,
-				Icon:        b.Spec.Icon,
-				Description: b.Spec.Description,
-			})
-		}
-
-		bookmarksYAML, err := render.Bookmarks(inputs)
-		if err != nil {
-			return renderedConfig{}, fmt.Errorf("rendering bookmarks.yaml: %w", err)
-		}
-		data["bookmarks.yaml"] = string(bookmarksYAML)
-	}
-
 	var infoWidgets pagev1alpha1.InfoWidgetList
 	if err := r.List(ctx, &infoWidgets, client.InNamespace(instance.Namespace)); err != nil {
-		return renderedConfig{}, fmt.Errorf("listing InfoWidgets: %w", err)
+		return boundCounts{}, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
 
-	var boundWidgets []pagev1alpha1.InfoWidget
+	counts := boundCounts{}
+	for _, c := range configs.Items {
+		if c.Spec.InstanceRef.Name == instance.Name {
+			counts.configurations++
+		}
+	}
+	for _, s := range serviceEntries.Items {
+		if s.Spec.InstanceRef.Name == instance.Name {
+			counts.serviceEntries++
+		}
+	}
+	for _, b := range bookmarks.Items {
+		if b.Spec.InstanceRef.Name == instance.Name {
+			counts.bookmarks++
+		}
+	}
 	for _, w := range infoWidgets.Items {
 		if w.Spec.InstanceRef.Name == instance.Name {
-			boundWidgets = append(boundWidgets, w)
+			counts.infoWidgets++
 		}
 	}
-
-	// kubernetes.yaml stays disabled (D5: CRD-only discovery) unless an
-	// InfoWidget of type "kubernetes" is bound, in which case homepage needs
-	// its own cluster connection to fetch the stats that widget displays.
-	// "cluster" mode (the in-cluster service account) is the only sensible
-	// choice here since homepage always runs in-cluster in this operator.
-	// Provisioning the RBAC the homepage pod needs for that connection
-	// (nodes/pods/metrics.k8s.io get;list) is deliberately left to the
-	// deployer rather than auto-granted by this controller — see
-	// IMPLEMENTATION_PLAN.md's Risks section.
-	kubeMode := "disabled"
-	if slices.ContainsFunc(boundWidgets, func(w pagev1alpha1.InfoWidget) bool { return w.Spec.Type == "kubernetes" }) {
-		kubeMode = "cluster"
-	}
-	kubeYAML, err := render.Kubernetes(kubeMode)
-	if err != nil {
-		return renderedConfig{}, fmt.Errorf("rendering kubernetes.yaml: %w", err)
-	}
-	data["kubernetes.yaml"] = string(kubeYAML)
-
-	if len(boundWidgets) > 0 {
-		// Deterministic rendering order: InfoWidget names, not list order.
-		slices.SortFunc(boundWidgets, func(a, b pagev1alpha1.InfoWidget) int { return strings.Compare(a.Name, b.Name) })
-
-		inputs, err := r.buildWidgetInputs(ctx, instance.Namespace, boundWidgets, projection)
-		if err != nil {
-			return renderedConfig{}, fmt.Errorf("resolving InfoWidgets: %w", err)
-		}
-
-		widgetsYAML, err := render.Widgets(inputs)
-		if err != nil {
-			return renderedConfig{}, fmt.Errorf("rendering widgets.yaml: %w", err)
-		}
-		data["widgets.yaml"] = string(widgetsYAML)
-	}
-
-	secretSources, secretEnv := projection.finalize()
-	counts := boundCounts{
-		configurations: int32(len(bound)),
-		serviceEntries: int32(len(boundServices)),
-		bookmarks:      int32(len(boundBookmarks)),
-		infoWidgets:    int32(len(boundWidgets)),
-	}
-	return renderedConfig{data: data, secretSources: secretSources, secretEnv: secretEnv, boundCounts: counts}, nil
+	return counts, nil
 }
 
-// configMapForInstance returns the ConfigMap object holding data, owned by instance.
-func (r *InstanceReconciler) configMapForInstance(instance *pagev1alpha1.Instance, data map[string]string) (*corev1.ConfigMap, error) {
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-		},
-		Data: data,
-	}
-	if err := ctrl.SetControllerReference(instance, cm, r.Scheme); err != nil {
-		return nil, err
-	}
-	return cm, nil
-}
-
-// reconcileConfigMap renders instance's config and ensures the owned
-// ConfigMap matches, creating or updating it as needed. It returns a hash of
-// the rendered data for use as the Deployment's config-hash annotation.
-func (r *InstanceReconciler) reconcileConfigMap(ctx context.Context, instance *pagev1alpha1.Instance) (renderedConfig, string, error) {
+// reconcileDeployment ensures the dashboard Deployment for instance exists
+// and matches the desired state (replicas, image). handled is true when the
+// caller should return (result, err) immediately; when false, the Deployment
+// was already up to date and the caller should continue with its own logic
+// (e.g. updating the Instance's status).
+func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pagev1alpha1.Instance) (result ctrl.Result, handled bool, err error) {
 	log := logf.FromContext(ctx)
 
-	rc, err := r.renderConfigForInstance(ctx, instance)
-	if err != nil {
-		return renderedConfig{}, "", err
-	}
-
-	cm, err := r.configMapForInstance(instance, rc.data)
-	if err != nil {
-		return renderedConfig{}, "", err
-	}
-
-	foundCM := &corev1.ConfigMap{}
-	err = r.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, foundCM)
-	switch {
-	case apierrors.IsNotFound(err):
-		log.Info("Creating a new ConfigMap", "ConfigMap.Namespace", cm.Namespace, "ConfigMap.Name", cm.Name)
-		if err := r.Create(ctx, cm); err != nil {
-			return renderedConfig{}, "", fmt.Errorf("creating ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
-		}
-	case err != nil:
-		return renderedConfig{}, "", fmt.Errorf("getting ConfigMap %s/%s: %w", cm.Namespace, cm.Name, err)
-	case !maps.Equal(foundCM.Data, cm.Data):
-		foundCM.Data = cm.Data
-		if err := r.Update(ctx, foundCM); err != nil {
-			return renderedConfig{}, "", fmt.Errorf("updating ConfigMap %s/%s: %w", foundCM.Namespace, foundCM.Name, err)
-		}
-	}
-
-	return rc, hashConfigData(rc.data), nil
-}
-
-// hashConfigData returns a deterministic short hash of data, used as the
-// pod template's config-hash annotation value.
-func hashConfigData(data map[string]string) string {
-	keys := make([]string, 0, len(data))
-	for k := range data {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-
-	h := sha256.New()
-	for _, k := range keys {
-		h.Write([]byte(k))
-		h.Write([]byte{0})
-		h.Write([]byte(data[k]))
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil))[:16]
-}
-
-// reconcileDeployment ensures the Deployment for instance exists and matches
-// the desired state (replicas, pod template incl. configHash annotation).
-// handled is true when the caller should return (result, err) immediately;
-// when false, the Deployment was already up to date and the caller should
-// continue with its own logic (e.g. updating the Instance's status).
-func (r *InstanceReconciler) reconcileDeployment(
-	ctx context.Context,
-	instance *pagev1alpha1.Instance,
-	configHash string,
-	secretSources []corev1.VolumeProjection,
-	secretEnv []corev1.EnvVar,
-) (result ctrl.Result, handled bool, err error) {
-	log := logf.FromContext(ctx)
-
-	desiredDep, err := r.deploymentForInstance(instance, configHash, secretSources, secretEnv)
+	desiredDep, err := r.deploymentForInstance(instance)
 	if err != nil {
 		log.Error(err, "Failed to define new Deployment resource for Instance")
 
@@ -609,16 +406,17 @@ func (r *InstanceReconciler) reconcileDeployment(
 	}
 
 	// Reconcile drift: the Deployment exists, but its replica count or
-	// config-hash annotation (set after a Configuration change) no longer
-	// matches the desired state. We deliberately don't DeepEqual the whole
-	// pod template against a freshly-built one: the API server fills in
-	// defaults (RestartPolicy, DNSPolicy, etc.) on the stored object that a
-	// bare struct literal never has, which would make every comparison show
-	// spurious drift. The config-hash annotation is the one signal we fully
-	// control and need: it only changes when rendered config actually does.
+	// container image no longer matches the desired state. We deliberately
+	// don't DeepEqual the whole pod template against a freshly-built one:
+	// the API server fills in defaults (RestartPolicy, DNSPolicy, etc.) on
+	// the stored object that a bare struct literal never has, which would
+	// make every comparison show spurious drift. Replicas and image are the
+	// two signals that actually change reconcile-to-reconcile: image when
+	// the operator itself is upgraded (DashboardImage tracks the running
+	// manager's own image), replicas when the user edits spec.size.
 	replicasChanged := found.Spec.Replicas == nil || desiredDep.Spec.Replicas == nil || *found.Spec.Replicas != *desiredDep.Spec.Replicas
-	hashChanged := found.Spec.Template.Annotations[configHashAnnotation] != configHash
-	if !replicasChanged && !hashChanged {
+	imageChanged := len(found.Spec.Template.Spec.Containers) == 0 || found.Spec.Template.Spec.Containers[0].Image != r.DashboardImage
+	if !replicasChanged && !imageChanged {
 		return ctrl.Result{}, false, nil
 	}
 
@@ -656,21 +454,22 @@ func (r *InstanceReconciler) reconcileDeployment(
 	return ctrl.Result{Requeue: true}, true, nil
 }
 
-// deploymentForInstance returns a Instance Deployment object
-func (r *InstanceReconciler) deploymentForInstance(
-	instance *pagev1alpha1.Instance,
-	configHash string,
-	secretSources []corev1.VolumeProjection,
-	secretEnv []corev1.EnvVar,
-) (*appsv1.Deployment, error) {
-	ls := labelsForInstance()
-
-	// Get the Operand image
-	image, err := imageForInstance()
-	if err != nil {
-		return nil, err
+// dashboardArgs returns the dashboard subcommand's CLI flags for instance:
+// which Instance to serve (namespace/name, so the dashboard's own
+// controller-runtime cache can be scoped to just that namespace) and which
+// address to listen on (instance.Spec.ContainerPort, the same port the
+// Service and Ingress target).
+func dashboardArgs(instance *pagev1alpha1.Instance) []string {
+	return []string{
+		"dashboard",
+		"--namespace=" + instance.Namespace,
+		"--instance-name=" + instance.Name,
+		fmt.Sprintf("--addr=:%d", instance.Spec.ContainerPort),
 	}
+}
 
+// deploymentForInstance returns a Instance Deployment object
+func (r *InstanceReconciler) deploymentForInstance(instance *pagev1alpha1.Instance) (*appsv1.Deployment, error) {
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
@@ -678,53 +477,26 @@ func (r *InstanceReconciler) deploymentForInstance(
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: instance.Spec.Size,
+			// Selector must stay stable across reconciles — Deployment
+			// selectors are immutable once created — so it deliberately
+			// excludes app.kubernetes.io/version, which changes whenever
+			// DashboardImage does (an operator upgrade). selectorLabelsForInstance()
+			// is the fixed subset; labelsForInstance() (used below for the
+			// pod template) is selectorLabelsForInstance() plus version.
 			Selector: &metav1.LabelSelector{
-				MatchLabels: ls,
+				MatchLabels: selectorLabelsForInstance(),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					// ls is layered on top of user labels so the selector
-					// (which matches on ls) can never be broken by a
-					// colliding user-supplied label.
-					Labels: mergeStringMaps(instance.Spec.Labels, ls),
-					// configHashAnnotation is layered on top of user
-					// annotations so it always reflects the mounted
-					// ConfigMap's actual content, triggering a rollout on
-					// every Configuration change.
-					Annotations: mergeStringMaps(instance.Spec.Annotations, map[string]string{
-						configHashAnnotation: configHash,
-					}),
+					// labelsForInstance(...) is layered on top of user labels
+					// so the selector (a subset of it) can never be broken by
+					// a colliding user-supplied label.
+					Labels:      mergeStringMaps(instance.Spec.Labels, labelsForInstance(r.DashboardImage)),
+					Annotations: instance.Spec.Annotations,
 				},
 				Spec: corev1.PodSpec{
-					HostUsers: instance.Spec.HostUsers,
-					// TODO(user): Uncomment the following code to configure the nodeAffinity expression
-					// according to the platforms which are supported by your solution. It is considered
-					// best practice to support multiple architectures. build your manager image using the
-					// makefile target docker-buildx. Also, you can use docker manifest inspect <image>
-					// to check what are the platforms supported.
-					// More info: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
-					// Affinity: &corev1.Affinity{
-					//	 NodeAffinity: &corev1.NodeAffinity{
-					//		 RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					//			 NodeSelectorTerms: []corev1.NodeSelectorTerm{
-					//				 {
-					//					 MatchExpressions: []corev1.NodeSelectorRequirement{
-					//						 {
-					//							 Key:      "kubernetes.io/arch",
-					//							 Operator: "In",
-					//							 Values:   []string{"amd64", "arm64", "ppc64le", "s390x"},
-					//						 },
-					//						 {
-					//							 Key:      "kubernetes.io/os",
-					//							 Operator: "In",
-					//							 Values:   []string{"linux"},
-					//						 },
-					//					 },
-					//				 },
-					//		 	 },
-					//		 },
-					//	 },
-					// },
+					HostUsers:          instance.Spec.HostUsers,
+					ServiceAccountName: instance.Name,
 					SecurityContext: mergeOverride(corev1.PodSecurityContext{
 						RunAsNonRoot: ptr.To(true),
 						// IMPORTANT: seccomProfile was introduced with Kubernetes 1.19
@@ -735,7 +507,7 @@ func (r *InstanceReconciler) deploymentForInstance(
 						},
 					}, instance.Spec.PodSecurityContext),
 					Containers: []corev1.Container{{
-						Image:           image,
+						Image:           r.DashboardImage,
 						Name:            instanceContainerName,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						// Ensure restrictive context for the container
@@ -750,17 +522,16 @@ func (r *InstanceReconciler) deploymentForInstance(
 								},
 							},
 						}, instance.Spec.ContainerSecurityContext),
+						Args: dashboardArgs(instance),
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: instance.Spec.ContainerPort,
 							Name:          instanceContainerName,
 						}},
-						Env:            append(envForInstance(instance), secretEnv...),
+						Env:            instance.Spec.Env,
 						ReadinessProbe: instance.Spec.ReadinessProbe,
 						LivenessProbe:  instance.Spec.LivenessProbe,
 						Resources:      instance.Spec.Resources,
-						VolumeMounts:   volumeMountsForInstance(secretSources),
 					}},
-					Volumes: volumesForInstance(instance, secretSources),
 				},
 			},
 		},
@@ -772,59 +543,6 @@ func (r *InstanceReconciler) deploymentForInstance(
 		return nil, err
 	}
 	return dep, nil
-}
-
-// envForInstance returns the homepage container env: AppURL/AllowedHosts as
-// the homepage-specific env vars they map to, followed by any user-supplied
-// Env entries (which take precedence if names collide, since they're appended last).
-func envForInstance(instance *pagev1alpha1.Instance) []corev1.EnvVar {
-	var env []corev1.EnvVar
-	if instance.Spec.AppURL != "" {
-		env = append(env, corev1.EnvVar{Name: "APP_URL", Value: instance.Spec.AppURL})
-	}
-	if instance.Spec.AllowedHosts != "" {
-		env = append(env, corev1.EnvVar{Name: "HOMEPAGE_ALLOWED_HOSTS", Value: instance.Spec.AllowedHosts})
-	}
-	return append(env, instance.Spec.Env...)
-}
-
-// volumesForInstance returns the config ConfigMap volume, plus the
-// aggregated secrets projected volume if any ServiceEntry widget referenced
-// a Secret.
-func volumesForInstance(instance *pagev1alpha1.Instance, secretSources []corev1.VolumeProjection) []corev1.Volume {
-	volumes := []corev1.Volume{{
-		Name: configVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: instance.Name},
-			},
-		},
-	}}
-	if len(secretSources) > 0 {
-		volumes = append(volumes, corev1.Volume{
-			Name: secretsVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				Projected: &corev1.ProjectedVolumeSource{Sources: secretSources},
-			},
-		})
-	}
-	return volumes
-}
-
-// volumeMountsForInstance mirrors volumesForInstance for the container side.
-func volumeMountsForInstance(secretSources []corev1.VolumeProjection) []corev1.VolumeMount {
-	mounts := []corev1.VolumeMount{{
-		Name:      configVolumeName,
-		MountPath: configMountPath,
-	}}
-	if len(secretSources) > 0 {
-		mounts = append(mounts, corev1.VolumeMount{
-			Name:      secretsVolumeName,
-			MountPath: secretsMountPath,
-			ReadOnly:  true,
-		})
-	}
-	return mounts
 }
 
 // mergeOverride layers override onto a copy of base, field by field: any
@@ -862,30 +580,33 @@ func mergeStringMaps(userValues, builtinValues map[string]string) map[string]str
 	return merged
 }
 
-// labelsForInstance returns the labels for selecting the resources
+// selectorLabelsForInstance returns the fixed label subset used as both the
+// Deployment's (immutable) selector and the Service's selector. Deliberately
+// excludes app.kubernetes.io/version: that label changes whenever
+// DashboardImage does (an operator upgrade), and a selector that included it
+// would make the Deployment's selector update-incompatible with itself
+// across upgrades — Kubernetes rejects changing spec.selector after
+// creation.
 // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-func labelsForInstance() map[string]string {
-	var imageTag string
-	image, err := imageForInstance()
-	if err == nil {
-		imageTag = strings.Split(image, ":")[1]
-	}
+func selectorLabelsForInstance() map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "kubepage-operator",
-		"app.kubernetes.io/version":    imageTag,
 		"app.kubernetes.io/managed-by": "InstanceController",
 	}
 }
 
-// imageForInstance gets the Operand image which is managed by this controller
-// from the INSTANCE_IMAGE environment variable defined in the config/manager/manager.yaml
-func imageForInstance() (string, error) {
-	var imageEnvVar = "INSTANCE_IMAGE"
-	image, found := os.LookupEnv(imageEnvVar)
-	if !found {
-		return "", fmt.Errorf("unable to find %s environment variable with the image", imageEnvVar)
+// labelsForInstance returns selectorLabelsForInstance() plus
+// app.kubernetes.io/version (image's tag), for use on the pod template
+// itself (never on a Selector). image is the dashboard image currently in
+// use (DashboardImage).
+func labelsForInstance(image string) map[string]string {
+	var imageTag string
+	if parts := strings.SplitN(image, ":", 2); len(parts) == 2 {
+		imageTag = parts[1]
 	}
-	return image, nil
+	labels := selectorLabelsForInstance()
+	labels["app.kubernetes.io/version"] = imageTag
+	return labels
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -898,21 +619,37 @@ func imageForInstance() (string, error) {
 // or deletion of a Custom Resource (CR) of the Instance kind, as well as any changes
 // to the Deployment that the controller manages and owns.
 func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	bldr := ctrl.NewControllerManagedBy(mgr).
 		// Watch the Instance CR(s) and trigger reconciliation whenever it
 		// is created, updated, or deleted
 		For(&pagev1alpha1.Instance{}).
 		Named("instance").
-		// Watch the Deployment and ConfigMap managed by the InstanceReconciler. If any changes occur to
-		// either, owned and managed by this controller, it will trigger reconciliation, ensuring that the
-		// cluster state aligns with the desired state. See that the ownerRef was set when each was created.
+		// Watch the resources owned and managed by the InstanceReconciler. If
+		// any changes occur to one of these, it will trigger reconciliation,
+		// ensuring that the cluster state aligns with the desired state. See
+		// that the ownerRef was set when each was created.
 		Owns(&appsv1.Deployment{}).
-		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Service{}).
 		Owns(&networkingv1.Ingress{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{})
+
+	// Only watch HTTPRoute if the cluster actually has Gateway API CRDs
+	// installed (checked once at startup, see cmd/main.go) — registering a
+	// watch for a Kind with no RESTMapping would crash the manager on
+	// start, and Gateway API is optional/separately installed, unlike
+	// Ingress which is built into every cluster.
+	if r.GatewayAPIEnabled {
+		bldr = bldr.Owns(&gatewayv1.HTTPRoute{})
+	}
+
+	return bldr.
 		// Watch the config CRDs and reconcile the Instance each one's
-		// instanceRef names, so a change to either re-renders that Instance's
-		// config without waiting for the Instance itself to change.
+		// instanceRef names, so a change to either keeps the Instance's
+		// bound-count status fresh. The dashboard pod itself reads these
+		// CRDs live through its own cache (internal/dashboard), so this no
+		// longer drives any render or rollout — only status visibility.
 		Watches(
 			&pagev1alpha1.Configuration{},
 			handler.EnqueueRequestsFromMapFunc(mapToInstance(func(c *pagev1alpha1.Configuration) string { return c.Spec.InstanceRef.Name })),

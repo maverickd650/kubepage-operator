@@ -1,9 +1,0 @@
-- Monitoring:
-  - Multi:
-      href: http://multi.example.com
-      widgets:
-      - type: emby
-        url: http://emby.example.com
-      - slug: statuspageslug
-        type: uptimekuma
-        url: http://kuma.example.com

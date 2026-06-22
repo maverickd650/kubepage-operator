@@ -20,10 +20,10 @@ import (
 //
 // Thin, like ConfigurationReconciler, ServiceEntryReconciler, and
 // BookmarkReconciler: it only validates that instanceRef resolves to an
-// existing Instance and reflects that in status. Rendering widgets.yaml
-// (including secret resolution and the kubernetes.yaml mode toggle) and
-// watching InfoWidget changes is the InstanceReconciler's job (see
-// instance_controller.go and infowidget_render.go).
+// existing Instance and reflects that in status. The native dashboard
+// (internal/dashboard) doesn't render InfoWidget yet (see
+// IMPLEMENTATION_PLAN.md's Phase 6 risk notes); this CRD and its thin
+// controller are kept for when header-widget support is added.
 type InfoWidgetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

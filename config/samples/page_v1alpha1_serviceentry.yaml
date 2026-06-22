@@ -9,15 +9,15 @@ spec:
   instanceRef:
     name: instance-sample
   group: Media
-  name: Sonarr
-  href: http://sonarr.example.com
-  icon: sonarr.png
-  description: Series management
+  name: Plex
+  href: http://plex.example.com
+  icon: plex.png
+  description: Media server
   widgets:
-    - type: sonarr
-      url: http://sonarr.example.com
+    - type: plex
+      url: http://plex.example.com
       secrets:
-        key:
+        token:
           secretKeyRef:
-            name: sonarr-credentials
-            key: apikey
+            name: plex-credentials
+            key: token

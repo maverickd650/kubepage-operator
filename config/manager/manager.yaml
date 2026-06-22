@@ -66,8 +66,17 @@ spec:
         image: controller:latest
         name: manager
         env:
-        - name: INSTANCE_IMAGE
-          value: ghcr.io/gethomepage/homepage:v1.13.2
+        # Used to look up this Pod's own container image at startup, so the
+        # dashboard Deployment InstanceReconciler creates per Instance always
+        # runs the exact same image as the manager itself (D11 / Phase 6.4).
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         ports:
         - containerPort: 8081
           name: health

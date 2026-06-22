@@ -1,34 +1,53 @@
 # kubepage-operator
 
-A Kubernetes operator that turns [gethomepage/homepage](https://github.com/gethomepage/homepage)
-into a set of CRDs: define your dashboard's settings, services, bookmarks, and
-header widgets as Kubernetes objects, and the operator renders them into
-homepage's config files and runs the homepage Deployment for you.
+A Kubernetes operator that serves a small, native dashboard (Go + htmx, a
+single binary, no Node/React build step) for a curated set of self-hosted
+services — Plex, Stash, Paperless-ngx, Grafana, Prometheus, UniFi, TrueNAS,
+Cloudflared, Linkwarden, Home Assistant, Mealie — driven entirely by CRDs.
+Define services, bookmarks, and dashboard look/settings as Kubernetes
+objects, and the operator runs a per-Instance dashboard Deployment that reads
+those CRDs directly and polls each service's API on an interval.
 
-It wraps the upstream homepage image rather than reimplementing it — the
-operator owns the Kubernetes side (Deployment, ConfigMap, Service, optional
-Ingress, secret delivery) while homepage itself renders the dashboard. See
+The dashboard process resolves any Secret-backed credentials (a `ServiceEntry`
+widget's API key, etc.) itself, in-process — the plaintext value never
+appears in pod env, a ConfigMap, or a projected file; it only ever exists in
+the dashboard pod's memory for the duration of the poll. See
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the full design
 rationale (kept local-only; ask in-repo if you need a copy).
 
 ## CRDs
 
-| Kind | Renders into | Purpose |
-|------|---------------|---------|
-| `Instance` (`pageinst`) | Deployment, ConfigMap, Service, optional Ingress | The homepage deployment itself. Every other CRD names one via `instanceRef`. |
-| `Configuration` (`pcfg`) | `settings.yaml` | Theme, color, layout, and other dashboard-wide settings. One per Instance. |
-| `ServiceEntry` (`psvc`) | `services.yaml` | One service card (with optional widgets) in a named group. |
-| `Bookmark` (`pbmk`) | `bookmarks.yaml` | One bookmark link in a named group. |
-| `InfoWidget` (`piw`) | `widgets.yaml` | One header widget (resources, search, datetime, weather, kubernetes, ...). |
+| Kind | Purpose |
+|------|---------|
+| `Instance` (`pageinst`) | The dashboard Deployment, Service, optional Ingress, and the per-Instance ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `instanceRef`. |
+| `Configuration` (`pcfg`) | Theme, color, background, header style, and the header search box. One per Instance. |
+| `ServiceEntry` (`psvc`) | One service card (with optional widgets polling that service's API) in a named group. |
+| `Bookmark` (`pbmk`) | One static bookmark link in a named group. |
+| `InfoWidget` (`piw`) | Reserved for future header widgets; not yet rendered by the native dashboard. |
 
 Every config CRD (`Configuration`, `ServiceEntry`, `Bookmark`, `InfoWidget`)
 carries an `instanceRef.name` naming the `Instance` it belongs to, and any
 namespace-matching is implicit: they must live in the same namespace as that
-`Instance`. Secret-bearing fields (a `ServiceEntry` widget's API key, an
-`InfoWidget`'s API key, etc.) use a `secretKeyRef` rather than an inline
-value; the operator mounts the referenced Secret as a file into the homepage
-pod and substitutes a `{{HOMEPAGE_FILE_*}}` placeholder, so credentials never
-appear in pod env or in the rendered ConfigMap.
+`Instance`.
+
+### Exposing the dashboard
+
+Every `Instance` always gets a ClusterIP `Service`. To expose it beyond the
+cluster, set one of:
+
+- `spec.ingress` — a classic `networking.k8s.io/v1` `Ingress` (`enabled`,
+  `host`, `ingressClassName`, `annotations`, `tls.secretName`).
+- `spec.gateway` — a Gateway API `HTTPRoute` (`enabled`, `hostnames`,
+  `parentRef.{name,namespace,sectionName}`, `annotations`), attached to a
+  `Gateway` you manage separately. Only takes effect if the cluster actually
+  has Gateway API CRDs installed; the manager checks once at startup
+  (`kubectl logs` shows `Gateway API support enabled=...`), and an `Instance`
+  with `spec.gateway.enabled: true` on a cluster without them reports a clear
+  `Available=False` condition rather than the manager crashing.
+
+Both can be set at once (e.g. Ingress for one hostname, Gateway API for
+another); neither is required if you're reaching the dashboard via
+port-forward or your own externally-managed routing.
 
 ## Quickstart
 
@@ -50,8 +69,8 @@ of every CRD: [`Instance`](config/samples/page_v1alpha1_instance.yaml),
 [`Bookmark`](config/samples/page_v1alpha1_bookmark.yaml), and
 [`InfoWidget`](config/samples/page_v1alpha1_infowidget.yaml). Once applied,
 `kubectl get pageinst,pcfg,psvc,pbmk,piw` shows their `Ready` status and
-bound counts; the homepage Service is reachable by port-forwarding it
-(`kubectl port-forward svc/instance-sample 3000:3000`) or by setting
+bound counts; the dashboard Service is reachable by port-forwarding it
+(`kubectl port-forward svc/instance-sample 8080:8080`) or by setting
 `spec.ingress.enabled: true` on the `Instance` to expose it via an Ingress.
 
 ### To Uninstall

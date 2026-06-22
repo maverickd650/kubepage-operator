@@ -4,6 +4,6 @@ package controller
 // (goconst flags duplicate string literals package-wide, not just per-file).
 const (
 	testDoesNotExistInstanceName = "does-not-exist"
-	testSecretAPIKeyField        = "apikey"
-	testSecretConfigField        = "key"
+	testDashboardHost            = "dashboard.example.com"
+	testInstanceObjName          = "main"
 )

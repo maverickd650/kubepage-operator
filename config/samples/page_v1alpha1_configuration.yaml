@@ -8,7 +8,6 @@ metadata:
 spec:
   instanceRef:
     name: instance-sample
-  title: My Homepage
   theme: dark
   color: slate
   headerStyle: boxed

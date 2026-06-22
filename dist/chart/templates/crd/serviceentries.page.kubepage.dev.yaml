@@ -61,13 +61,12 @@ spec:
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) services.yaml group this entry
-                  belongs to. Entries sharing a Group are rendered together.
+                  Group is the name of the (top-level) group this entry belongs to.
+                  Entries sharing a Group are rendered together.
                 minLength: 1
                 type: string
-              hideErrors:
-                type: boolean
               href:
+                description: Href makes the card's title a link to the service.
                 type: string
               icon:
                 type: string
@@ -90,52 +89,29 @@ spec:
                 description: |-
                   Order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
-                  inherent ordering but services.yaml's groups/entries are an ordered
-                  list. Purely an operator-side rendering concern; not a homepage field.
+                  inherent ordering but the dashboard's groups/entries are displayed in a
+                  fixed order.
                 format: int32
                 type: integer
-              ping:
-                description: Ping monitors host availability via ICMP ping.
-                type: string
-              showStats:
-                type: boolean
-              siteMonitor:
-                description: SiteMonitor checks a URL's availability via HTTP HEAD
-                  (falling back to GET).
-                type: string
-              statusStyle:
-                description: |-
-                  StatusStyle overrides the global statusStyle for this service's
-                  docker/k8s status, site monitor, and ping indicators.
-                enum:
-                - dot
-                - basic
-                type: string
-              target:
-                description: Target overrides the link target for this service's href.
-                enum:
-                - _blank
-                - _self
-                - _top
-                type: string
               widgets:
                 description: |-
-                  Widgets attached to this service. Zero, one, or many are allowed;
-                  rendered as homepage's singular widget: key for exactly one, or
-                  widgets: for more than one.
+                  Widgets attached to this service. Zero, one, or many are allowed; the
+                  dashboard polls each one independently and shows its fields on the
+                  card.
                 items:
                   description: |-
-                    ServiceWidget configures a homepage service-card widget. Type and URL are
-                    typed because nearly every widget has them; everything else (fields,
-                    headers, highlight, valueOnly, and the long tail of widget-specific knobs)
-                    goes in Config. Secret-bearing fields (e.g. "key") go in Secrets instead of
-                    Config: the operator resolves them into a mounted-file placeholder rather
-                    than storing the value inline.
+                    ServiceWidget configures one of the native dashboard's pollable widgets
+                    (internal/dashboard's Widget interface) for a service card. Type and URL
+                    are typed because nearly every widget has them; everything else
+                    (widget-type-specific options) goes in Config. Secret-bearing fields (e.g.
+                    API tokens) go in Secrets instead of Config: the dashboard resolves them
+                    directly in-process at poll time, so the plaintext value never appears in
+                    pod env, a ConfigMap, or a projected file.
                   properties:
                     config:
                       description: |-
-                        Remaining widget fields not covered above (fields, headers, highlight,
-                        valueOnly, and any widget-type-specific options).
+                        Remaining widget-type-specific options (e.g. PrometheusMetric's
+                        "query", Cloudflared's "accountId"/"tunnelId").
                       x-kubernetes-preserve-unknown-fields: true
                     secrets:
                       additionalProperties:
@@ -177,14 +153,14 @@ spec:
                             type: string
                         type: object
                       description: |-
-                        Secret-bearing widget fields (commonly "key", sometimes "username"/
-                        "password"/"token" depending on widget type), resolved via a mounted
-                        Secret file rather than stored inline.
+                        Secret-bearing widget fields (commonly "token", sometimes "username"/
+                        "password" depending on widget type), resolved directly by the
+                        dashboard backend rather than stored inline.
                       type: object
                     type:
                       description: |-
-                        Widget type, e.g. "sonarr", "uptimekuma". See homepage's widget docs
-                        for the full list.
+                        Widget type, e.g. "plex", "grafana", "unifi". See internal/dashboard
+                        for the registered set.
                       minLength: 1
                       type: string
                     url:
@@ -271,4 +247,5 @@ spec:
     storage: true
     subresources:
       status: {}
+
 {{- end }}

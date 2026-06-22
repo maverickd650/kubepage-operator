@@ -29,9 +29,18 @@ manager:
 
   ## Environment variables
   ##
+  ## Used to look up this Pod's own container image at startup, so the
+  ## dashboard Deployment created per Instance (D11 / Phase 6.4) always runs
+  ## the exact same image as the manager itself.
   env:
-    - name: INSTANCE_IMAGE
-      value: ghcr.io/gethomepage/homepage:v1.13.2
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
 
   ## Env overrides (--set manager.envOverrides.VAR=value)
   ## Same name in env above: this value takes precedence.

@@ -9,15 +9,16 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ServiceWidget configures a homepage service-card widget. Type and URL are
-// typed because nearly every widget has them; everything else (fields,
-// headers, highlight, valueOnly, and the long tail of widget-specific knobs)
-// goes in Config. Secret-bearing fields (e.g. "key") go in Secrets instead of
-// Config: the operator resolves them into a mounted-file placeholder rather
-// than storing the value inline.
+// ServiceWidget configures one of the native dashboard's pollable widgets
+// (internal/dashboard's Widget interface) for a service card. Type and URL
+// are typed because nearly every widget has them; everything else
+// (widget-type-specific options) goes in Config. Secret-bearing fields (e.g.
+// API tokens) go in Secrets instead of Config: the dashboard resolves them
+// directly in-process at poll time, so the plaintext value never appears in
+// pod env, a ConfigMap, or a projected file.
 type ServiceWidget struct {
-	// Widget type, e.g. "sonarr", "uptimekuma". See homepage's widget docs
-	// for the full list.
+	// Widget type, e.g. "plex", "grafana", "unifi". See internal/dashboard
+	// for the registered set.
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	Type string `json:"type"`
@@ -26,21 +27,21 @@ type ServiceWidget struct {
 	// +optional
 	URL *string `json:"url,omitempty"`
 
-	// Secret-bearing widget fields (commonly "key", sometimes "username"/
-	// "password"/"token" depending on widget type), resolved via a mounted
-	// Secret file rather than stored inline.
+	// Secret-bearing widget fields (commonly "token", sometimes "username"/
+	// "password" depending on widget type), resolved directly by the
+	// dashboard backend rather than stored inline.
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
-	// Remaining widget fields not covered above (fields, headers, highlight,
-	// valueOnly, and any widget-type-specific options).
+	// Remaining widget-type-specific options (e.g. PrometheusMetric's
+	// "query", Cloudflared's "accountId"/"tunnelId").
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Config *apiextensionsv1.JSON `json:"config,omitempty"`
 }
 
-// ServiceEntrySpec defines one service card rendered into homepage's
-// services.yaml, in the group named by Group.
+// ServiceEntrySpec defines one service card rendered by the native
+// dashboard, in the group named by Group.
 //
 // Nested groups (a group inside another group) are not supported in this
 // version of the operator; Group always names a top-level group.
@@ -49,8 +50,8 @@ type ServiceEntrySpec struct {
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Group is the name of the (top-level) services.yaml group this entry
-	// belongs to. Entries sharing a Group are rendered together.
+	// Group is the name of the (top-level) group this entry belongs to.
+	// Entries sharing a Group are rendered together.
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	Group string `json:"group"`
@@ -62,11 +63,12 @@ type ServiceEntrySpec struct {
 
 	// Order controls rendering position: groups and entries are sorted by
 	// Order (nil sorts last), ties broken by Name, since CRDs have no
-	// inherent ordering but services.yaml's groups/entries are an ordered
-	// list. Purely an operator-side rendering concern; not a homepage field.
+	// inherent ordering but the dashboard's groups/entries are displayed in a
+	// fixed order.
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
+	// Href makes the card's title a link to the service.
 	// +optional
 	Href *string `json:"href,omitempty"`
 
@@ -76,34 +78,9 @@ type ServiceEntrySpec struct {
 	// +optional
 	Description *string `json:"description,omitempty"`
 
-	// Ping monitors host availability via ICMP ping.
-	// +optional
-	Ping *string `json:"ping,omitempty"`
-
-	// SiteMonitor checks a URL's availability via HTTP HEAD (falling back to GET).
-	// +optional
-	SiteMonitor *string `json:"siteMonitor,omitempty"`
-
-	// Target overrides the link target for this service's href.
-	// +kubebuilder:validation:Enum=_blank;_self;_top
-	// +optional
-	Target *string `json:"target,omitempty"`
-
-	// StatusStyle overrides the global statusStyle for this service's
-	// docker/k8s status, site monitor, and ping indicators.
-	// +kubebuilder:validation:Enum=dot;basic
-	// +optional
-	StatusStyle *string `json:"statusStyle,omitempty"`
-
-	// +optional
-	ShowStats *bool `json:"showStats,omitempty"`
-
-	// +optional
-	HideErrors *bool `json:"hideErrors,omitempty"`
-
-	// Widgets attached to this service. Zero, one, or many are allowed;
-	// rendered as homepage's singular widget: key for exactly one, or
-	// widgets: for more than one.
+	// Widgets attached to this service. Zero, one, or many are allowed; the
+	// dashboard polls each one independently and shows its fields on the
+	// card.
 	// +optional
 	Widgets []ServiceWidget `json:"widgets,omitempty"`
 }

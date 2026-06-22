@@ -92,6 +92,9 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 	if entry.Spec.Description != nil {
 		card.Description = *entry.Spec.Description
 	}
+	if entry.Spec.Href != nil {
+		card.Href = *entry.Spec.Href
+	}
 
 	impl, ok := Lookup(widget.Type)
 	if !ok {

@@ -178,4 +178,5 @@ spec:
     storage: true
     subresources:
       status: {}
+
 {{- end }}

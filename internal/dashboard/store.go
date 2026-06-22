@@ -19,6 +19,7 @@ type Card struct {
 	Order       *int32
 	IconURL     string
 	Description string
+	Href        string
 
 	Fields    []Field
 	Err       string

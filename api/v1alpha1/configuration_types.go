@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -68,43 +67,17 @@ type SearchSpec struct {
 	FilterCards *bool `json:"filterCards,omitempty"`
 }
 
-// ConfigurationSpec defines the desired state of Configuration, rendered into
-// the target Instance's settings.yaml. Common, frequently-set options are
-// typed below; anything else supported by homepage's settings.yaml can be
-// supplied via Extra (see its doc comment) rather than waiting for it to be
-// added here.
+// ConfigurationSpec defines the desired state of Configuration: the native
+// dashboard's theme/color/background/header-style look and its header search
+// box, applied by internal/dashboard's LoadSite.
 type ConfigurationSpec struct {
 	// InstanceRef names the Instance this Configuration applies to.
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Customise the page title.
-	// +optional
-	Title *string `json:"title,omitempty"`
-
-	// Customise the page description.
-	// +optional
-	Description *string `json:"description,omitempty"`
-
-	// Customise the start url if required. Default is "/".
-	// +optional
-	// +kubebuilder:default="/"
-	StartUrl *string `json:"startUrl,omitempty"`
-
 	// Background image and filters, used instead of the solid theme color.
 	// +optional
 	Background *BackgroundSpec `json:"background,omitempty"`
-
-	// Apply a blur filter to the service and bookmark cards. A Tailwind
-	// backdrop-blur size keyword (e.g. "xs", "md"). Incompatible with the
-	// background blur/saturate/brightness filters.
-	// +optional
-	CardBlur *string `json:"cardBlur,omitempty"`
-
-	// Specify a custom favicon instead of the included one; a full URL or a
-	// path relative to /app/public.
-	// +optional
-	Favicon *string `json:"favicon,omitempty"`
 
 	// Fixed theme, disabling the theme switcher. One of "light" or "dark".
 	// +kubebuilder:validation:Enum=light;dark
@@ -125,32 +98,14 @@ type ConfigurationSpec struct {
 	// +optional
 	Language *string `json:"language,omitempty"`
 
-	// Default link target for service/bookmark hrefs.
-	// +kubebuilder:validation:Enum=_blank;_self;_top
-	// +optional
-	Target *string `json:"target,omitempty"`
-
 	// Use the entire window width instead of a centered, constrained layout.
 	// +optional
 	FullWidth *bool `json:"fullWidth,omitempty"`
 
-	// Hide the homepage release version shown at the bottom of the page.
-	// +optional
-	HideVersion *bool `json:"hideVersion,omitempty"`
-
 	// Search configures the native dashboard's header search box (card
-	// filtering + web-search fallthrough). Has no effect on the
-	// homepage-wrapper render path.
+	// filtering + web-search fallthrough).
 	// +optional
 	Search *SearchSpec `json:"search,omitempty"`
-
-	// Extra carries any settings.yaml keys not modeled as typed fields above
-	// (e.g. providers, pwa, quicklaunch, layout, blockHighlights). Keys here
-	// are merged into the rendered settings.yaml; a key also set by a typed
-	// field above is overridden by the typed field's value.
-	// +kubebuilder:pruning:PreserveUnknownFields
-	// +optional
-	Extra *apiextensionsv1.JSON `json:"extra,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.

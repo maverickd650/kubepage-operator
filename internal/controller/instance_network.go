@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 
@@ -13,12 +14,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
 // serviceForInstance returns the ClusterIP Service fronting instance's
-// homepage pods, owned by instance.
+// dashboard pods, owned by instance.
 func (r *InstanceReconciler) serviceForInstance(instance *pagev1alpha1.Instance) (*corev1.Service, error) {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -26,7 +28,7 @@ func (r *InstanceReconciler) serviceForInstance(instance *pagev1alpha1.Instance)
 			Namespace: instance.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			Selector: labelsForInstance(),
+			Selector: selectorLabelsForInstance(),
 			Ports: []corev1.ServicePort{{
 				Name:       instanceContainerName,
 				Port:       instance.Spec.ContainerPort,
@@ -40,7 +42,7 @@ func (r *InstanceReconciler) serviceForInstance(instance *pagev1alpha1.Instance)
 	return svc, nil
 }
 
-// reconcileService ensures the homepage Service for instance exists and
+// reconcileService ensures the dashboard Service for instance exists and
 // matches the desired state. Every Instance gets a Service (it's how its
 // Deployment is reached at all, Ingress or not), so unlike Ingress there's
 // no enabled/disabled toggle here.
@@ -234,6 +236,192 @@ func ingressSpecsEqual(a, b networkingv1.IngressSpec) bool {
 }
 
 func equalStringPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// errGatewayAPINotInstalled is returned by reconcileHTTPRoute when
+// spec.gateway is enabled but the cluster has no Gateway API CRDs — surfaced
+// as a clear Available=False status condition rather than the manager
+// crashing trying to watch a Kind that doesn't exist (see
+// GatewayAPIEnabled's doc comment on InstanceReconciler).
+var errGatewayAPINotInstalled = errors.New("spec.gateway is enabled but Gateway API CRDs are not installed in this cluster")
+
+// httpRouteForInstance returns the HTTPRoute exposing instance's Service at
+// spec.gateway's hostnames/parentRef, owned by instance. Only called when
+// spec.gateway is set and enabled.
+func (r *InstanceReconciler) httpRouteForInstance(instance *pagev1alpha1.Instance) (*gatewayv1.HTTPRoute, error) {
+	gw := instance.Spec.Gateway
+
+	hostnames := make([]gatewayv1.Hostname, 0, len(gw.Hostnames))
+	for _, h := range gw.Hostnames {
+		hostnames = append(hostnames, gatewayv1.Hostname(h))
+	}
+
+	var parentNamespace *gatewayv1.Namespace
+	if gw.ParentRef.Namespace != nil {
+		ns := gatewayv1.Namespace(*gw.ParentRef.Namespace)
+		parentNamespace = &ns
+	}
+	var sectionName *gatewayv1.SectionName
+	if gw.ParentRef.SectionName != nil {
+		sn := gatewayv1.SectionName(*gw.ParentRef.SectionName)
+		sectionName = &sn
+	}
+	port := instance.Spec.ContainerPort
+
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        instance.Name,
+			Namespace:   instance.Namespace,
+			Annotations: gw.Annotations,
+		},
+		Spec: gatewayv1.HTTPRouteSpec{
+			CommonRouteSpec: gatewayv1.CommonRouteSpec{
+				ParentRefs: []gatewayv1.ParentReference{{
+					Name:        gatewayv1.ObjectName(gw.ParentRef.Name),
+					Namespace:   parentNamespace,
+					SectionName: sectionName,
+				}},
+			},
+			Hostnames: hostnames,
+			Rules: []gatewayv1.HTTPRouteRule{{
+				BackendRefs: []gatewayv1.HTTPBackendRef{{
+					BackendRef: gatewayv1.BackendRef{
+						BackendObjectReference: gatewayv1.BackendObjectReference{
+							Name: gatewayv1.ObjectName(instance.Name),
+							Port: &port,
+						},
+					},
+				}},
+			}},
+		},
+	}
+
+	if err := ctrl.SetControllerReference(instance, route, r.Scheme); err != nil {
+		return nil, err
+	}
+	return route, nil
+}
+
+// reconcileHTTPRoute ensures the HTTPRoute for instance matches
+// spec.gateway: an owned HTTPRoute is created/updated when enabled, and
+// removed if it exists but the user has since disabled or removed
+// spec.gateway — mirroring reconcileIngress. Gated on r.GatewayAPIEnabled
+// (checked once at manager startup): if spec.gateway is enabled but the
+// cluster has no Gateway API CRDs, returns errGatewayAPINotInstalled instead
+// of attempting a Get/Create that would otherwise fail with a confusing
+// "no matches for kind" error.
+func (r *InstanceReconciler) reconcileHTTPRoute(ctx context.Context, instance *pagev1alpha1.Instance) error {
+	log := logf.FromContext(ctx)
+
+	enabled := instance.Spec.Gateway != nil && instance.Spec.Gateway.Enabled
+	if !enabled {
+		if !r.GatewayAPIEnabled {
+			// Nothing to do, and nothing we could even look up.
+			return nil
+		}
+		found := &gatewayv1.HTTPRoute{}
+		err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+		switch {
+		case apierrors.IsNotFound(err):
+			return nil
+		case err != nil:
+			return fmt.Errorf("getting HTTPRoute %s/%s: %w", instance.Namespace, instance.Name, err)
+		}
+		log.Info("Deleting HTTPRoute: spec.gateway.enabled is now false", "HTTPRoute.Namespace", found.Namespace, "HTTPRoute.Name", found.Name)
+		if err := r.Delete(ctx, found); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting HTTPRoute %s/%s: %w", found.Namespace, found.Name, err)
+		}
+		return nil
+	}
+
+	if !r.GatewayAPIEnabled {
+		return errGatewayAPINotInstalled
+	}
+
+	desired, err := r.httpRouteForInstance(instance)
+	if err != nil {
+		return fmt.Errorf("defining HTTPRoute: %w", err)
+	}
+
+	found := &gatewayv1.HTTPRoute{}
+	err = r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+	switch {
+	case apierrors.IsNotFound(err):
+		log.Info("Creating a new HTTPRoute", "HTTPRoute.Namespace", desired.Namespace, "HTTPRoute.Name", desired.Name)
+		if err := r.Create(ctx, desired); err != nil {
+			return fmt.Errorf("creating HTTPRoute %s/%s: %w", desired.Namespace, desired.Name, err)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("getting HTTPRoute %s/%s: %w", instance.Namespace, instance.Name, err)
+	}
+
+	if !httpRouteSpecsEqual(found.Spec, desired.Spec) || !maps.Equal(found.Annotations, desired.Annotations) {
+		found.Spec = desired.Spec
+		found.Annotations = desired.Annotations
+		if err := r.Update(ctx, found); err != nil {
+			return fmt.Errorf("updating HTTPRoute %s/%s: %w", found.Namespace, found.Name, err)
+		}
+	}
+	return nil
+}
+
+// httpRouteSpecsEqual compares the fields of HTTPRouteSpec this controller
+// actually sets, ignoring any the API server might default (ParentReference
+// and BackendObjectReference both carry +kubebuilder:default Group/Kind/
+// Weight values that a bare struct literal never has, same reasoning as
+// ingressSpecsEqual above).
+func httpRouteSpecsEqual(a, b gatewayv1.HTTPRouteSpec) bool {
+	if len(a.ParentRefs) != len(b.ParentRefs) || len(a.Hostnames) != len(b.Hostnames) || len(a.Rules) != len(b.Rules) {
+		return false
+	}
+	for i := range a.ParentRefs {
+		ap, bp := a.ParentRefs[i], b.ParentRefs[i]
+		if ap.Name != bp.Name {
+			return false
+		}
+		if !equalGatewayNamespacePtr(ap.Namespace, bp.Namespace) || !equalGatewaySectionNamePtr(ap.SectionName, bp.SectionName) {
+			return false
+		}
+	}
+	for i := range a.Hostnames {
+		if a.Hostnames[i] != b.Hostnames[i] {
+			return false
+		}
+	}
+	for i := range a.Rules {
+		ar, br := a.Rules[i], b.Rules[i]
+		if len(ar.BackendRefs) != len(br.BackendRefs) {
+			return false
+		}
+		for j := range ar.BackendRefs {
+			abr, bbr := ar.BackendRefs[j].BackendRef, br.BackendRefs[j].BackendRef
+			if abr.Name != bbr.Name {
+				return false
+			}
+			if (abr.Port == nil) != (bbr.Port == nil) {
+				return false
+			}
+			if abr.Port != nil && bbr.Port != nil && *abr.Port != *bbr.Port {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func equalGatewayNamespacePtr(a, b *gatewayv1.Namespace) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func equalGatewaySectionNamePtr(a, b *gatewayv1.SectionName) bool {
 	if a == nil || b == nil {
 		return a == b
 	}

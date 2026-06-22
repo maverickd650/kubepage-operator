@@ -63,27 +63,14 @@ spec:
           spec:
             description: spec defines the desired state of Instance
             properties:
-              allowedHosts:
-                description: |-
-                  AllowedHosts is a comma-separated list of hostnames homepage will accept
-                  requests for (maps to HOMEPAGE_ALLOWED_HOSTS). Homepage rejects requests
-                  for hosts not in this list, so this must include every hostname/IP used
-                  to reach the dashboard (Service DNS name, Ingress host, port-forward
-                  address, etc).
-                type: string
               annotations:
                 additionalProperties:
                   type: string
                 description: Additional annotations to add to the workload and pod
                 type: object
-              appUrl:
-                description: |-
-                  External URL homepage can be reached at
-                  See the official documentation for APP_URL
-                type: string
               containerPort:
-                description: containerPort defines the port that will be used to init
-                  the container with the image
+                description: containerPort defines the port the dashboard HTTP server
+                  listens on
                 format: int32
                 type: integer
               containerSecurityContext:
@@ -434,6 +421,57 @@ spec:
                   - name
                   type: object
                 type: array
+              gateway:
+                description: |-
+                  Gateway optionally exposes the dashboard Service via a Gateway API
+                  HTTPRoute instead of (or alongside) Ingress. Off by default, and only
+                  takes effect if the cluster has Gateway API CRDs installed — the
+                  Instance controller checks this once at startup and surfaces a clear
+                  status condition if Gateway is set but the CRDs aren't present, rather
+                  than crashing the manager trying to watch a Kind that doesn't exist.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to set on the generated HTTPRoute.
+                    type: object
+                  enabled:
+                    default: false
+                    description: Enabled creates and manages an HTTPRoute for this
+                      Instance when true.
+                    type: boolean
+                  hostnames:
+                    description: Hostnames the HTTPRoute matches. At least one is
+                      required.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  parentRef:
+                    description: ParentRef names the Gateway this HTTPRoute attaches
+                      to.
+                    properties:
+                      name:
+                        description: Name of the Gateway.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace of the Gateway. Defaults to the Instance's own namespace if
+                          unset.
+                        type: string
+                      sectionName:
+                        description: |-
+                          SectionName names a specific listener on the Gateway to attach to.
+                          Leave unset to attach to every listener that allows it.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - hostnames
+                - parentRef
+                type: object
               hostUsers:
                 default: true
                 description: |-
@@ -442,8 +480,8 @@ spec:
                 type: boolean
               ingress:
                 description: |-
-                  Ingress optionally exposes the homepage Service via an Ingress. Off by
-                  default: most users reach homepage through a Service (port-forward,
+                  Ingress optionally exposes the dashboard Service via an Ingress. Off by
+                  default: most users reach the dashboard through a Service (port-forward,
                   LoadBalancer, existing Ingress/Gateway managed outside this operator,
                   etc.), so this operator shouldn't assume an IngressClass / external-DNS
                   / cert-manager setup is present.
@@ -461,7 +499,7 @@ spec:
                       when true.
                     type: boolean
                   host:
-                    description: Host is the hostname routed to the homepage Service.
+                    description: Host is the hostname routed to the dashboard Service.
                     type: string
                   ingressClassName:
                     description: |-
@@ -1183,13 +1221,6 @@ spec:
                   status reflects.
                 format: int64
                 type: integer
-              renderHash:
-                description: |-
-                  RenderHash is the hash of the most recently rendered homepage config,
-                  also set as the pod template's page.kubepage.dev/config-hash
-                  annotation. Useful to confirm a Deployment rollout actually picked up
-                  a config change.
-                type: string
             type: object
         required:
         - spec
@@ -1198,4 +1229,5 @@ spec:
     storage: true
     subresources:
       status: {}
+
 {{- end }}

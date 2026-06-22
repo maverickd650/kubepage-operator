@@ -8,10 +8,10 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// BookmarkSpec defines one bookmark rendered into homepage's bookmarks.yaml,
-// in the group named by Group. Bookmarks are much simpler than ServiceEntry's
-// service cards: just a link, with an optional abbreviation/icon and override
-// description.
+// BookmarkSpec defines one static link card rendered by the native
+// dashboard, in the group named by Group. Bookmarks are much simpler than
+// ServiceEntry's service cards: just a link, with an optional
+// abbreviation/icon and override description.
 //
 // Nested groups (a group inside another group) are not supported in this
 // version of the operator; Group always names a top-level group.

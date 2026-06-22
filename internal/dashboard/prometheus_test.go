@@ -44,10 +44,10 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 				{Label: labelTargetsUp, Value: "0 / 0"},
 			},
 		},
-		"non-200": {
+		testCaseNon200: {
 			statusCode: http.StatusInternalServerError,
 			want: []Field{
-				{Label: labelStatus, Value: "HTTP 500"},
+				{Label: labelStatus, Value: testHTTP500},
 			},
 		},
 	}
@@ -72,7 +72,7 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 }
 
 func TestPrometheusWidgetPollUnreachable(t *testing.T) {
-	got, err := (prometheusWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: "http://127.0.0.1:1"})
+	got, err := (prometheusWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

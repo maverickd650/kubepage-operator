@@ -69,16 +69,13 @@ spec:
                 - name
                 type: object
               options:
-                description: |-
-                  Options holds every widget-type-specific field (e.g. the kubernetes
-                  widget's cluster/nodes blocks, the search widget's provider/target).
+                description: Options holds every widget-type-specific field.
                 x-kubernetes-preserve-unknown-fields: true
               order:
                 description: |-
                   Order controls rendering position: widgets are sorted by Order (nil
                   sorts last), ties broken by the InfoWidget object's name, since CRDs
-                  have no inherent ordering but widgets.yaml's list is ordered. Purely an
-                  operator-side rendering concern; not a homepage field.
+                  have no inherent ordering of their own.
                 format: int32
                 type: integer
               secrets:
@@ -121,15 +118,12 @@ spec:
                       type: string
                   type: object
                 description: |-
-                  Secret-bearing option fields, resolved via a mounted Secret file rather
-                  than stored inline. Merged into Options at render time under the same
-                  field names.
+                  Secret-bearing option fields. Merged into Options under the same field
+                  names once a renderer for this CRD exists.
                 type: object
               type:
-                description: |-
-                  Type is the widget type, e.g. "resources", "search", "datetime",
-                  "openmeteo", "kubernetes". See homepage's info-widget docs for the full
-                  list.
+                description: Type is the widget type, e.g. "resources", "search",
+                  "datetime".
                 minLength: 1
                 type: string
             required:
@@ -208,4 +202,5 @@ spec:
     storage: true
     subresources:
       status: {}
+
 {{- end }}

@@ -19,10 +19,9 @@ import (
 // ServiceEntryReconciler reconciles a ServiceEntry object.
 //
 // Thin, like ConfigurationReconciler: it only validates that instanceRef
-// resolves to an existing Instance and reflects that in status. Rendering
-// services.yaml (including secret resolution) and watching ServiceEntry
-// changes is the InstanceReconciler's job (see instance_controller.go and
-// serviceentry_render.go).
+// resolves to an existing Instance and reflects that in status. The
+// dashboard pod (internal/dashboard) reads and polls ServiceEntries directly
+// through its own cache; this controller never renders or resolves secrets.
 type ServiceEntryReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

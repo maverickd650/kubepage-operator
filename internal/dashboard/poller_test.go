@@ -50,12 +50,14 @@ func TestPollerPollOnce(t *testing.T) {
 	}
 
 	url := srv.URL
+	href := "https://prometheus.example.com"
 	entry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "prom", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Group:       testGroup,
 			Name:        testServiceName,
+			Href:        &href,
 			Widgets: []pagev1alpha1.ServiceWidget{
 				{
 					Type: testWidgetType,
@@ -108,6 +110,9 @@ func TestPollerPollOnce(t *testing.T) {
 	}
 	if card.ServiceName != testServiceName || card.Group != testGroup {
 		t.Errorf("card = %+v, want ServiceName=Prometheus Group=Monitoring", card)
+	}
+	if card.Href != href {
+		t.Errorf("card.Href = %q, want %q", card.Href, href)
 	}
 	wantFields := []Field{{Label: labelStatus, Value: statusHealthy}, {Label: labelTargetsUp, Value: "1 / 1"}}
 	if len(card.Fields) != len(wantFields) || card.Fields[0] != wantFields[0] || card.Fields[1] != wantFields[1] {

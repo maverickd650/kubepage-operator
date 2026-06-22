@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -10,21 +12,33 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 	"github.com/maverickd650/kubepage-operator/internal/controller"
 	"github.com/maverickd650/kubepage-operator/internal/dashboard"
 	// +kubebuilder:scaffold:imports
 )
+
+// managerContainerName is the manager Deployment's container name, set in
+// config/manager/manager.yaml and dist/chart/templates/manager/manager.yaml.
+// ownDashboardImage looks this container up by name in the manager's own
+// running Pod to find the image value to reuse for dashboard Deployments.
+const managerContainerName = "manager"
 
 var (
 	scheme   = runtime.NewScheme()
@@ -35,6 +49,10 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(pagev1alpha1.AddToScheme(scheme))
+	// Registered unconditionally so the client can decode HTTPRoute objects
+	// when Gateway API is available; gatewayAPIAvailable (checked at startup)
+	// decides whether InstanceReconciler ever watches or creates one.
+	utilruntime.Must(gatewayv1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -172,10 +190,37 @@ func runManager() {
 		os.Exit(1)
 	}
 
+	// The dashboard Deployment InstanceReconciler creates per Instance (D11 /
+	// Phase 6.4) runs the same binary's `dashboard` subcommand, so it should
+	// always be the exact image this manager process is itself running as —
+	// there's no separately-pinned operand image to read from an env var
+	// anymore. Kubernetes has no downward-API field for "my own container's
+	// image", so this looks itself up via the API server instead, using the
+	// POD_NAME/POD_NAMESPACE downward-API env vars set in
+	// config/manager/manager.yaml. A direct (uncached) client is used since
+	// this runs once before mgr.Start() brings up the cache.
+	dashboardImage, err := ownDashboardImage(context.Background(), mgr.GetConfig(), scheme)
+	if err != nil {
+		setupLog.Error(err, "Failed to determine the manager's own image for the dashboard Deployment")
+		os.Exit(1)
+	}
+
+	// Gateway API is an optional, separately-installed CRD set (unlike
+	// Ingress, which every cluster has built in), so InstanceReconciler only
+	// watches/manages HTTPRoute if it's actually present — see
+	// gatewayAPIAvailable's doc comment.
+	gatewayAPIEnabled, err := gatewayAPIAvailable(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "Failed to check for Gateway API CRDs; continuing with Gateway API support disabled")
+	}
+	setupLog.Info("Gateway API support", "enabled", gatewayAPIEnabled)
+
 	if err := (&controller.InstanceReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("instance-controller"),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Recorder:          mgr.GetEventRecorder("instance-controller"),
+		DashboardImage:    dashboardImage,
+		GatewayAPIEnabled: gatewayAPIEnabled,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "instance")
 		os.Exit(1)
@@ -224,6 +269,64 @@ func runManager() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+// ownDashboardImage looks up the running manager Pod (named by the
+// POD_NAME/POD_NAMESPACE downward-API env vars) and returns its
+// managerContainerName container's image, for InstanceReconciler to reuse
+// when it builds each Instance's dashboard Deployment.
+func ownDashboardImage(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme) (string, error) {
+	podName := os.Getenv("POD_NAME")
+	podNamespace := os.Getenv("POD_NAMESPACE")
+	if podName == "" || podNamespace == "" {
+		return "", fmt.Errorf("POD_NAME and POD_NAMESPACE env vars must be set (via the downward API) " +
+			"to determine the manager's own image")
+	}
+
+	c, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return "", fmt.Errorf("building direct client: %w", err)
+	}
+
+	pod := &corev1.Pod{}
+	if err := c.Get(ctx, client.ObjectKey{Name: podName, Namespace: podNamespace}, pod); err != nil {
+		return "", fmt.Errorf("getting own Pod %s/%s: %w", podNamespace, podName, err)
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name == managerContainerName {
+			return container.Image, nil
+		}
+	}
+	return "", fmt.Errorf("container %q not found in own Pod %s/%s", managerContainerName, podNamespace, podName)
+}
+
+// gatewayAPIAvailable reports whether the cluster has Gateway API's HTTPRoute
+// resource registered, via the discovery API (not the controller-runtime
+// RESTMapper, since that's cache-backed and tied to mgr.Start() timing). A
+// discovery error returns (false, err) rather than panicking: the caller
+// logs it and falls back to "disabled" so an unrelated, possibly-transient
+// discovery hiccup never blocks manager startup over an optional feature.
+func gatewayAPIAvailable(cfg *rest.Config) (bool, error) {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return false, fmt.Errorf("building discovery client: %w", err)
+	}
+
+	resources, err := dc.ServerResourcesForGroupVersion(gatewayv1.GroupVersion.String())
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("listing %s resources: %w", gatewayv1.GroupVersion, err)
+	}
+
+	for _, res := range resources.APIResources {
+		if res.Kind == "HTTPRoute" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // runDashboard serves the native dashboard (D11 / Phase 6.0) for a single

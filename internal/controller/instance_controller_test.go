@@ -2,8 +2,6 @@ package controller
 
 import (
 	"context"
-	"os"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -12,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,6 +21,8 @@ import (
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
+
+const testDashboardImage = "example.com/image:test"
 
 var _ = Describe("Instance controller", func() {
 	Context("Instance controller test", func() {
@@ -51,10 +52,6 @@ var _ = Describe("Instance controller", func() {
 			err := k8sClient.Create(ctx, namespace)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Setting the Image ENV VAR which stores the Operand image")
-			err = os.Setenv("INSTANCE_IMAGE", "example.com/image:test")
-			Expect(err).NotTo(HaveOccurred())
-
 			By("creating the custom resource for the Kind Instance")
 			err = k8sClient.Get(ctx, typeNamespacedName, instance)
 			if err != nil && errors.IsNotFound(err) {
@@ -67,7 +64,7 @@ var _ = Describe("Instance controller", func() {
 					},
 					Spec: pagev1alpha1.InstanceSpec{
 						Size:          ptr.To(int32(1)),
-						ContainerPort: 3000,
+						ContainerPort: 8080,
 					},
 				}
 
@@ -91,9 +88,6 @@ var _ = Describe("Instance controller", func() {
 			// More info: https://book.kubebuilder.io/reference/envtest.html#testing-considerations
 			By("Deleting the Namespace to perform the tests")
 			_ = k8sClient.Delete(ctx, namespace)
-
-			By("Removing the Image ENV VAR which stores the Operand image")
-			_ = os.Unsetenv("INSTANCE_IMAGE")
 		})
 
 		It("should successfully reconcile a custom resource for Instance", func() {
@@ -105,8 +99,9 @@ var _ = Describe("Instance controller", func() {
 
 			By("Reconciling the custom resource created")
 			instanceReconciler := &InstanceReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				DashboardImage: testDashboardImage,
 			}
 
 			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{
@@ -157,9 +152,6 @@ var _ = Describe("Instance controller", func() {
 		BeforeEach(func() {
 			By("Creating the Namespace to perform the tests")
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-
-			By("Setting the Image ENV VAR which stores the Operand image")
-			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -169,19 +161,18 @@ var _ = Describe("Instance controller", func() {
 				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
 			}
 			_ = k8sClient.Delete(ctx, namespace)
-			_ = os.Unsetenv("INSTANCE_IMAGE")
 		})
 
 		It("should apply optional spec fields to the generated Deployment", func() {
 			By("creating an Instance with every optional field set, partially overriding the builtin security defaults")
 			readinessProbe := &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
-					HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt32(3000)},
+					HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt32(8080)},
 				},
 			}
 			livenessProbe := &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
-					HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(3000)},
+					HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(8080)},
 				},
 			}
 			resources := corev1.ResourceRequirements{
@@ -197,7 +188,7 @@ var _ = Describe("Instance controller", func() {
 				},
 				Spec: pagev1alpha1.InstanceSpec{
 					Size:          ptr.To(int32(1)),
-					ContainerPort: 3000,
+					ContainerPort: 8080,
 					HostUsers:     ptr.To(false),
 					Labels: map[string]string{
 						"team": "platform",
@@ -220,8 +211,9 @@ var _ = Describe("Instance controller", func() {
 
 			By("Reconciling the custom resource")
 			instanceReconciler := &InstanceReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				DashboardImage: testDashboardImage,
 			}
 			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -236,6 +228,19 @@ var _ = Describe("Instance controller", func() {
 
 			By("HostUsers is set on the PodSpec")
 			Expect(dep.Spec.Template.Spec.HostUsers).To(HaveValue(BeFalse()))
+
+			By("the per-Instance ServiceAccount is set on the PodSpec")
+			Expect(dep.Spec.Template.Spec.ServiceAccountName).To(Equal(InstanceName))
+
+			By("the dashboard subcommand args name this Instance and its namespace")
+			Expect(dep.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(dep.Spec.Template.Spec.Containers[0].Args).To(ConsistOf(
+				"dashboard",
+				"--namespace="+namespace.Name,
+				"--instance-name="+InstanceName,
+				"--addr=:8080",
+			))
+			Expect(dep.Spec.Template.Spec.Containers[0].Image).To(Equal(testDashboardImage))
 
 			By("user Labels and Annotations are merged into the pod template metadata")
 			Expect(dep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("team", "platform"))
@@ -252,7 +257,6 @@ var _ = Describe("Instance controller", func() {
 			Expect(podSC.SeccompProfile).NotTo(BeNil(), "builtin SeccompProfile default must survive a partial override")
 
 			By("ContainerSecurityContext merges the user override with the builtin defaults")
-			Expect(dep.Spec.Template.Spec.Containers).To(HaveLen(1))
 			containerSC := dep.Spec.Template.Spec.Containers[0].SecurityContext
 			Expect(containerSC).NotTo(BeNil())
 			Expect(containerSC.ReadOnlyRootFilesystem).To(HaveValue(BeTrue()))
@@ -273,12 +277,9 @@ var _ = Describe("Instance controller", func() {
 		})
 	})
 
-	Context("Instance controller config rendering test", func() {
+	Context("Instance controller dashboard RBAC test", func() {
 
-		const (
-			InstanceName = "test-instance-config"
-			configCRName = "cfg"
-		)
+		const InstanceName = "test-instance-rbac"
 
 		ctx := context.Background()
 
@@ -286,23 +287,11 @@ var _ = Describe("Instance controller", func() {
 		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
-			By("Creating the Namespace to perform the tests")
-			// GenerateName, not a fixed Name: this Context runs multiple Its,
-			// and envtest doesn't run a namespace controller, so a Delete in
-			// AfterEach never actually completes before the next spec's
-			// BeforeEach tries to reuse the same name (see the note on the
-			// "Instance controller test" Context above re: envtest's
-			// namespace-deletion limitations).
 			namespace = &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "test-instance-config-",
-				},
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-rbac-"},
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
-
-			By("Setting the Image ENV VAR which stores the Operand image")
-			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -312,422 +301,41 @@ var _ = Describe("Instance controller", func() {
 				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
 			}
 			_ = k8sClient.Delete(ctx, namespace)
-			_ = os.Unsetenv("INSTANCE_IMAGE")
 		})
 
-		It("renders an owned ConfigMap with kubernetes.yaml disabled even with no Configuration bound", func() {
+		It("creates a ServiceAccount, Role, and RoleBinding granting the dashboard pod read access to the config CRDs and Secrets", func() {
 			instance := &pagev1alpha1.Instance{
 				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
 			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("the ConfigMap exists, is owned by the Instance, and has kubernetes.yaml disabled but no settings.yaml")
-			cm := &corev1.ConfigMap{}
+			By("a ServiceAccount named after the Instance exists and is owned by it")
+			sa := &corev1.ServiceAccount{}
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, sa)).To(Succeed())
 			}).Should(Succeed())
-			Expect(cm.Data).To(HaveKeyWithValue("kubernetes.yaml", "mode: disabled\n"))
-			Expect(cm.Data).NotTo(HaveKey("settings.yaml"))
-			Expect(cm.OwnerReferences).To(ContainElement(HaveField("Name", InstanceName)))
+			Expect(sa.OwnerReferences).To(ContainElement(HaveField("Name", InstanceName)))
 
-			By("the Deployment mounts the ConfigMap and carries a config-hash annotation")
-			dep := &appsv1.Deployment{}
+			By("a Role grants get/list/watch on the config CRDs and Secrets")
+			role := &rbacv1.Role{}
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
 			}).Should(Succeed())
-			Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("ConfigMap.LocalObjectReference.Name", InstanceName)))
-			Expect(dep.Spec.Template.Spec.Containers[0].VolumeMounts).To(ContainElement(HaveField("MountPath", configMountPath)))
-			Expect(dep.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
-		})
+			Expect(role.Rules).To(ContainElement(HaveField("Resources", ContainElement("serviceentries"))))
+			Expect(role.Rules).To(ContainElement(HaveField("Resources", ContainElement("secrets"))))
 
-		It("renders settings.yaml from the bound Configuration and updates the ConfigMap and rollout hash when it changes", func() {
-			instance := &pagev1alpha1.Instance{
-				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
-			}
-			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
-
-			cfg := &pagev1alpha1.Configuration{
-				ObjectMeta: metav1.ObjectMeta{Name: configCRName, Namespace: namespace.Name},
-				Spec: pagev1alpha1.ConfigurationSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Title:       ptr.To("My Homepage"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
-
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
-
-			cm := &corev1.ConfigMap{}
+			By("a RoleBinding binds the Role to the ServiceAccount")
+			rb := &rbacv1.RoleBinding{}
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, rb)).To(Succeed())
 			}).Should(Succeed())
-			// startUrl is present because the CRD defaults it to "/" server-side.
-			Expect(cm.Data).To(HaveKeyWithValue("settings.yaml", "startUrl: /\ntitle: My Homepage\n"))
-
-			dep := &appsv1.Deployment{}
-			Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
-			firstHash := dep.Spec.Template.Annotations[configHashAnnotation]
-			Expect(firstHash).NotTo(BeEmpty())
-
-			By("changing the Configuration and reconciling again")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: configCRName, Namespace: namespace.Name}, cfg)).To(Succeed())
-			cfg.Spec.Title = ptr.To("Updated Title")
-			Expect(k8sClient.Update(ctx, cfg)).To(Succeed())
-
-			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
-				g.Expect(cm.Data).To(HaveKeyWithValue("settings.yaml", "startUrl: /\ntitle: Updated Title\n"))
-			}).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
-				g.Expect(dep.Spec.Template.Annotations[configHashAnnotation]).NotTo(Equal(firstHash))
-			}).Should(Succeed())
-		})
-	})
-
-	Context("Instance controller ServiceEntry rendering test", func() {
-
-		const (
-			InstanceName  = "test-instance-services"
-			serviceCRName = "svc"
-			secretName    = "sonarr-credentials"
-		)
-
-		ctx := context.Background()
-
-		var namespace *corev1.Namespace
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      InstanceName,
-			Namespace: InstanceName,
-		}
-
-		BeforeEach(func() {
-			namespace = &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-services-"},
-			}
-			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
-
-			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
-
-			instance := &pagev1alpha1.Instance{
-				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
-			}
-			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			found := &pagev1alpha1.Instance{}
-			err := k8sClient.Get(ctx, typeNamespacedName, found)
-			if err == nil {
-				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
-			}
-			_ = k8sClient.Delete(ctx, namespace)
-			_ = os.Unsetenv("INSTANCE_IMAGE")
-		})
-
-		It("renders services.yaml and resolves a widget secretKeyRef into a mounted-file placeholder", func() {
-			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace.Name},
-				Data:       map[string][]byte{testSecretAPIKeyField: []byte("super-secret")},
-			}
-			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-
-			entry := &pagev1alpha1.ServiceEntry{
-				ObjectMeta: metav1.ObjectMeta{Name: serviceCRName, Namespace: namespace.Name},
-				Spec: pagev1alpha1.ServiceEntrySpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Group:       "Media",
-					Name:        "Sonarr",
-					Href:        ptr.To("http://sonarr.example.com"),
-					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type: "sonarr",
-						URL:  ptr.To("http://sonarr.example.com"),
-						Secrets: map[string]pagev1alpha1.SecretValueSource{
-							testSecretConfigField: {SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-								Key:                  testSecretAPIKeyField,
-							}},
-						},
-					}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
-
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
-
-			By("services.yaml contains the rendered group/service and a {{HOMEPAGE_FILE_*}} placeholder, not the raw secret")
-			cm := &corev1.ConfigMap{}
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
-			}).Should(Succeed())
-			servicesYAML, ok := cm.Data["services.yaml"]
-			Expect(ok).To(BeTrue())
-			Expect(servicesYAML).To(ContainSubstring("Media"))
-			Expect(servicesYAML).To(ContainSubstring("Sonarr"))
-			Expect(servicesYAML).To(MatchRegexp(`key: '?\{\{HOMEPAGE_FILE_[0-9A-F]+\}\}'?`))
-			Expect(servicesYAML).NotTo(ContainSubstring("super-secret"))
-
-			By("the Deployment mounts an aggregated secrets volume and the matching HOMEPAGE_FILE_* env var")
-			dep := &appsv1.Deployment{}
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
-			}).Should(Succeed())
-			Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", secretsVolumeName)))
-			container := dep.Spec.Template.Spec.Containers[0]
-			Expect(container.VolumeMounts).To(ContainElement(HaveField("Name", secretsVolumeName)))
-
-			var fileEnv *corev1.EnvVar
-			for i := range container.Env {
-				if strings.HasPrefix(container.Env[i].Name, "HOMEPAGE_FILE_") {
-					fileEnv = &container.Env[i]
-				}
-			}
-			Expect(fileEnv).NotTo(BeNil(), "expected a HOMEPAGE_FILE_* env var")
-			Expect(servicesYAML).To(ContainSubstring(fileEnv.Name))
-		})
-
-		It("fails to render and surfaces an error when the referenced Secret does not exist", func() {
-			entry := &pagev1alpha1.ServiceEntry{
-				ObjectMeta: metav1.ObjectMeta{Name: serviceCRName, Namespace: namespace.Name},
-				Spec: pagev1alpha1.ServiceEntrySpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Group:       "Media",
-					Name:        "Sonarr",
-					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type: "sonarr",
-						Secrets: map[string]pagev1alpha1.SecretValueSource{
-							testSecretConfigField: {SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{Name: testDoesNotExistInstanceName},
-								Key:                  testSecretAPIKeyField,
-							}},
-						},
-					}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
-
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("does-not-exist"))
-
-			Expect(k8sClient.Get(ctx, typeNamespacedName, &pagev1alpha1.Instance{})).To(Succeed())
-		})
-	})
-
-	Context("Instance controller Bookmark rendering test", func() {
-
-		const (
-			InstanceName    = "test-instance-bookmarks"
-			bookmarkCRName  = "bm"
-			bookmarkCRName2 = "bm2"
-		)
-
-		ctx := context.Background()
-
-		var namespace *corev1.Namespace
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      InstanceName,
-			Namespace: InstanceName,
-		}
-
-		BeforeEach(func() {
-			namespace = &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-bookmarks-"},
-			}
-			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
-
-			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
-
-			instance := &pagev1alpha1.Instance{
-				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
-			}
-			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			found := &pagev1alpha1.Instance{}
-			err := k8sClient.Get(ctx, typeNamespacedName, found)
-			if err == nil {
-				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
-			}
-			_ = k8sClient.Delete(ctx, namespace)
-			_ = os.Unsetenv("INSTANCE_IMAGE")
-		})
-
-		It("renders bookmarks.yaml from bound Bookmarks", func() {
-			bm1 := &pagev1alpha1.Bookmark{
-				ObjectMeta: metav1.ObjectMeta{Name: bookmarkCRName, Namespace: namespace.Name},
-				Spec: pagev1alpha1.BookmarkSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Group:       "Developer",
-					Name:        "Github",
-					Href:        "https://github.com/",
-					Abbr:        ptr.To("GH"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, bm1)).To(Succeed())
-
-			bm2 := &pagev1alpha1.Bookmark{
-				ObjectMeta: metav1.ObjectMeta{Name: bookmarkCRName2, Namespace: namespace.Name},
-				Spec: pagev1alpha1.BookmarkSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Group:       "Social",
-					Name:        "Reddit",
-					Href:        "https://reddit.com/",
-					Description: ptr.To("The front page of the internet"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, bm2)).To(Succeed())
-
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
-
-			By("bookmarks.yaml contains both rendered groups/bookmarks")
-			cm := &corev1.ConfigMap{}
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
-			}).Should(Succeed())
-			bookmarksYAML, ok := cm.Data["bookmarks.yaml"]
-			Expect(ok).To(BeTrue())
-			Expect(bookmarksYAML).To(ContainSubstring("Developer"))
-			Expect(bookmarksYAML).To(ContainSubstring("Github"))
-			Expect(bookmarksYAML).To(ContainSubstring("Social"))
-			Expect(bookmarksYAML).To(ContainSubstring("Reddit"))
-		})
-	})
-
-	Context("Instance controller InfoWidget rendering test", func() {
-
-		const (
-			InstanceName = "test-instance-widgets"
-			widgetCRName = "wg"
-			secretName   = "openmeteo-credentials"
-		)
-
-		ctx := context.Background()
-
-		var namespace *corev1.Namespace
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      InstanceName,
-			Namespace: InstanceName,
-		}
-
-		BeforeEach(func() {
-			namespace = &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-widgets-"},
-			}
-			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
-
-			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
-
-			instance := &pagev1alpha1.Instance{
-				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
-			}
-			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			found := &pagev1alpha1.Instance{}
-			err := k8sClient.Get(ctx, typeNamespacedName, found)
-			if err == nil {
-				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
-			}
-			_ = k8sClient.Delete(ctx, namespace)
-			_ = os.Unsetenv("INSTANCE_IMAGE")
-		})
-
-		It("renders widgets.yaml and resolves a secretKeyRef into a mounted-file placeholder, leaving kubernetes.yaml disabled", func() {
-			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace.Name},
-				Data:       map[string][]byte{testSecretAPIKeyField: []byte("super-secret")},
-			}
-			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-
-			widget := &pagev1alpha1.InfoWidget{
-				ObjectMeta: metav1.ObjectMeta{Name: widgetCRName, Namespace: namespace.Name},
-				Spec: pagev1alpha1.InfoWidgetSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Type:        "openmeteo",
-					Secrets: map[string]pagev1alpha1.SecretValueSource{
-						testSecretConfigField: {SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-							Key:                  testSecretAPIKeyField,
-						}},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
-
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
-
-			By("widgets.yaml contains the rendered widget and a {{HOMEPAGE_FILE_*}} placeholder, not the raw secret")
-			cm := &corev1.ConfigMap{}
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
-			}).Should(Succeed())
-			widgetsYAML, ok := cm.Data["widgets.yaml"]
-			Expect(ok).To(BeTrue())
-			Expect(widgetsYAML).To(ContainSubstring("openmeteo"))
-			Expect(widgetsYAML).To(MatchRegexp(`key: '?\{\{HOMEPAGE_FILE_[0-9A-F]+\}\}'?`))
-			Expect(widgetsYAML).NotTo(ContainSubstring("super-secret"))
-
-			By("kubernetes.yaml stays disabled since no InfoWidget of type kubernetes is bound")
-			Expect(cm.Data["kubernetes.yaml"]).To(ContainSubstring("disabled"))
-
-			By("the Deployment mounts an aggregated secrets volume and the matching HOMEPAGE_FILE_* env var")
-			dep := &appsv1.Deployment{}
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
-			}).Should(Succeed())
-			Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", secretsVolumeName)))
-		})
-
-		It("switches kubernetes.yaml to cluster mode when an InfoWidget of type kubernetes is bound", func() {
-			widget := &pagev1alpha1.InfoWidget{
-				ObjectMeta: metav1.ObjectMeta{Name: widgetCRName, Namespace: namespace.Name},
-				Spec: pagev1alpha1.InfoWidgetSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
-					Type:        "kubernetes",
-				},
-			}
-			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
-
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
-
-			cm := &corev1.ConfigMap{}
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, cm)).To(Succeed())
-			}).Should(Succeed())
-			Expect(cm.Data["kubernetes.yaml"]).To(ContainSubstring("cluster"))
+			Expect(rb.RoleRef.Name).To(Equal(InstanceName))
+			Expect(rb.Subjects).To(ContainElement(HaveField("Name", InstanceName)))
 		})
 	})
 
@@ -750,8 +358,6 @@ var _ = Describe("Instance controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
-
-			Expect(os.Setenv("INSTANCE_IMAGE", "example.com/image:test")).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -761,13 +367,12 @@ var _ = Describe("Instance controller", func() {
 				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
 			}
 			_ = k8sClient.Delete(ctx, namespace)
-			_ = os.Unsetenv("INSTANCE_IMAGE")
 		})
 
-		It("creates a Service fronting the Deployment and populates bound-count/render-hash status", func() {
+		It("creates a Service fronting the Deployment and populates bound-count status", func() {
 			instance := &pagev1alpha1.Instance{
 				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -782,7 +387,17 @@ var _ = Describe("Instance controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, bm)).To(Succeed())
 
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			entry := &pagev1alpha1.ServiceEntry{
+				ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: namespace.Name},
+				Spec: pagev1alpha1.ServiceEntrySpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Group:       "Media",
+					Name:        "Sonarr",
+				},
+			}
+			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
 			// The first Reconcile creates the Deployment and returns early
 			// (reconcileDeployment's "handled" requeue path); Service/Ingress
 			// reconciliation and status population happen after that point,
@@ -797,14 +412,14 @@ var _ = Describe("Instance controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, svc)).To(Succeed())
 			}).Should(Succeed())
-			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", int32(3000))))
-			Expect(svc.Spec.Selector).To(Equal(labelsForInstance()))
+			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", int32(8080))))
+			Expect(svc.Spec.Selector).To(Equal(selectorLabelsForInstance()))
 
-			By("status reflects the bound Bookmark count and a non-empty render hash")
+			By("status reflects the bound Bookmark and ServiceEntry counts")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
 			Expect(instance.Status.BoundBookmarks).To(Equal(int32(1)))
+			Expect(instance.Status.BoundServiceEntries).To(Equal(int32(1)))
 			Expect(instance.Status.BoundConfigurations).To(Equal(int32(0)))
-			Expect(instance.Status.RenderHash).NotTo(BeEmpty())
 			Expect(instance.Status.ObservedGeneration).To(Equal(instance.Generation))
 		})
 
@@ -813,17 +428,17 @@ var _ = Describe("Instance controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.InstanceSpec{
 					Size:          ptr.To(int32(1)),
-					ContainerPort: 3000,
+					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
 						Enabled: true,
-						Host:    "homepage.example.com",
-						TLS:     &pagev1alpha1.IngressTLSSpec{SecretName: "homepage-tls"},
+						Host:    testDashboardHost,
+						TLS:     &pagev1alpha1.IngressTLSSpec{SecretName: "dashboard-tls"},
 					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
-			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
 			// See the comment in the previous It: the first Reconcile only
 			// creates the Deployment and returns early.
 			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
@@ -837,9 +452,9 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, ing)).To(Succeed())
 			}).Should(Succeed())
 			Expect(ing.Spec.Rules).To(HaveLen(1))
-			Expect(ing.Spec.Rules[0].Host).To(Equal("homepage.example.com"))
+			Expect(ing.Spec.Rules[0].Host).To(Equal(testDashboardHost))
 			Expect(ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name).To(Equal(InstanceName))
-			Expect(ing.Spec.TLS).To(ContainElement(HaveField("SecretName", "homepage-tls")))
+			Expect(ing.Spec.TLS).To(ContainElement(HaveField("SecretName", "dashboard-tls")))
 
 			By("disabling spec.ingress.enabled removes the Ingress")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
@@ -851,6 +466,144 @@ var _ = Describe("Instance controller", func() {
 
 			Eventually(func(g Gomega) {
 				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, typeNamespacedName, &networkingv1.Ingress{}))).To(BeTrue())
+			}).Should(Succeed())
+		})
+	})
+
+	Context("Instance controller Gateway API test", func() {
+
+		const InstanceName = "test-instance-gateway"
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-gateway-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+		})
+
+		It("reports a clear Available=False condition when spec.gateway is enabled but Gateway API CRDs aren't installed", func() {
+			// envtest only installs this project's own CRDs (see suite_test.go),
+			// so GatewayAPIEnabled is always false here — exactly the
+			// degrade-gracefully path reconcileHTTPRoute exists for, since a
+			// real cluster without Gateway API CRDs installed is the common
+			// case this guards against.
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.InstanceSpec{
+					Size:          ptr.To(int32(1)),
+					ContainerPort: 8080,
+					Gateway: &pagev1alpha1.GatewaySpec{
+						Enabled:   true,
+						Hostnames: []string{testDashboardHost},
+						ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage, GatewayAPIEnabled: false}
+			// See the comment on the Ingress test: the first Reconcile only
+			// creates the Deployment and returns early.
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(MatchError(errGatewayAPINotInstalled))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			var conditions []metav1.Condition
+			Expect(instance.Status.Conditions).To(ContainElement(
+				HaveField("Type", Equal(typeAvailableInstance)), &conditions))
+			Expect(conditions[len(conditions)-1].Status).To(Equal(metav1.ConditionFalse))
+			Expect(conditions[len(conditions)-1].Message).To(ContainSubstring("Gateway API CRDs are not installed"))
+		})
+
+		It("is a no-op when spec.gateway is unset, regardless of GatewayAPIEnabled", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage, GatewayAPIEnabled: false}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			var conditions []metav1.Condition
+			Expect(instance.Status.Conditions).To(ContainElement(
+				HaveField("Type", Equal(typeAvailableInstance)), &conditions))
+			Expect(conditions[len(conditions)-1].Status).To(Equal(metav1.ConditionTrue))
+		})
+	})
+
+	Context("Instance controller image drift test", func() {
+
+		const InstanceName = "test-instance-image-drift"
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-image-drift-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+		})
+
+		It("rolls the Deployment when DashboardImage changes between reconciles (operator upgrade)", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			reconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.Containers[0].Image).To(Equal(testDashboardImage))
+
+			By("reconciling again with a different DashboardImage simulates an operator upgrade")
+			reconciler.DashboardImage = "example.com/image:upgraded"
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.Containers[0].Image).To(Equal("example.com/image:upgraded"))
 			}).Should(Succeed())
 		})
 	})

@@ -7,5 +7,15 @@ metadata:
   name: instance-sample
 spec:
   size: 1
-  containerPort: 3000
-  allowedHosts: instance-sample.default.svc.cluster.local
+  containerPort: 8080
+  # Expose the dashboard outside the cluster via one of:
+  # ingress:
+  #   enabled: true
+  #   host: dashboard.example.com
+  #   ingressClassName: nginx
+  # gateway:
+  #   enabled: true
+  #   hostnames: [dashboard.example.com]
+  #   parentRef:
+  #     name: my-gateway
+  #     namespace: gateway-system

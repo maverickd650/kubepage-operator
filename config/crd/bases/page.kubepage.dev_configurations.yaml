@@ -81,12 +81,6 @@ spec:
                     format: int32
                     type: integer
                 type: object
-              cardBlur:
-                description: |-
-                  Apply a blur filter to the service and bookmark cards. A Tailwind
-                  backdrop-blur size keyword (e.g. "xs", "md"). Incompatible with the
-                  background blur/saturate/brightness filters.
-                type: string
               color:
                 description: Fixed color palette, disabling the palette switcher.
                 enum:
@@ -113,21 +107,6 @@ spec:
                 - red
                 - white
                 type: string
-              description:
-                description: Customise the page description.
-                type: string
-              extra:
-                description: |-
-                  Extra carries any settings.yaml keys not modeled as typed fields above
-                  (e.g. providers, pwa, quicklaunch, layout, blockHighlights). Keys here
-                  are merged into the rendered settings.yaml; a key also set by a typed
-                  field above is overridden by the typed field's value.
-                x-kubernetes-preserve-unknown-fields: true
-              favicon:
-                description: |-
-                  Specify a custom favicon instead of the included one; a full URL or a
-                  path relative to /app/public.
-                type: string
               fullWidth:
                 description: Use the entire window width instead of a centered, constrained
                   layout.
@@ -140,10 +119,6 @@ spec:
                 - clean
                 - boxedWidgets
                 type: string
-              hideVersion:
-                description: Hide the homepage release version shown at the bottom
-                  of the page.
-                type: boolean
               instanceRef:
                 description: InstanceRef names the Instance this Configuration applies
                   to.
@@ -161,8 +136,7 @@ spec:
               search:
                 description: |-
                   Search configures the native dashboard's header search box (card
-                  filtering + web-search fallthrough). Has no effect on the
-                  homepage-wrapper render path.
+                  filtering + web-search fallthrough).
                 properties:
                   filterCards:
                     default: true
@@ -197,26 +171,12 @@ spec:
                       is appended as a URL-encoded "q" parameter.
                     type: string
                 type: object
-              startUrl:
-                default: /
-                description: Customise the start url if required. Default is "/".
-                type: string
-              target:
-                description: Default link target for service/bookmark hrefs.
-                enum:
-                - _blank
-                - _self
-                - _top
-                type: string
               theme:
                 description: Fixed theme, disabling the theme switcher. One of "light"
                   or "dark".
                 enum:
                 - light
                 - dark
-                type: string
-              title:
-                description: Customise the page title.
                 type: string
             required:
             - instanceRef

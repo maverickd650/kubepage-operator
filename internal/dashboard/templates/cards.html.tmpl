@@ -5,7 +5,7 @@
       <div class="card" id="card-{{.Key}}" data-name="{{.ServiceName}}" data-description="{{.Description}}">
         <h3>
           {{if .IconURL}}<img class="icon" src="{{.IconURL}}" alt="">{{end}}
-          {{.ServiceName}}
+          {{if .Href}}<a href="{{.Href}}">{{.ServiceName}}</a>{{else}}{{.ServiceName}}{{end}}
         </h3>
         {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
         {{if .Err}}

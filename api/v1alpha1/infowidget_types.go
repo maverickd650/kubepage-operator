@@ -9,37 +9,33 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// InfoWidgetSpec defines one header/info widget rendered into homepage's
-// widgets.yaml (resources, search, datetime, openmeteo, kubernetes, ...).
-// Unlike ServiceEntry/Bookmark, widgets.yaml has no group concept — it's a
-// flat, ordered list — so there is no Group field here.
+// InfoWidgetSpec defines one header/info widget. Not yet rendered by the
+// native dashboard (D11 / Phase 6) — kept for when header-widget support is
+// added; see IMPLEMENTATION_PLAN.md's Phase 6 risk notes. Has no Group field
+// since header widgets are a flat, ordered list rather than grouped like
+// ServiceEntry/Bookmark.
 type InfoWidgetSpec struct {
 	// InstanceRef names the Instance this InfoWidget belongs to.
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Type is the widget type, e.g. "resources", "search", "datetime",
-	// "openmeteo", "kubernetes". See homepage's info-widget docs for the full
-	// list.
+	// Type is the widget type, e.g. "resources", "search", "datetime".
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	Type string `json:"type"`
 
 	// Order controls rendering position: widgets are sorted by Order (nil
 	// sorts last), ties broken by the InfoWidget object's name, since CRDs
-	// have no inherent ordering but widgets.yaml's list is ordered. Purely an
-	// operator-side rendering concern; not a homepage field.
+	// have no inherent ordering of their own.
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
-	// Secret-bearing option fields, resolved via a mounted Secret file rather
-	// than stored inline. Merged into Options at render time under the same
-	// field names.
+	// Secret-bearing option fields. Merged into Options under the same field
+	// names once a renderer for this CRD exists.
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
-	// Options holds every widget-type-specific field (e.g. the kubernetes
-	// widget's cluster/nodes blocks, the search widget's provider/target).
+	// Options holds every widget-type-specific field.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Options *apiextensionsv1.JSON `json:"options,omitempty"`

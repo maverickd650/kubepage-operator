@@ -266,12 +266,6 @@ spec:
                     format: int32
                     type: integer
                 type: object
-              cardBlur:
-                description: |-
-                  Apply a blur filter to the service and bookmark cards. A Tailwind
-                  backdrop-blur size keyword (e.g. "xs", "md"). Incompatible with the
-                  background blur/saturate/brightness filters.
-                type: string
               color:
                 description: Fixed color palette, disabling the palette switcher.
                 enum:
@@ -298,21 +292,6 @@ spec:
                 - red
                 - white
                 type: string
-              description:
-                description: Customise the page description.
-                type: string
-              extra:
-                description: |-
-                  Extra carries any settings.yaml keys not modeled as typed fields above
-                  (e.g. providers, pwa, quicklaunch, layout, blockHighlights). Keys here
-                  are merged into the rendered settings.yaml; a key also set by a typed
-                  field above is overridden by the typed field's value.
-                x-kubernetes-preserve-unknown-fields: true
-              favicon:
-                description: |-
-                  Specify a custom favicon instead of the included one; a full URL or a
-                  path relative to /app/public.
-                type: string
               fullWidth:
                 description: Use the entire window width instead of a centered, constrained
                   layout.
@@ -325,10 +304,6 @@ spec:
                 - clean
                 - boxedWidgets
                 type: string
-              hideVersion:
-                description: Hide the homepage release version shown at the bottom
-                  of the page.
-                type: boolean
               instanceRef:
                 description: InstanceRef names the Instance this Configuration applies
                   to.
@@ -346,8 +321,7 @@ spec:
               search:
                 description: |-
                   Search configures the native dashboard's header search box (card
-                  filtering + web-search fallthrough). Has no effect on the
-                  homepage-wrapper render path.
+                  filtering + web-search fallthrough).
                 properties:
                   filterCards:
                     default: true
@@ -382,26 +356,12 @@ spec:
                       is appended as a URL-encoded "q" parameter.
                     type: string
                 type: object
-              startUrl:
-                default: /
-                description: Customise the start url if required. Default is "/".
-                type: string
-              target:
-                description: Default link target for service/bookmark hrefs.
-                enum:
-                - _blank
-                - _self
-                - _top
-                type: string
               theme:
                 description: Fixed theme, disabling the theme switcher. One of "light"
                   or "dark".
                 enum:
                 - light
                 - dark
-                type: string
-              title:
-                description: Customise the page title.
                 type: string
             required:
             - instanceRef
@@ -554,16 +514,13 @@ spec:
                 - name
                 type: object
               options:
-                description: |-
-                  Options holds every widget-type-specific field (e.g. the kubernetes
-                  widget's cluster/nodes blocks, the search widget's provider/target).
+                description: Options holds every widget-type-specific field.
                 x-kubernetes-preserve-unknown-fields: true
               order:
                 description: |-
                   Order controls rendering position: widgets are sorted by Order (nil
                   sorts last), ties broken by the InfoWidget object's name, since CRDs
-                  have no inherent ordering but widgets.yaml's list is ordered. Purely an
-                  operator-side rendering concern; not a homepage field.
+                  have no inherent ordering of their own.
                 format: int32
                 type: integer
               secrets:
@@ -606,15 +563,12 @@ spec:
                       type: string
                   type: object
                 description: |-
-                  Secret-bearing option fields, resolved via a mounted Secret file rather
-                  than stored inline. Merged into Options at render time under the same
-                  field names.
+                  Secret-bearing option fields. Merged into Options under the same field
+                  names once a renderer for this CRD exists.
                 type: object
               type:
-                description: |-
-                  Type is the widget type, e.g. "resources", "search", "datetime",
-                  "openmeteo", "kubernetes". See homepage's info-widget docs for the full
-                  list.
+                description: Type is the widget type, e.g. "resources", "search",
+                  "datetime".
                 minLength: 1
                 type: string
             required:
@@ -755,27 +709,14 @@ spec:
           spec:
             description: spec defines the desired state of Instance
             properties:
-              allowedHosts:
-                description: |-
-                  AllowedHosts is a comma-separated list of hostnames homepage will accept
-                  requests for (maps to HOMEPAGE_ALLOWED_HOSTS). Homepage rejects requests
-                  for hosts not in this list, so this must include every hostname/IP used
-                  to reach the dashboard (Service DNS name, Ingress host, port-forward
-                  address, etc).
-                type: string
               annotations:
                 additionalProperties:
                   type: string
                 description: Additional annotations to add to the workload and pod
                 type: object
-              appUrl:
-                description: |-
-                  External URL homepage can be reached at
-                  See the official documentation for APP_URL
-                type: string
               containerPort:
-                description: containerPort defines the port that will be used to init
-                  the container with the image
+                description: containerPort defines the port the dashboard HTTP server
+                  listens on
                 format: int32
                 type: integer
               containerSecurityContext:
@@ -1126,6 +1067,57 @@ spec:
                   - name
                   type: object
                 type: array
+              gateway:
+                description: |-
+                  Gateway optionally exposes the dashboard Service via a Gateway API
+                  HTTPRoute instead of (or alongside) Ingress. Off by default, and only
+                  takes effect if the cluster has Gateway API CRDs installed — the
+                  Instance controller checks this once at startup and surfaces a clear
+                  status condition if Gateway is set but the CRDs aren't present, rather
+                  than crashing the manager trying to watch a Kind that doesn't exist.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to set on the generated HTTPRoute.
+                    type: object
+                  enabled:
+                    default: false
+                    description: Enabled creates and manages an HTTPRoute for this
+                      Instance when true.
+                    type: boolean
+                  hostnames:
+                    description: Hostnames the HTTPRoute matches. At least one is
+                      required.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  parentRef:
+                    description: ParentRef names the Gateway this HTTPRoute attaches
+                      to.
+                    properties:
+                      name:
+                        description: Name of the Gateway.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace of the Gateway. Defaults to the Instance's own namespace if
+                          unset.
+                        type: string
+                      sectionName:
+                        description: |-
+                          SectionName names a specific listener on the Gateway to attach to.
+                          Leave unset to attach to every listener that allows it.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - hostnames
+                - parentRef
+                type: object
               hostUsers:
                 default: true
                 description: |-
@@ -1134,8 +1126,8 @@ spec:
                 type: boolean
               ingress:
                 description: |-
-                  Ingress optionally exposes the homepage Service via an Ingress. Off by
-                  default: most users reach homepage through a Service (port-forward,
+                  Ingress optionally exposes the dashboard Service via an Ingress. Off by
+                  default: most users reach the dashboard through a Service (port-forward,
                   LoadBalancer, existing Ingress/Gateway managed outside this operator,
                   etc.), so this operator shouldn't assume an IngressClass / external-DNS
                   / cert-manager setup is present.
@@ -1153,7 +1145,7 @@ spec:
                       when true.
                     type: boolean
                   host:
-                    description: Host is the hostname routed to the homepage Service.
+                    description: Host is the hostname routed to the dashboard Service.
                     type: string
                   ingressClassName:
                     description: |-
@@ -1875,13 +1867,6 @@ spec:
                   status reflects.
                 format: int64
                 type: integer
-              renderHash:
-                description: |-
-                  RenderHash is the hash of the most recently rendered homepage config,
-                  also set as the pod template's page.kubepage.dev/config-hash
-                  annotation. Useful to confirm a Deployment rollout actually picked up
-                  a config change.
-                type: string
             type: object
         required:
         - spec
@@ -1950,13 +1935,12 @@ spec:
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) services.yaml group this entry
-                  belongs to. Entries sharing a Group are rendered together.
+                  Group is the name of the (top-level) group this entry belongs to.
+                  Entries sharing a Group are rendered together.
                 minLength: 1
                 type: string
-              hideErrors:
-                type: boolean
               href:
+                description: Href makes the card's title a link to the service.
                 type: string
               icon:
                 type: string
@@ -1979,52 +1963,29 @@ spec:
                 description: |-
                   Order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
-                  inherent ordering but services.yaml's groups/entries are an ordered
-                  list. Purely an operator-side rendering concern; not a homepage field.
+                  inherent ordering but the dashboard's groups/entries are displayed in a
+                  fixed order.
                 format: int32
                 type: integer
-              ping:
-                description: Ping monitors host availability via ICMP ping.
-                type: string
-              showStats:
-                type: boolean
-              siteMonitor:
-                description: SiteMonitor checks a URL's availability via HTTP HEAD
-                  (falling back to GET).
-                type: string
-              statusStyle:
-                description: |-
-                  StatusStyle overrides the global statusStyle for this service's
-                  docker/k8s status, site monitor, and ping indicators.
-                enum:
-                - dot
-                - basic
-                type: string
-              target:
-                description: Target overrides the link target for this service's href.
-                enum:
-                - _blank
-                - _self
-                - _top
-                type: string
               widgets:
                 description: |-
-                  Widgets attached to this service. Zero, one, or many are allowed;
-                  rendered as homepage's singular widget: key for exactly one, or
-                  widgets: for more than one.
+                  Widgets attached to this service. Zero, one, or many are allowed; the
+                  dashboard polls each one independently and shows its fields on the
+                  card.
                 items:
                   description: |-
-                    ServiceWidget configures a homepage service-card widget. Type and URL are
-                    typed because nearly every widget has them; everything else (fields,
-                    headers, highlight, valueOnly, and the long tail of widget-specific knobs)
-                    goes in Config. Secret-bearing fields (e.g. "key") go in Secrets instead of
-                    Config: the operator resolves them into a mounted-file placeholder rather
-                    than storing the value inline.
+                    ServiceWidget configures one of the native dashboard's pollable widgets
+                    (internal/dashboard's Widget interface) for a service card. Type and URL
+                    are typed because nearly every widget has them; everything else
+                    (widget-type-specific options) goes in Config. Secret-bearing fields (e.g.
+                    API tokens) go in Secrets instead of Config: the dashboard resolves them
+                    directly in-process at poll time, so the plaintext value never appears in
+                    pod env, a ConfigMap, or a projected file.
                   properties:
                     config:
                       description: |-
-                        Remaining widget fields not covered above (fields, headers, highlight,
-                        valueOnly, and any widget-type-specific options).
+                        Remaining widget-type-specific options (e.g. PrometheusMetric's
+                        "query", Cloudflared's "accountId"/"tunnelId").
                       x-kubernetes-preserve-unknown-fields: true
                     secrets:
                       additionalProperties:
@@ -2066,14 +2027,14 @@ spec:
                             type: string
                         type: object
                       description: |-
-                        Secret-bearing widget fields (commonly "key", sometimes "username"/
-                        "password"/"token" depending on widget type), resolved via a mounted
-                        Secret file rather than stored inline.
+                        Secret-bearing widget fields (commonly "token", sometimes "username"/
+                        "password" depending on widget type), resolved directly by the
+                        dashboard backend rather than stored inline.
                       type: object
                     type:
                       description: |-
-                        Widget type, e.g. "sonarr", "uptimekuma". See homepage's widget docs
-                        for the full list.
+                        Widget type, e.g. "plex", "grafana", "unifi". See internal/dashboard
+                        for the registered set.
                       minLength: 1
                       type: string
                     url:
@@ -2503,7 +2464,15 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
   - services
   verbs:
   - create
@@ -2512,15 +2481,6 @@ rules:
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  - secrets
-  verbs:
-  - get
-  - list
   - watch
 - apiGroups:
   - apps
@@ -2541,6 +2501,18 @@ rules:
   verbs:
   - create
   - patch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - networking.k8s.io
   resources:
@@ -2591,6 +2563,19 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -2787,8 +2772,14 @@ spec:
         command:
         - /manager
         env:
-        - name: INSTANCE_IMAGE
-          value: ghcr.io/gethomepage/homepage:v1.13.2
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         image: controller:latest
         livenessProbe:
           httpGet:

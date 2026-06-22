@@ -22,22 +22,9 @@ type InstanceSpec struct {
 	// +optional
 	Size *int32 `json:"size,omitempty"`
 
-	// containerPort defines the port that will be used to init the container with the image
+	// containerPort defines the port the dashboard HTTP server listens on
 	// +required
 	ContainerPort int32 `json:"containerPort"`
-
-	// External URL homepage can be reached at
-	// See the official documentation for APP_URL
-	// +optional
-	AppURL string `json:"appUrl,omitempty"`
-
-	// AllowedHosts is a comma-separated list of hostnames homepage will accept
-	// requests for (maps to HOMEPAGE_ALLOWED_HOSTS). Homepage rejects requests
-	// for hosts not in this list, so this must include every hostname/IP used
-	// to reach the dashboard (Service DNS name, Ingress host, port-forward
-	// address, etc).
-	// +optional
-	AllowedHosts string `json:"allowedHosts,omitempty"`
 
 	// Additional environment variables to set
 	// Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)
@@ -77,23 +64,32 @@ type InstanceSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// Ingress optionally exposes the homepage Service via an Ingress. Off by
-	// default: most users reach homepage through a Service (port-forward,
+	// Ingress optionally exposes the dashboard Service via an Ingress. Off by
+	// default: most users reach the dashboard through a Service (port-forward,
 	// LoadBalancer, existing Ingress/Gateway managed outside this operator,
 	// etc.), so this operator shouldn't assume an IngressClass / external-DNS
 	// / cert-manager setup is present.
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+
+	// Gateway optionally exposes the dashboard Service via a Gateway API
+	// HTTPRoute instead of (or alongside) Ingress. Off by default, and only
+	// takes effect if the cluster has Gateway API CRDs installed — the
+	// Instance controller checks this once at startup and surfaces a clear
+	// status condition if Gateway is set but the CRDs aren't present, rather
+	// than crashing the manager trying to watch a Kind that doesn't exist.
+	// +optional
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
 }
 
-// IngressSpec configures an Ingress exposing the homepage Service.
+// IngressSpec configures an Ingress exposing the dashboard Service.
 type IngressSpec struct {
 	// Enabled creates and manages an Ingress for this Instance when true.
 	// +kubebuilder:default=false
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
-	// Host is the hostname routed to the homepage Service.
+	// Host is the hostname routed to the dashboard Service.
 	// +required
 	Host string `json:"host"`
 
@@ -120,6 +116,49 @@ type IngressTLSSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	SecretName string `json:"secretName"`
+}
+
+// GatewaySpec configures a Gateway API HTTPRoute exposing the dashboard
+// Service, attached to an existing Gateway (TLS termination, listener
+// config, etc. are the Gateway's concern, not this operator's — mirroring
+// how IngressSpec leaves cert-manager/IngressClass setup to the cluster).
+type GatewaySpec struct {
+	// Enabled creates and manages an HTTPRoute for this Instance when true.
+	// +kubebuilder:default=false
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Hostnames the HTTPRoute matches. At least one is required.
+	// +kubebuilder:validation:MinItems=1
+	// +required
+	Hostnames []string `json:"hostnames"`
+
+	// ParentRef names the Gateway this HTTPRoute attaches to.
+	// +required
+	ParentRef GatewayParentRef `json:"parentRef"`
+
+	// Annotations to set on the generated HTTPRoute.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// GatewayParentRef names the Gateway (and optionally one of its listeners)
+// an HTTPRoute attaches to.
+type GatewayParentRef struct {
+	// Name of the Gateway.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Name string `json:"name"`
+
+	// Namespace of the Gateway. Defaults to the Instance's own namespace if
+	// unset.
+	// +optional
+	Namespace *string `json:"namespace,omitempty"`
+
+	// SectionName names a specific listener on the Gateway to attach to.
+	// Leave unset to attach to every listener that allows it.
+	// +optional
+	SectionName *string `json:"sectionName,omitempty"`
 }
 
 // InstanceStatus defines the observed state of Instance
@@ -153,13 +192,6 @@ type InstanceStatus struct {
 	// this Instance.
 	// +optional
 	BoundInfoWidgets int32 `json:"boundInfoWidgets,omitempty"`
-
-	// RenderHash is the hash of the most recently rendered homepage config,
-	// also set as the pod template's page.kubepage.dev/config-hash
-	// annotation. Useful to confirm a Deployment rollout actually picked up
-	// a config change.
-	// +optional
-	RenderHash string `json:"renderHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true
