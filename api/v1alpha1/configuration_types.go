@@ -75,6 +75,33 @@ type ConfigurationSpec struct {
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
+	// Title is the dashboard's browser tab title and header heading.
+	// Defaults to "kubepage" when unset.
+	// +optional
+	Title *string `json:"title,omitempty"`
+
+	// Description is shown as a header subtitle and the page's meta
+	// description.
+	// +optional
+	Description *string `json:"description,omitempty"`
+
+	// Favicon is a URL to the dashboard's favicon.
+	// +optional
+	Favicon *string `json:"favicon,omitempty"`
+
+	// CardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
+	// size keyword (e.g. "sm", "md", "xl"). Most visible over a background
+	// image.
+	// +optional
+	CardBlur *string `json:"cardBlur,omitempty"`
+
+	// Target is the default link target for service and bookmark cards.
+	// Individual ServiceEntries may override it via their own target.
+	// +kubebuilder:validation:Enum=_blank;_self
+	// +kubebuilder:default=_blank
+	// +optional
+	Target *string `json:"target,omitempty"`
+
 	// Background image and filters, used instead of the solid theme color.
 	// +optional
 	Background *BackgroundSpec `json:"background,omitempty"`

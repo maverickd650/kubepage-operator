@@ -9,4 +9,10 @@ const (
 	testHTTP500         = "HTTP 500"
 	testHTTP401         = "HTTP 401"
 	testUnreachableAddr = "http://127.0.0.1:1"
+
+	// Shared literals across the look/monitor/header tests.
+	testCfgName       = "cfg"
+	testSvcName       = "svc"
+	testHeaderWeather = "weather"
+	testStatusBasic   = "basic"
 )

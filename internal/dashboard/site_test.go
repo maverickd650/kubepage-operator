@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -49,6 +50,83 @@ func TestLoadSitePicksLexicographicallyFirstConfiguration(t *testing.T) {
 	}
 	if site.Theme != defaultTheme {
 		t.Errorf("Theme = %q, want %q (lexicographically-first Configuration by name)", site.Theme, defaultTheme)
+	}
+}
+
+func TestLoadSiteAppliesLookFields(t *testing.T) {
+	scheme := testScheme(t)
+	title := "Home Lab"
+	desc := "My services"
+	favicon := "https://example.invalid/favicon.ico"
+	cardBlur := "md"
+	target := "_self"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Title:       &title,
+			Description: &desc,
+			Favicon:     &favicon,
+			CardBlur:    &cardBlur,
+			Target:      &target,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Title != title || site.Description != desc || site.Favicon != favicon || site.Target != target {
+		t.Errorf("look fields = %+v", site)
+	}
+	if site.CardBlur != "12px" {
+		t.Errorf("CardBlur = %q, want 12px (md keyword)", site.CardBlur)
+	}
+}
+
+func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
+	scheme := testScheme(t)
+	order1 := int32(1)
+	order2 := int32(2)
+	greeting := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        headerTypeGreeting,
+			Order:       &order2,
+			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
+		},
+	}
+	clock := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "clock", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        headerTypeDatetime,
+			Order:       &order1,
+		},
+	}
+	other := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "skip", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-" + testInstanceName},
+			Type:        headerTypeGreeting,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(greeting, clock, other).Build()
+
+	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if len(site.HeaderWidgets) != 2 {
+		t.Fatalf("HeaderWidgets = %+v, want 2 (bound only)", site.HeaderWidgets)
+	}
+	if site.HeaderWidgets[0].Type != headerTypeDatetime || site.HeaderWidgets[1].Type != headerTypeGreeting {
+		t.Errorf("HeaderWidgets order = %+v, want datetime then greeting (by Order)", site.HeaderWidgets)
+	}
+	if site.HeaderWidgets[1].Options["text"] != "Hello" {
+		t.Errorf("greeting options = %+v, want text=Hello", site.HeaderWidgets[1].Options)
 	}
 }
 

@@ -72,11 +72,47 @@ type ServiceEntrySpec struct {
 	// +optional
 	Href *string `json:"href,omitempty"`
 
+	// Target overrides the Configuration's default link target for this
+	// card's Href ("_blank" opens a new tab, "_self" the same tab).
+	// +kubebuilder:validation:Enum=_blank;_self
+	// +optional
+	Target *string `json:"target,omitempty"`
+
 	// +optional
 	Icon *string `json:"icon,omitempty"`
 
 	// +optional
 	Description *string `json:"description,omitempty"`
+
+	// ShowStats controls whether the polled widget fields are displayed on
+	// the card. Defaults to true; set false to show only the title/icon/
+	// description (and any monitor status).
+	// +optional
+	ShowStats *bool `json:"showStats,omitempty"`
+
+	// HideErrors suppresses a widget's error text on the card (e.g. for a
+	// service that is expected to be intermittently unreachable). Defaults
+	// to false.
+	// +optional
+	HideErrors *bool `json:"hideErrors,omitempty"`
+
+	// Ping is a URL probed over HTTP for reachability and latency, shown as
+	// an up/down status on the card. (Raw ICMP is not used, so a pod needs
+	// no elevated capabilities.)
+	// +optional
+	Ping *string `json:"ping,omitempty"`
+
+	// SiteMonitor is a URL probed over HTTP, shown as an up/down status with
+	// response latency on the card.
+	// +optional
+	SiteMonitor *string `json:"siteMonitor,omitempty"`
+
+	// StatusStyle controls how the Ping/SiteMonitor status renders: "dot" a
+	// colored status dot, "basic" up/down text. Ignored unless Ping or
+	// SiteMonitor is set.
+	// +kubebuilder:validation:Enum=dot;basic
+	// +optional
+	StatusStyle *string `json:"statusStyle,omitempty"`
 
 	// Widgets attached to this service. Zero, one, or many are allowed; the
 	// dashboard polls each one independently and shows its fields on the

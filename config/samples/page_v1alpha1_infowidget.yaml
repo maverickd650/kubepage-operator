@@ -4,11 +4,42 @@ metadata:
   labels:
     app.kubernetes.io/name: kubepage-operator
     app.kubernetes.io/managed-by: kustomize
-  name: infowidget-sample
+  name: infowidget-greeting
 spec:
   instanceRef:
     name: instance-sample
-  type: resources
+  type: greeting
+  order: 1
   options:
-    cpu: true
-    memory: true
+    text: Welcome to the lab
+---
+apiVersion: page.kubepage.dev/v1alpha1
+kind: InfoWidget
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: infowidget-datetime
+spec:
+  instanceRef:
+    name: instance-sample
+  type: datetime
+  order: 2
+---
+apiVersion: page.kubepage.dev/v1alpha1
+kind: InfoWidget
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: infowidget-weather
+spec:
+  instanceRef:
+    name: instance-sample
+  type: openmeteo
+  order: 3
+  options:
+    latitude: 51.5074
+    longitude: -0.1278
+    units: metric
+    label: London

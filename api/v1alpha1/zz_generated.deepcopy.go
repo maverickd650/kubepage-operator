@@ -231,6 +231,31 @@ func (in *ConfigurationList) DeepCopyObject() runtime.Object {
 func (in *ConfigurationSpec) DeepCopyInto(out *ConfigurationSpec) {
 	*out = *in
 	out.InstanceRef = in.InstanceRef
+	if in.Title != nil {
+		in, out := &in.Title, &out.Title
+		*out = new(string)
+		**out = **in
+	}
+	if in.Description != nil {
+		in, out := &in.Description, &out.Description
+		*out = new(string)
+		**out = **in
+	}
+	if in.Favicon != nil {
+		in, out := &in.Favicon, &out.Favicon
+		*out = new(string)
+		**out = **in
+	}
+	if in.CardBlur != nil {
+		in, out := &in.CardBlur, &out.CardBlur
+		*out = new(string)
+		**out = **in
+	}
+	if in.Target != nil {
+		in, out := &in.Target, &out.Target
+		*out = new(string)
+		**out = **in
+	}
 	if in.Background != nil {
 		in, out := &in.Background, &out.Background
 		*out = new(BackgroundSpec)
@@ -820,6 +845,11 @@ func (in *ServiceEntrySpec) DeepCopyInto(out *ServiceEntrySpec) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.Target != nil {
+		in, out := &in.Target, &out.Target
+		*out = new(string)
+		**out = **in
+	}
 	if in.Icon != nil {
 		in, out := &in.Icon, &out.Icon
 		*out = new(string)
@@ -827,6 +857,31 @@ func (in *ServiceEntrySpec) DeepCopyInto(out *ServiceEntrySpec) {
 	}
 	if in.Description != nil {
 		in, out := &in.Description, &out.Description
+		*out = new(string)
+		**out = **in
+	}
+	if in.ShowStats != nil {
+		in, out := &in.ShowStats, &out.ShowStats
+		*out = new(bool)
+		**out = **in
+	}
+	if in.HideErrors != nil {
+		in, out := &in.HideErrors, &out.HideErrors
+		*out = new(bool)
+		**out = **in
+	}
+	if in.Ping != nil {
+		in, out := &in.Ping, &out.Ping
+		*out = new(string)
+		**out = **in
+	}
+	if in.SiteMonitor != nil {
+		in, out := &in.SiteMonitor, &out.SiteMonitor
+		*out = new(string)
+		**out = **in
+	}
+	if in.StatusStyle != nil {
+		in, out := &in.StatusStyle, &out.StatusStyle
 		*out = new(string)
 		**out = **in
 	}

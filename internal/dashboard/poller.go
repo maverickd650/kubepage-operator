@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -57,36 +58,100 @@ func (p *Poller) Run(ctx context.Context) {
 }
 
 func (p *Poller) pollOnce(ctx context.Context) {
+	keep := map[string]bool{}
+
 	var entries pagev1alpha1.ServiceEntryList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
 		pollerLog.Error(err, "listing ServiceEntries")
 		return
 	}
-
-	keep := map[string]bool{}
 	for _, entry := range entries.Items {
 		if entry.Spec.InstanceRef.Name != p.InstanceName {
 			continue
 		}
 
-		for i, widget := range entry.Spec.Widgets {
+		// Probe the entry's monitor (ping/siteMonitor) at most once, then
+		// attach the result to every card built for the entry.
+		status, statusStyle, latency := p.monitor(ctx, entry)
+
+		if len(entry.Spec.Widgets) == 0 {
+			// A service with a monitor but no widget still gets one card so
+			// its up/down status is visible.
+			if status != "" {
+				key := fmt.Sprintf("%s/%s/monitor", entry.Namespace, entry.Name)
+				keep[key] = true
+				p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency)
+			}
+			continue
+		}
+
+		for i := range entry.Spec.Widgets {
 			key := fmt.Sprintf("%s/%s/%d", entry.Namespace, entry.Name, i)
 			keep[key] = true
-			p.pollWidget(ctx, key, entry, widget)
+			p.pollWidget(ctx, key, entry, &entry.Spec.Widgets[i], status, statusStyle, latency)
+		}
+	}
+
+	// Header widgets: poll InfoWidgets whose type is a registered (pollable)
+	// widget — currently openmeteo. datetime/greeting carry no registered
+	// widget, so they're skipped here and rendered statically by LoadSite.
+	var infoWidgets pagev1alpha1.InfoWidgetList
+	if err := p.Reader.List(ctx, &infoWidgets, client.InNamespace(p.Namespace)); err != nil {
+		pollerLog.Error(err, "listing InfoWidgets")
+	} else {
+		for _, iw := range infoWidgets.Items {
+			if iw.Spec.InstanceRef.Name != p.InstanceName {
+				continue
+			}
+			if _, ok := Lookup(iw.Spec.Type); !ok {
+				continue
+			}
+			key := fmt.Sprintf("header/%s", iw.Name)
+			keep[key] = true
+			p.pollInfoWidget(ctx, key, iw)
 		}
 	}
 
 	p.Store.Prune(keep)
 }
 
-func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceEntry, widget pagev1alpha1.ServiceWidget) {
+// monitor probes the entry's Ping/SiteMonitor (SiteMonitor preferred when both
+// set) over HTTP, returning the resolved status/style/latency, or empty
+// strings when neither is configured.
+func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (status, statusStyle, latency string) {
+	url := ""
+	switch {
+	case entry.Spec.SiteMonitor != nil && *entry.Spec.SiteMonitor != "":
+		url = *entry.Spec.SiteMonitor
+	case entry.Spec.Ping != nil && *entry.Spec.Ping != "":
+		url = *entry.Spec.Ping
+	default:
+		return "", "", ""
+	}
+
+	style := "dot"
+	if entry.Spec.StatusStyle != nil {
+		style = *entry.Spec.StatusStyle
+	}
+	status, latency = monitorResult(ctx, p.HTTPClient, url)
+	return status, style, latency
+}
+
+// pollWidget builds and stores the Card for one of an entry's widgets, with
+// the entry's already-probed monitor status attached. A nil widget means the
+// entry has a monitor but no widget: the card shows only title/icon/monitor.
+func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string) {
 	card := Card{
 		Key:         key,
 		Group:       entry.Spec.Group,
 		ServiceName: entry.Spec.Name,
-		WidgetType:  widget.Type,
 		Order:       entry.Spec.Order,
 		IconURL:     IconURL(entry.Spec.Icon),
+		ShowStats:   entry.Spec.ShowStats == nil || *entry.Spec.ShowStats,
+		HideErrors:  entry.Spec.HideErrors != nil && *entry.Spec.HideErrors,
+		Status:      status,
+		StatusStyle: statusStyle,
+		Latency:     latency,
 		UpdatedAt:   time.Now(),
 	}
 	if entry.Spec.Description != nil {
@@ -95,10 +160,21 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 	if entry.Spec.Href != nil {
 		card.Href = *entry.Spec.Href
 	}
+	if entry.Spec.Target != nil {
+		card.Target = *entry.Spec.Target
+	}
+
+	if widget == nil {
+		p.Store.Set(card)
+		return
+	}
+	card.WidgetType = widget.Type
 
 	impl, ok := Lookup(widget.Type)
 	if !ok {
-		card.Err = fmt.Sprintf("unsupported widget type %q", widget.Type)
+		if !card.HideErrors {
+			card.Err = fmt.Sprintf("unsupported widget type %q", widget.Type)
+		}
 		p.Store.Set(card)
 		return
 	}
@@ -112,6 +188,57 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 	}
 	for field, src := range widget.Secrets {
 		value, err := p.resolveSecret(ctx, entry.Namespace, src)
+		if err != nil {
+			if !card.HideErrors {
+				card.Err = fmt.Sprintf("resolving secret field %q: %v", field, err)
+			}
+			p.Store.Set(card)
+			return
+		}
+		cfg.Secrets[field] = value
+	}
+
+	fields, err := impl.Poll(ctx, p.HTTPClient, cfg)
+	switch {
+	case err != nil && !card.HideErrors:
+		card.Err = err.Error()
+	case err == nil && card.ShowStats:
+		card.Fields = fields
+	}
+	p.Store.Set(card)
+}
+
+// pollInfoWidget builds and stores the header Card for one InfoWidget whose
+// type is a registered widget (e.g. openmeteo). Options become the widget's
+// Config; Secrets are resolved in-process like service widgets.
+func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1.InfoWidget) {
+	card := Card{
+		Key:         key,
+		ServiceName: iw.Name,
+		WidgetType:  iw.Spec.Type,
+		Order:       iw.Spec.Order,
+		Header:      true,
+		ShowStats:   true,
+		UpdatedAt:   time.Now(),
+	}
+
+	impl, _ := Lookup(iw.Spec.Type) // presence already checked by caller
+
+	cfg := WidgetConfig{Secrets: map[string]string{}}
+	if iw.Spec.Options != nil {
+		cfg.Config = iw.Spec.Options.Raw
+		// A header widget has no dedicated URL field; let it set the widget's
+		// base URL via an Options "url" key (widgets ignore the key in their
+		// own config decode).
+		var opts struct {
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(iw.Spec.Options.Raw, &opts); err == nil {
+			cfg.URL = opts.URL
+		}
+	}
+	for field, src := range iw.Spec.Secrets {
+		value, err := p.resolveSecret(ctx, iw.Namespace, src)
 		if err != nil {
 			card.Err = fmt.Sprintf("resolving secret field %q: %v", field, err)
 			p.Store.Set(card)

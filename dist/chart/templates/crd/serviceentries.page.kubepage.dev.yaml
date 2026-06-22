@@ -65,6 +65,12 @@ spec:
                   Entries sharing a Group are rendered together.
                 minLength: 1
                 type: string
+              hideErrors:
+                description: |-
+                  HideErrors suppresses a widget's error text on the card (e.g. for a
+                  service that is expected to be intermittently unreachable). Defaults
+                  to false.
+                type: boolean
               href:
                 description: Href makes the card's title a link to the service.
                 type: string
@@ -93,6 +99,40 @@ spec:
                   fixed order.
                 format: int32
                 type: integer
+              ping:
+                description: |-
+                  Ping is a URL probed over HTTP for reachability and latency, shown as
+                  an up/down status on the card. (Raw ICMP is not used, so a pod needs
+                  no elevated capabilities.)
+                type: string
+              showStats:
+                description: |-
+                  ShowStats controls whether the polled widget fields are displayed on
+                  the card. Defaults to true; set false to show only the title/icon/
+                  description (and any monitor status).
+                type: boolean
+              siteMonitor:
+                description: |-
+                  SiteMonitor is a URL probed over HTTP, shown as an up/down status with
+                  response latency on the card.
+                type: string
+              statusStyle:
+                description: |-
+                  StatusStyle controls how the Ping/SiteMonitor status renders: "dot" a
+                  colored status dot, "basic" up/down text. Ignored unless Ping or
+                  SiteMonitor is set.
+                enum:
+                - dot
+                - basic
+                type: string
+              target:
+                description: |-
+                  Target overrides the Configuration's default link target for this
+                  card's Href ("_blank" opens a new tab, "_self" the same tab).
+                enum:
+                - _blank
+                - _self
+                type: string
               widgets:
                 description: |-
                   Widgets attached to this service. Zero, one, or many are allowed; the
@@ -247,5 +287,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

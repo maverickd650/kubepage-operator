@@ -9,11 +9,12 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// InfoWidgetSpec defines one header/info widget. Not yet rendered by the
-// native dashboard (D11 / Phase 6) — kept for when header-widget support is
-// added; see IMPLEMENTATION_PLAN.md's Phase 6 risk notes. Has no Group field
-// since header widgets are a flat, ordered list rather than grouped like
-// ServiceEntry/Bookmark.
+// InfoWidgetSpec defines one header/info widget, rendered by the native
+// dashboard in the header strip above the service cards. Supported types:
+// "datetime" (client-side clock; Options.format), "greeting" (static text;
+// Options.text), and "openmeteo" (current weather; Options.latitude/
+// longitude/units). Has no Group field since header widgets are a flat,
+// ordered list rather than grouped like ServiceEntry/Bookmark.
 type InfoWidgetSpec struct {
 	// InstanceRef names the Instance this InfoWidget belongs to.
 	// +required

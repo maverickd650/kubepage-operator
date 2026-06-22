@@ -2,9 +2,11 @@
 <html lang="{{if .Site.Language}}{{.Site.Language}}{{else}}en{{end}}" data-theme="{{.Site.Theme}}">
 <head>
   <meta charset="utf-8">
-  <title>kubepage</title>
+  <title>{{.Site.Title}}</title>
+  {{if .Site.Description}}<meta name="description" content="{{.Site.Description}}">{{end}}
+  {{if .Site.Favicon}}<link rel="icon" href="{{.Site.Favicon}}">{{end}}
   <style>
-    :root { --accent: {{.AccentHex}}; }
+    :root { --accent: {{.AccentHex}}; {{if .Site.CardBlur}}--card-blur: {{.Site.CardBlur}};{{end}} }
     [data-theme="dark"] { --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --border: #cbd5e1; }
     [data-theme="light"] { --bg: #f1f5f9; --panel: #ffffff; --text: #0f172a; --muted: #475569; --border: #334155; }
     body {
@@ -15,6 +17,12 @@
       {{end}}
     }
     .wrap { max-width: {{if .Site.FullWidth}}none{{else}}1200px{{end}}; margin: 0 auto; }
+    .page-title { margin: 0; font-size: 1.5rem; }
+    .page-desc { margin: 0.25rem 0 1rem; color: var(--muted); }
+    .header-strip { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+    .header-widget { background: var(--panel); border-radius: 0.5rem; padding: 0.5rem 0.9rem; font-size: 0.9rem; }
+    .header-widget .label { color: var(--muted); }
+    .header-field + .header-field { margin-left: 0.75rem; }
     .search-bar { margin-bottom: 1.5rem; }
     .search-bar input {
       width: 100%; box-sizing: border-box; padding: 0.6rem 1rem; font-size: 1rem;
@@ -31,12 +39,15 @@
     .card {
       background: var(--panel); border-radius: 0.5rem; padding: 1rem; display: block; text-decoration: none; color: inherit;
       {{if .Site.Background}}
-        {{if .Site.Background.Blur}} backdrop-filter: blur(var(--card-blur, 4px)); {{end}}
+        {{if .Site.CardBlur}} backdrop-filter: blur(var(--card-blur)); {{end}}
         {{if .Site.Background.Opacity}} background-color: color-mix(in srgb, var(--panel) {{.Site.Background.Opacity}}%, transparent); {{end}}
       {{end}}
     }
     .card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
     .card img.icon { width: 1.2rem; height: 1.2rem; }
+    .status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-left: auto; background: var(--muted); }
+    .status-dot.status-Up { background: #4ade80; }
+    .status-dot.status-Down { background: #f87171; }
     .field { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.15rem 0; color: var(--border); }
     .field .label { color: var(--muted); }
     .desc { font-size: 0.8rem; color: var(--muted); }
@@ -45,6 +56,9 @@
 </head>
 <body>
   <div class="wrap">
+    {{if ne .Site.Title "kubepage"}}<h1 class="page-title">{{.Site.Title}}</h1>{{end}}
+    {{if .Site.Description}}<p class="page-desc">{{.Site.Description}}</p>{{end}}
+    <div class="header-strip" id="header" hx-get="/header" hx-trigger="load, every {{.RefreshSeconds}}s" hx-swap="innerHTML"></div>
     <div class="search-bar">
       <input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off">
     </div>
@@ -85,6 +99,15 @@
         });
       });
     }
+
+    // datetime header widget: tick every second, re-selecting each tick so it
+    // keeps working across htmx swaps of the header strip.
+    setInterval(function () {
+      const now = new Date();
+      document.querySelectorAll("[data-clock]").forEach(function (el) {
+        el.textContent = now.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+      });
+    }, 1000);
   </script>
 </body>
 </html>

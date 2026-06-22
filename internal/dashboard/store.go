@@ -20,6 +20,23 @@ type Card struct {
 	IconURL     string
 	Description string
 	Href        string
+	// Target is the link target for Href ("_blank"/"_self"), already
+	// resolved from the ServiceEntry override or the site default.
+	Target string
+
+	// Header marks a card produced from an InfoWidget (rendered in the
+	// header strip) rather than a ServiceEntry service card.
+	Header bool
+
+	// ShowStats controls whether Fields render; HideErrors suppresses Err.
+	ShowStats  bool
+	HideErrors bool
+
+	// Monitor (ping/siteMonitor) result. Status is "" when no monitor is
+	// configured, otherwise "Up"/"Down". StatusStyle is "dot"/"basic".
+	Status      string
+	StatusStyle string
+	Latency     string
 
 	Fields    []Field
 	Err       string

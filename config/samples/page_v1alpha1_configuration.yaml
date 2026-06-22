@@ -8,6 +8,11 @@ metadata:
 spec:
   instanceRef:
     name: instance-sample
+  title: Home Lab
+  description: Self-hosted services
+  favicon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png
   theme: dark
   color: slate
   headerStyle: boxed
+  cardBlur: md
+  target: _blank

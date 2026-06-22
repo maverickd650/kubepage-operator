@@ -84,6 +84,12 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              cardBlur:
+                description: |-
+                  CardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
+                  size keyword (e.g. "sm", "md", "xl"). Most visible over a background
+                  image.
+                type: string
               color:
                 description: Fixed color palette, disabling the palette switcher.
                 enum:
@@ -109,6 +115,14 @@ spec:
                 - rose
                 - red
                 - white
+                type: string
+              description:
+                description: |-
+                  Description is shown as a header subtitle and the page's meta
+                  description.
+                type: string
+              favicon:
+                description: Favicon is a URL to the dashboard's favicon.
                 type: string
               fullWidth:
                 description: Use the entire window width instead of a centered, constrained
@@ -174,12 +188,26 @@ spec:
                       is appended as a URL-encoded "q" parameter.
                     type: string
                 type: object
+              target:
+                default: _blank
+                description: |-
+                  Target is the default link target for service and bookmark cards.
+                  Individual ServiceEntries may override it via their own target.
+                enum:
+                - _blank
+                - _self
+                type: string
               theme:
                 description: Fixed theme, disabling the theme switcher. One of "light"
                   or "dark".
                 enum:
                 - light
                 - dark
+                type: string
+              title:
+                description: |-
+                  Title is the dashboard's browser tab title and header heading.
+                  Defaults to "kubepage" when unset.
                 type: string
             required:
             - instanceRef
@@ -264,5 +292,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

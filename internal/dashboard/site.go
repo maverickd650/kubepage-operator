@@ -2,10 +2,13 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -19,6 +22,8 @@ const (
 	defaultTheme       = "dark"
 	defaultColor       = "slate"
 	defaultHeaderStyle = "underlined"
+	defaultTitle       = "kubepage"
+	defaultTarget      = "_blank"
 )
 
 // Site is everything the dashboard's look (6.1) needs beyond the polled
@@ -31,10 +36,30 @@ type Site struct {
 	Language    string
 	FullWidth   bool
 
+	Title       string
+	Description string
+	Favicon     string
+	// CardBlur is a CSS length (e.g. "12px") already resolved from the
+	// Configuration's Tailwind keyword, or "" for no card blur.
+	CardBlur string
+	// Target is the default link target for cards/bookmarks ("_blank"/"_self").
+	Target string
+
 	Background *Background
 	Search     Search
 
 	BookmarkGroups []BookmarkGroup
+	HeaderWidgets  []HeaderWidget
+}
+
+// HeaderWidget is one InfoWidget rendered in the dashboard header strip
+// (datetime/greeting are described entirely by this; openmeteo's live value
+// is matched in from the Store by Name).
+type HeaderWidget struct {
+	Name    string
+	Type    string
+	Order   *int32
+	Options map[string]string
 }
 
 // Background mirrors api/v1alpha1.BackgroundSpec, resolved to render-ready
@@ -81,6 +106,8 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Theme:       defaultTheme,
 		Color:       defaultColor,
 		HeaderStyle: defaultHeaderStyle,
+		Title:       defaultTitle,
+		Target:      defaultTarget,
 		Search:      Search{Provider: "duckduckgo", Target: "_blank", FilterCards: true},
 	}
 
@@ -110,10 +137,87 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 	}
 	site.BookmarkGroups = groupBookmarks(bookmarks.Items, instanceName)
 
+	var infoWidgets pagev1alpha1.InfoWidgetList
+	if err := reader.List(ctx, &infoWidgets, client.InNamespace(namespace)); err != nil {
+		return site, fmt.Errorf("listing InfoWidgets: %w", err)
+	}
+	site.HeaderWidgets = headerWidgets(infoWidgets.Items, instanceName)
+
 	return site, nil
 }
 
+// headerWidgets returns the instance's bound InfoWidgets as render-ready
+// header widget definitions, ordered by Order (nil last) then object name.
+// Options' passthrough JSON is flattened into a string map; nested/array
+// values are skipped (header widgets only use scalar options like text,
+// latitude, format).
+func headerWidgets(items []pagev1alpha1.InfoWidget, instanceName string) []HeaderWidget {
+	var bound []pagev1alpha1.InfoWidget
+	for _, w := range items {
+		if w.Spec.InstanceRef.Name == instanceName {
+			bound = append(bound, w)
+		}
+	}
+	slices.SortFunc(bound, func(a, b pagev1alpha1.InfoWidget) int {
+		if cmp := compareOrder(a.Spec.Order, b.Spec.Order); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	out := make([]HeaderWidget, 0, len(bound))
+	for _, w := range bound {
+		out = append(out, HeaderWidget{
+			Name:    w.Name,
+			Type:    w.Spec.Type,
+			Order:   w.Spec.Order,
+			Options: scalarOptions(w.Spec.Options),
+		})
+	}
+	return out
+}
+
+// scalarOptions flattens an InfoWidget's passthrough Options JSON object into
+// a string map, keeping only scalar values (string/number/bool).
+func scalarOptions(raw *apiextensionsv1.JSON) map[string]string {
+	opts := map[string]string{}
+	if raw == nil || len(raw.Raw) == 0 {
+		return opts
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw.Raw, &m); err != nil {
+		siteLog.Error(err, "parsing InfoWidget options")
+		return opts
+	}
+	for k, v := range m {
+		switch val := v.(type) {
+		case string:
+			opts[k] = val
+		case bool:
+			opts[k] = strconv.FormatBool(val)
+		case float64:
+			opts[k] = strconv.FormatFloat(val, 'f', -1, 64)
+		}
+	}
+	return opts
+}
+
 func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
+	if spec.Title != nil {
+		site.Title = *spec.Title
+	}
+	if spec.Description != nil {
+		site.Description = *spec.Description
+	}
+	if spec.Favicon != nil {
+		site.Favicon = *spec.Favicon
+	}
+	if spec.CardBlur != nil {
+		site.CardBlur = blurPx(*spec.CardBlur)
+	}
+	if spec.Target != nil {
+		site.Target = *spec.Target
+	}
 	if spec.Theme != nil {
 		site.Theme = *spec.Theme
 	}
@@ -152,6 +256,32 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 		if s.FilterCards != nil {
 			site.Search.FilterCards = *s.FilterCards
 		}
+	}
+}
+
+// blurPx maps a Tailwind backdrop-blur size keyword to its CSS pixel value
+// (the Tailwind blur scale). An unknown or empty keyword yields "" (no blur);
+// a bare "" keyword from the user means "default blur" → Tailwind's base 8px.
+func blurPx(keyword string) string {
+	switch keyword {
+	case "none":
+		return ""
+	case "":
+		return "8px"
+	case "sm":
+		return "4px"
+	case "md":
+		return "12px"
+	case "lg":
+		return "16px"
+	case "xl":
+		return "24px"
+	case "2xl":
+		return "40px"
+	case "3xl":
+		return "64px"
+	default:
+		return ""
 	}
 }
 
