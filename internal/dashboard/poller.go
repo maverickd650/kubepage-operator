@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +18,12 @@ import (
 )
 
 var pollerLog = ctrl.Log.WithName("dashboard-poller")
+
+// maxConcurrentPolls bounds how many widget/InfoWidget upstream polls run at
+// once per poll cycle, so one slow or unreachable service can't make every
+// other card lag a full cycle behind while the poller works through a long
+// service list sequentially.
+const maxConcurrentPolls = 8
 
 // Poller periodically lists the ServiceEntries bound to one Instance,
 // resolves each widget's secrets and config, polls every widget whose type
@@ -66,6 +73,18 @@ func (p *Poller) Run(ctx context.Context) {
 func (p *Poller) pollOnce(ctx context.Context) {
 	keep := map[string]bool{}
 
+	// run bounds how many of the closures it's given run concurrently
+	// (maxConcurrentPolls), and waits for all of them via wg.Wait below.
+	sem := make(chan struct{}, maxConcurrentPolls)
+	var wg sync.WaitGroup
+	run := func(fn func()) {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			fn()
+		})
+	}
+
 	var entries pagev1alpha1.ServiceEntryList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
 		pollerLog.Error(err, "listing ServiceEntries")
@@ -76,8 +95,10 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			continue
 		}
 
-		// Probe the entry's monitor (ping/siteMonitor) at most once, then
-		// attach the result to every card built for the entry.
+		// Probe the entry's monitor (ping/siteMonitor) at most once,
+		// sequentially — it's a single cheap HTTP HEAD/GET — then attach the
+		// result to every card built for the entry. The potentially slow
+		// part, each widget's upstream API poll, runs concurrently below.
 		status, statusStyle, latency := p.monitor(ctx, entry)
 
 		if len(entry.Spec.Widgets) == 0 {
@@ -86,7 +107,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			if status != "" {
 				key := fmt.Sprintf("%s/%s/monitor", entry.Namespace, entry.Name)
 				keep[key] = true
-				p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency)
+				run(func() { p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency) })
 			}
 			continue
 		}
@@ -94,7 +115,8 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		for i := range entry.Spec.Widgets {
 			key := fmt.Sprintf("%s/%s/%d", entry.Namespace, entry.Name, i)
 			keep[key] = true
-			p.pollWidget(ctx, key, entry, &entry.Spec.Widgets[i], status, statusStyle, latency)
+			widget := &entry.Spec.Widgets[i]
+			run(func() { p.pollWidget(ctx, key, entry, widget, status, statusStyle, latency) })
 		}
 	}
 
@@ -114,10 +136,11 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			}
 			key := fmt.Sprintf("header/%s", iw.Name)
 			keep[key] = true
-			p.pollInfoWidget(ctx, key, iw)
+			run(func() { p.pollInfoWidget(ctx, key, iw) })
 		}
 	}
 
+	wg.Wait()
 	p.Store.Prune(keep)
 }
 
@@ -140,6 +163,11 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (
 		style = *entry.Spec.StatusStyle
 	}
 	status, latency = monitorResult(ctx, p.HTTPClient, url)
+	up := 0.0
+	if status == "Up" {
+		up = 1
+	}
+	monitorUp.WithLabelValues(entry.Namespace + "/" + entry.Name).Set(up)
 	return status, style, latency
 }
 
@@ -204,7 +232,9 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		cfg.Secrets[field] = value
 	}
 
+	start := time.Now()
 	fields, err := impl.Poll(ctx, p.HTTPClient, cfg)
+	observePoll(widget.Type, err, time.Since(start).Seconds())
 	switch {
 	case err != nil && !card.HideErrors:
 		card.Err = err.Error()
@@ -255,6 +285,7 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 
 	var fields []Field
 	var err error
+	start := time.Now()
 	if cw, ok := impl.(ClusterWidget); ok {
 		// Cluster-backed widget (e.g. kubemetrics): read the Kubernetes API
 		// via KubeReader instead of polling an HTTP upstream.
@@ -262,6 +293,7 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 	} else {
 		fields, err = impl.Poll(ctx, p.HTTPClient, cfg)
 	}
+	observePoll(iw.Spec.Type, err, time.Since(start).Seconds())
 	if err != nil {
 		card.Err = err.Error()
 	} else {

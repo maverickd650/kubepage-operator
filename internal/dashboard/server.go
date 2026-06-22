@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -78,6 +79,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /fragment", s.handleFragment)
 	mux.HandleFunc("GET /header", s.handleHeader)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.Handle("GET /metrics", promhttp.Handler())
 	return mux
 }
 

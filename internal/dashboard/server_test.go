@@ -48,6 +48,20 @@ func TestServerFragmentRendersCards(t *testing.T) {
 	}
 }
 
+func TestServerMetricsRoute(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "go_goroutines") {
+		t.Errorf("/metrics body missing expected Prometheus Go-runtime metric:\n%s", rec.Body.String())
+	}
+}
+
 func TestServerFragmentRendersBookmarks(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "docs", Namespace: testNamespace},

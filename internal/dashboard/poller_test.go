@@ -2,8 +2,11 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -281,6 +285,84 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 	}
 	if cards[0].ServiceName != testHeaderWeather {
 		t.Errorf("card.ServiceName = %q, want weather (InfoWidget object name)", cards[0].ServiceName)
+	}
+}
+
+// TestPollerPollOnceBoundsConcurrency verifies widget polls within a single
+// pollOnce run concurrently (so one slow upstream doesn't push every other
+// card a full cycle behind), but stay within maxConcurrentPolls in flight at
+// once.
+func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
+	const (
+		numEntries = 20
+		perRequest = 30 * time.Millisecond
+	)
+
+	var (
+		current atomic.Int32
+		mu      sync.Mutex
+		maxSeen int32
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := current.Add(1)
+		mu.Lock()
+		if n > maxSeen {
+			maxSeen = n
+		}
+		mu.Unlock()
+		time.Sleep(perRequest)
+		current.Add(-1)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"activeTargets":[{"health":"up"}]}}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	objs := make([]client.Object, 0, numEntries)
+	for i := range numEntries {
+		objs = append(objs, &pagev1alpha1.ServiceEntry{
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("svc-%d", i), Namespace: testNamespace},
+			Spec: pagev1alpha1.ServiceEntrySpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testGroup,
+				Name:        fmt.Sprintf("Service %d", i),
+				Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			},
+		})
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+
+	start := time.Now()
+	p.pollOnce(context.Background())
+	elapsed := time.Since(start)
+
+	cards := store.Snapshot()
+	if len(cards) != numEntries {
+		t.Fatalf("Snapshot() = %d cards, want %d", len(cards), numEntries)
+	}
+
+	mu.Lock()
+	seen := maxSeen
+	mu.Unlock()
+	if seen <= 1 {
+		t.Errorf("max concurrent in-flight requests = %d, want >1 (polls should overlap)", seen)
+	}
+	if seen > maxConcurrentPolls {
+		t.Errorf("max concurrent in-flight requests = %d, want <= maxConcurrentPolls (%d)", seen, maxConcurrentPolls)
+	}
+
+	// Sequential polling would take roughly numEntries*perRequest; bounded
+	// concurrency should finish well inside that.
+	sequential := time.Duration(numEntries) * perRequest
+	if elapsed >= sequential {
+		t.Errorf("pollOnce took %s, want well under the sequential bound %s", elapsed, sequential)
 	}
 }
 
