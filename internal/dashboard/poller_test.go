@@ -34,6 +34,7 @@ const (
 	testTab2          = "Tab2"
 	testInfraTab      = "Infrastructure"
 	testStyleRow      = "row"
+	testColor         = "blue"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {

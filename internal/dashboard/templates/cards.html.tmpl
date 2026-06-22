@@ -15,7 +15,10 @@
             <h3>
               {{if .IconURL}}<img class="icon" src="{{.IconURL}}" alt="">{{end}}
               {{if .Href}}<a href="{{.Href}}" target="{{if .Target}}{{.Target}}{{else}}{{$.SiteTarget}}{{end}}">{{.ServiceName}}</a>{{else}}{{.ServiceName}}{{end}}
-              {{if and .Status (ne .StatusStyle "basic")}}<span class="status-dot status-{{.Status}}" title="{{.Status}}{{if .Latency}} · {{.Latency}}{{end}}"></span>{{end}}
+              {{if .Status}}
+                {{if eq .StatusStyle "dot"}}<span class="status-dot status-{{.Status}}" title="{{.Status}}{{if .Latency}} · {{.Latency}}{{end}}"></span>
+                {{else if ne .StatusStyle "basic"}}<span class="status-pill status-{{.Status}}" title="{{.Status}}">{{if .Latency}}{{.Latency}}{{else}}{{.Status}}{{end}}</span>{{end}}
+              {{end}}
             </h3>
             {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
             {{if and .Status (eq .StatusStyle "basic")}}
@@ -23,10 +26,10 @@
             {{end}}
             {{if .Err}}
               <div class="err">{{.Err}}</div>
-            {{else}}
-              {{range .Fields}}
-                <div class="field"><span class="label">{{.Label}}</span><span>{{.Value}}</span></div>
-              {{end}}
+            {{else if .Fields}}
+              <div class="stats">
+                {{range .Fields}}<div class="stat"><span class="label">{{.Label}}</span><span class="value">{{.Value}}</span></div>{{end}}
+              </div>
             {{end}}
           </div>
         {{end}}
@@ -38,12 +41,12 @@
   <h2>{{.Name}}</h2>
   <div class="grid">
     {{range .Bookmarks}}
-      <a class="card" href="{{.Href}}" target="{{$.SiteTarget}}" data-name="{{.Name}}" data-description="{{.Description}}">
-        <h3>
-          {{if .IconURL}}<img class="icon" src="{{.IconURL}}" alt="">{{end}}
-          {{.Name}}
-        </h3>
-        {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
+      <a class="card bookmark" href="{{.Href}}" target="{{$.SiteTarget}}" data-name="{{.Name}}" data-description="{{.Description}}">
+        {{if .IconURL}}<img class="icon" src="{{.IconURL}}" alt="">{{else if .Abbr}}<span class="abbr">{{.Abbr}}</span>{{end}}
+        <div>
+          <h3>{{.Name}}</h3>
+          {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
+        </div>
       </a>
     {{end}}
   </div>

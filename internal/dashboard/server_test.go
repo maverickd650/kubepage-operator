@@ -48,6 +48,71 @@ func TestServerFragmentRendersCards(t *testing.T) {
 	}
 }
 
+func TestServerAssetServesEmbeddedFont(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/assets/manrope-400.woff2", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "font/woff2" {
+		t.Errorf("Content-Type = %q, want font/woff2", ct)
+	}
+	if rec.Body.Len() == 0 {
+		t.Error("asset body is empty")
+	}
+
+	missing := httptest.NewRequest(http.MethodGet, "/assets/nope.woff2", nil)
+	missingRec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(missingRec, missing)
+	if missingRec.Code != http.StatusNotFound {
+		t.Errorf("missing asset status = %d, want 404", missingRec.Code)
+	}
+}
+
+func TestServerIndexEmitsPaletteRamp(t *testing.T) {
+	color := testColor
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Color:       &color,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"--c900: #1e3a8a", "--c500: #3b82f6", "@font-face", "/assets/manrope-400.woff2"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q", want)
+		}
+	}
+}
+
+func TestServerFragmentRendersStatsRow(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName,
+		Fields: []Field{{Label: labelStatus, Value: statusHealthy}},
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`class="stats"`, `class="stat"`, `class="value"`, statusHealthy} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestServerMetricsRoute(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -104,7 +169,7 @@ func TestServerIndexServesShell(t *testing.T) {
 
 func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
 	theme := "light"
-	color := "blue"
+	color := testColor
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -119,7 +184,7 @@ func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{`data-theme="light"`, AccentHex("blue")} {
+	for _, want := range []string{`data-theme="light"`, AccentHex(testColor)} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index body missing %q:\n%s", want, body)
 		}

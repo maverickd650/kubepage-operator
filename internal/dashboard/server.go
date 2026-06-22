@@ -4,6 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,6 +19,12 @@ const (
 
 //go:embed templates/*.tmpl
 var templateFS embed.FS
+
+// assetFS holds static assets served verbatim under /assets/ — currently the
+// self-hosted Manrope font, embedded so the single binary needs no CDN (D11).
+//
+//go:embed assets/*.woff2
+var assetFS embed.FS
 
 var templates = template.Must(template.ParseFS(templateFS, "templates/*.tmpl"))
 
@@ -60,6 +67,7 @@ type Server struct {
 type indexData struct {
 	Site           Site
 	AccentHex      string
+	Ramp           Ramp
 	RefreshSeconds int
 }
 
@@ -93,9 +101,26 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /fragment", s.handleFragment)
 	mux.HandleFunc("GET /header", s.handleHeader)
+	mux.HandleFunc("GET /assets/{file}", handleAsset)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /metrics", promhttp.Handler())
 	return mux
+}
+
+// handleAsset serves an embedded static asset by its bare filename. {file} is
+// a single path segment (the mux disallows slashes), so it can't traverse out
+// of the assets directory. Assets are content-stable, so they're cached hard.
+func handleAsset(w http.ResponseWriter, r *http.Request) {
+	b, err := assetFS.ReadFile("assets/" + r.PathValue("file"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if strings.HasSuffix(r.PathValue("file"), ".woff2") {
+		w.Header().Set("Content-Type", "font/woff2")
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	_, _ = w.Write(b)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +136,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := indexData{Site: site, AccentHex: AccentHex(site.Color), RefreshSeconds: refresh}
+	data := indexData{Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh}
 	if err := templates.ExecuteTemplate(w, "index.html.tmpl", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
