@@ -147,6 +147,68 @@ spec:
               language:
                 description: UI language, e.g. "en", "fr", "de".
                 type: string
+              layout:
+                description: |-
+                  Layout arranges ServiceEntry Groups into tabs, mirroring homepage's
+                  settings.yaml `layout:` map (group -> style) with tabs added on top.
+                  Omitted/empty renders every group flat with no tab UI, as before.
+                items:
+                  description: |-
+                    LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
+                    Groups not referenced by any tab still render, appended to an implicit
+                    trailing "Other" tab; a Group referenced by more than one tab is shown
+                    under the first tab that lists it.
+                  properties:
+                    groups:
+                      description: Groups lists, in display order, the Groups shown
+                        under this tab.
+                      items:
+                        description: |-
+                          LayoutGroupSpec configures one Group's placement and style within a
+                          LayoutTabSpec, mirroring homepage's settings.yaml `layout:` per-group
+                          style keys (style/columns/icon).
+                          See https://gethomepage.dev/configs/settings/#layout
+                        properties:
+                          columns:
+                            description: |-
+                              Columns is the number of card columns to render this group in,
+                              overriding the dashboard's default auto-fill grid.
+                            format: int32
+                            maximum: 6
+                            minimum: 1
+                            type: integer
+                          icon:
+                            description: |-
+                              Icon overrides the group header's icon. Same resolution rules as
+                              ServiceEntry/Bookmark Icon: a full URL passes through, anything else
+                              is resolved as a dashboard-icons slug.
+                            type: string
+                          name:
+                            description: Name is the ServiceEntry Group this entry
+                              places and styles.
+                            minLength: 1
+                            type: string
+                          style:
+                            description: Style lays the group's cards out in a single
+                              row instead of a grid.
+                            enum:
+                            - row
+                            - column
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      minItems: 1
+                      type: array
+                    name:
+                      description: Name is the tab's label.
+                      minLength: 1
+                      type: string
+                  required:
+                  - groups
+                  - name
+                  type: object
+                type: array
               search:
                 description: |-
                   Search configures the native dashboard's header search box (card

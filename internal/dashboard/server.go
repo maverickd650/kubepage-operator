@@ -22,11 +22,26 @@ var templateFS embed.FS
 var templates = template.Must(template.ParseFS(templateFS, "templates/*.tmpl"))
 
 // cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
-// in the order Store.Snapshot already produced (Order, then name).
+// in the order Store.Snapshot already produced (Order, then name). Columns/
+// Style/IconURL come from the Configuration's Layout, when one places this
+// group in a tab.
 type cardGroup struct {
-	Name  string
-	Cards []Card
+	Name    string
+	Cards   []Card
+	Columns *int32
+	Style   string
+	IconURL string
 }
+
+// layoutTab is one tab's display-ready groups.
+type layoutTab struct {
+	Name   string
+	Groups []cardGroup
+}
+
+// otherTabName labels the trailing tab holding Groups not placed by any
+// Layout tab, so nothing silently disappears from the dashboard.
+const otherTabName = "Other"
 
 // Server serves the card-grid dashboard backed by Store: GET / returns the
 // page shell, GET /fragment returns just the card markup for htmx to poll
@@ -51,7 +66,7 @@ type indexData struct {
 // fragmentData is the polled fragment's template data: the live widget
 // cards plus the static bookmark cards, both grouped for display.
 type fragmentData struct {
-	Groups         []cardGroup
+	Tabs           []layoutTab
 	BookmarkGroups []BookmarkGroup
 	// SiteTarget is the default link target a card uses when it has no
 	// per-card Target override.
@@ -111,7 +126,7 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := fragmentData{
-		Groups:         groupCards(serviceCards(s.Store.Snapshot())),
+		Tabs:           layoutTabs(serviceCards(s.Store.Snapshot()), site.Layout),
 		BookmarkGroups: site.BookmarkGroups,
 		SiteTarget:     site.Target,
 	}
@@ -190,4 +205,51 @@ func groupCards(cards []Card) []cardGroup {
 		groups[i].Cards = append(groups[i].Cards, c)
 	}
 	return groups
+}
+
+// layoutTabs arranges groupCards' output into tabs per the Configuration's
+// Layout. An empty layout returns the groups unchanged in a single unnamed
+// tab, so the dashboard renders exactly as it did before tabs existed. A
+// Group placed by more than one LayoutTab is shown only under the first;
+// any Group not referenced by any tab is appended to a trailing "Other"
+// tab so nothing silently disappears from the dashboard.
+func layoutTabs(cards []Card, layout []LayoutTab) []layoutTab {
+	groups := groupCards(cards)
+	if len(layout) == 0 {
+		return []layoutTab{{Groups: groups}}
+	}
+
+	byName := make(map[string]cardGroup, len(groups))
+	for _, g := range groups {
+		byName[g.Name] = g
+	}
+
+	used := make(map[string]bool, len(groups))
+	tabs := make([]layoutTab, 0, len(layout)+1)
+	for _, t := range layout {
+		tab := layoutTab{Name: t.Name}
+		for _, lg := range t.Groups {
+			g, ok := byName[lg.Name]
+			if !ok || used[lg.Name] {
+				continue
+			}
+			used[lg.Name] = true
+			g.Columns = lg.Columns
+			g.Style = lg.Style
+			g.IconURL = lg.IconURL
+			tab.Groups = append(tab.Groups, g)
+		}
+		tabs = append(tabs, tab)
+	}
+
+	var other []cardGroup
+	for _, g := range groups {
+		if !used[g.Name] {
+			other = append(other, g)
+		}
+	}
+	if len(other) > 0 {
+		tabs = append(tabs, layoutTab{Name: otherTabName, Groups: other})
+	}
+	return tabs
 }

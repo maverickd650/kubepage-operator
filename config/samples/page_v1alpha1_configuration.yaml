@@ -16,3 +16,13 @@ spec:
   headerStyle: boxed
   cardBlur: md
   target: _blank
+  layout:
+    - name: Infrastructure
+      groups:
+        - name: Monitoring
+          columns: 3
+          icon: grafana
+    - name: Apps
+      groups:
+        - name: Media
+          style: row
