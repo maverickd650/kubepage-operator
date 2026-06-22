@@ -361,10 +361,11 @@ func (r *InstanceReconciler) boundCountsForInstance(ctx context.Context, instanc
 }
 
 // reconcileDeployment ensures the dashboard Deployment for instance exists
-// and matches the desired state (replicas, image). handled is true when the
-// caller should return (result, err) immediately; when false, the Deployment
-// was already up to date and the caller should continue with its own logic
-// (e.g. updating the Instance's status).
+// and matches the desired state (replicas, image, and every other
+// spec-driven field deploymentForInstance derives from the Instance). handled
+// is true when the caller should return (result, err) immediately; when
+// false, the Deployment was already up to date and the caller should
+// continue with its own logic (e.g. updating the Instance's status).
 func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pagev1alpha1.Instance) (result ctrl.Result, handled bool, err error) {
 	log := logf.FromContext(ctx)
 
@@ -405,18 +406,35 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 		return ctrl.Result{}, true, err
 	}
 
-	// Reconcile drift: the Deployment exists, but its replica count or
-	// container image no longer matches the desired state. We deliberately
-	// don't DeepEqual the whole pod template against a freshly-built one:
-	// the API server fills in defaults (RestartPolicy, DNSPolicy, etc.) on
-	// the stored object that a bare struct literal never has, which would
-	// make every comparison show spurious drift. Replicas and image are the
-	// two signals that actually change reconcile-to-reconcile: image when
-	// the operator itself is upgraded (DashboardImage tracks the running
-	// manager's own image), replicas when the user edits spec.size.
+	// Reconcile drift: the Deployment exists, but one or more spec-driven
+	// fields no longer match the desired state. We deliberately don't
+	// DeepEqual the whole pod template against a freshly-built one: the API
+	// server fills in defaults (RestartPolicy, DNSPolicy, etc.) on the
+	// stored object that a bare struct literal never has, which would make
+	// every comparison show spurious drift. Instead we compare exactly the
+	// fields deploymentForInstance derives from the Instance spec (or from
+	// DashboardImage), so an edit to any of them — not just replicas or
+	// image — is detected without false positives from API-server
+	// defaulting.
 	replicasChanged := found.Spec.Replicas == nil || desiredDep.Spec.Replicas == nil || *found.Spec.Replicas != *desiredDep.Spec.Replicas
-	imageChanged := len(found.Spec.Template.Spec.Containers) == 0 || found.Spec.Template.Spec.Containers[0].Image != r.DashboardImage
-	if !replicasChanged && !imageChanged {
+
+	desiredContainer := desiredDep.Spec.Template.Spec.Containers[0]
+	foundContainers := found.Spec.Template.Spec.Containers
+	templateChanged := len(foundContainers) == 0 ||
+		foundContainers[0].Image != desiredContainer.Image ||
+		!reflect.DeepEqual(foundContainers[0].Args, desiredContainer.Args) ||
+		!reflect.DeepEqual(foundContainers[0].Ports, desiredContainer.Ports) ||
+		!reflect.DeepEqual(foundContainers[0].Env, desiredContainer.Env) ||
+		!reflect.DeepEqual(foundContainers[0].ReadinessProbe, desiredContainer.ReadinessProbe) ||
+		!reflect.DeepEqual(foundContainers[0].LivenessProbe, desiredContainer.LivenessProbe) ||
+		!reflect.DeepEqual(foundContainers[0].Resources, desiredContainer.Resources) ||
+		!reflect.DeepEqual(foundContainers[0].SecurityContext, desiredContainer.SecurityContext) ||
+		!reflect.DeepEqual(found.Spec.Template.Labels, desiredDep.Spec.Template.Labels) ||
+		!reflect.DeepEqual(found.Spec.Template.Annotations, desiredDep.Spec.Template.Annotations) ||
+		!reflect.DeepEqual(found.Spec.Template.Spec.HostUsers, desiredDep.Spec.Template.Spec.HostUsers) ||
+		!reflect.DeepEqual(found.Spec.Template.Spec.SecurityContext, desiredDep.Spec.Template.Spec.SecurityContext)
+
+	if !replicasChanged && !templateChanged {
 		return ctrl.Result{}, false, nil
 	}
 
@@ -526,6 +544,13 @@ func (r *InstanceReconciler) deploymentForInstance(instance *pagev1alpha1.Instan
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: instance.Spec.ContainerPort,
 							Name:          instanceContainerName,
+							// Protocol is set explicitly (rather than left to
+							// the API server's defaulting) so the drift check
+							// in reconcileDeployment, which compares the
+							// stored Deployment's Ports against this struct
+							// literal, isn't fooled into seeing permanent
+							// drift by a field the server fills in on its own.
+							Protocol: corev1.ProtocolTCP,
 						}},
 						Env:            instance.Spec.Env,
 						ReadinessProbe: instance.Spec.ReadinessProbe,

@@ -606,5 +606,43 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Image).To(Equal("example.com/image:upgraded"))
 			}).Should(Succeed())
 		})
+
+		It("rolls the Deployment when other spec fields (env, resources, labels) drift", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			reconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.Containers[0].Env).To(BeEmpty())
+			Expect(dep.Spec.Template.Labels).NotTo(HaveKey("custom-label"))
+
+			By("editing spec.env, spec.resources, and spec.labels on the Instance")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Env = []corev1.EnvVar{{Name: "FOO", Value: "bar"}}
+			instance.Spec.Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")},
+			}
+			instance.Spec.Labels = map[string]string{"custom-label": "yes"}
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.Containers[0].Env).To(ConsistOf(corev1.EnvVar{Name: "FOO", Value: "bar"}))
+				g.Expect(dep.Spec.Template.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]).To(Equal(resource.MustParse("500m")))
+				g.Expect(dep.Spec.Template.Labels).To(HaveKeyWithValue("custom-label", "yes"))
+			}).Should(Succeed())
+		})
 	})
 })
