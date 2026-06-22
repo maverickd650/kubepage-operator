@@ -9,6 +9,11 @@ type Ramp struct {
 	C50, C100, C200, C300, C400, C500, C600, C700, C800, C900 string
 }
 
+// blue500 is Tailwind's blue-500 shade, shared between the blue ramp's mid
+// step and the blue accent so the two stay in lockstep (the palette test
+// asserts a ramp's 500 step equals its accent).
+const blue500 = "#3b82f6"
+
 // colorRamps maps a Configuration.Color value (homepage's documented palette
 // enum) to that Tailwind color's full 50–900 ramp. Lifted from the Tailwind v3
 // palette (D11: "close enough" fidelity for the no-build native renderer).
@@ -30,7 +35,7 @@ var colorRamps = map[string]Ramp{
 	"teal":       {"#f0fdfa", "#ccfbf1", "#99f6e4", "#5eead4", "#2dd4bf", "#14b8a6", "#0d9488", "#0f766e", "#115e59", "#134e4a"},
 	"cyan":       {"#ecfeff", "#cffafe", "#a5f3fc", "#67e8f9", "#22d3ee", "#06b6d4", "#0891b2", "#0e7490", "#155e75", "#164e63"},
 	"sky":        {"#f0f9ff", "#e0f2fe", "#bae6fd", "#7dd3fc", "#38bdf8", "#0ea5e9", "#0284c7", "#0369a1", "#075985", "#0c4a6e"},
-	"blue":       {"#eff6ff", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"},
+	"blue":       {"#eff6ff", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", blue500, "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"},
 	"indigo":     {"#eef2ff", "#e0e7ff", "#c7d2fe", "#a5b4fc", "#818cf8", "#6366f1", "#4f46e5", "#4338ca", "#3730a3", "#312e81"},
 	"violet":     {"#f5f3ff", "#ede9fe", "#ddd6fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#7c3aed", "#6d28d9", "#5b21b6", "#4c1d95"},
 	"purple":     {"#faf5ff", "#f3e8ff", "#e9d5ff", "#d8b4fe", "#c084fc", "#a855f7", "#9333ea", "#7e22ce", "#6b21a8", "#581c87"},
@@ -57,7 +62,7 @@ var accentPalette = map[string]string{
 	"teal":       "#14b8a6",
 	"cyan":       "#06b6d4",
 	"sky":        "#0ea5e9",
-	"blue":       "#3b82f6",
+	"blue":       blue500,
 	"indigo":     "#6366f1",
 	"violet":     "#8b5cf6",
 	"purple":     "#a855f7",

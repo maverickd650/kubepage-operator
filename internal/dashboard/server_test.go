@@ -73,7 +73,7 @@ func TestServerAssetServesEmbeddedFont(t *testing.T) {
 }
 
 func TestServerIndexEmitsPaletteRamp(t *testing.T) {
-	color := "blue"
+	color := testColor
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -169,7 +169,7 @@ func TestServerIndexServesShell(t *testing.T) {
 
 func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
 	theme := "light"
-	color := "blue"
+	color := testColor
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -184,7 +184,7 @@ func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{`data-theme="light"`, AccentHex("blue")} {
+	for _, want := range []string{`data-theme="light"`, AccentHex(testColor)} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index body missing %q:\n%s", want, body)
 		}
