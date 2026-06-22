@@ -205,6 +205,16 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
 GOLANGCI_LINT_VERSION ?= v2.12.2
+
+# Go toolchain used to *build* the custom golangci-lint binary. golangci-lint's
+# own go.mod targets an older Go than this module's `go` directive, so without
+# forcing the toolchain the `custom` build produces a binary that refuses to run
+# ("the Go language version used to build golangci-lint is lower than the
+# targeted Go version"). Derived from this module's own go.mod (the `toolchain`
+# directive if present, otherwise the `go` directive) so there is a single
+# source of truth.
+GO_LINT_TOOLCHAIN ?= $(shell awk '/^toolchain /{print $$2; found=1} /^go /{gov=$$2} END{if(!found)print "go" gov}' go.mod)
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -233,8 +243,8 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 	@test -f .custom-gcl.yml && { \
-		echo "Building custom golangci-lint with plugins..." && \
-		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
+		echo "Building custom golangci-lint with plugins (toolchain $(GO_LINT_TOOLCHAIN))..." && \
+		GOTOOLCHAIN=$(GO_LINT_TOOLCHAIN) $(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
 

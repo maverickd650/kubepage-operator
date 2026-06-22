@@ -196,3 +196,11 @@ prometheus:
 networkPolicy:
   enabled: false
 
+## ValidatingAdmissionPolicies enforcing CRD field invariants at admission
+## (e.g. a SecretValueSource must set exactly one of value/secretKeyRef).
+## Requires Kubernetes v1.30+ (ValidatingAdmissionPolicy is GA from 1.30);
+## disable on older clusters.
+##
+admissionPolicies:
+  enabled: true
+
