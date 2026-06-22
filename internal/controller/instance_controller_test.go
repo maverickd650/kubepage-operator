@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -336,6 +337,58 @@ var _ = Describe("Instance controller", func() {
 			}).Should(Succeed())
 			Expect(rb.RoleRef.Name).To(Equal(InstanceName))
 			Expect(rb.Subjects).To(ContainElement(HaveField("Name", InstanceName)))
+		})
+
+		It("creates cluster-scoped metrics RBAC only while a kubemetrics InfoWidget is bound", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			widget := &pagev1alpha1.InfoWidget{
+				ObjectMeta: metav1.ObjectMeta{Name: "metrics", Namespace: namespace.Name},
+				Spec: pagev1alpha1.InfoWidgetSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Type:        kubeMetricsWidgetType,
+				},
+			}
+			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
+
+			clusterName := fmt.Sprintf("kubepage-%s-%s", namespace.Name, InstanceName)
+			crName := types.NamespacedName{Name: clusterName}
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("a ClusterRole grants node and metrics.k8s.io read access")
+			cr := &rbacv1.ClusterRole{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, crName, cr)).To(Succeed())
+			}).Should(Succeed())
+			Expect(cr.Rules).To(ContainElement(HaveField("Resources", ContainElement("nodes"))))
+			Expect(cr.Rules).To(ContainElement(HaveField("APIGroups", ContainElement("metrics.k8s.io"))))
+
+			By("a ClusterRoleBinding binds it to the per-Instance ServiceAccount")
+			crb := &rbacv1.ClusterRoleBinding{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, crName, crb)).To(Succeed())
+			}).Should(Succeed())
+			Expect(crb.RoleRef.Name).To(Equal(clusterName))
+			Expect(crb.Subjects).To(ContainElement(SatisfyAll(
+				HaveField("Name", InstanceName),
+				HaveField("Namespace", namespace.Name),
+			)))
+
+			By("removing the widget drops the cluster RBAC on the next reconcile")
+			Expect(k8sClient.Delete(ctx, widget)).To(Succeed())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, crName, cr))).To(BeTrue())
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, crName, crb))).To(BeTrue())
+			}).Should(Succeed())
 		})
 	})
 

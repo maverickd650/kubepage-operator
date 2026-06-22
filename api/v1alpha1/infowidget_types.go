@@ -12,9 +12,11 @@ import (
 // InfoWidgetSpec defines one header/info widget, rendered by the native
 // dashboard in the header strip above the service cards. Supported types:
 // "datetime" (client-side clock; Options.format), "greeting" (static text;
-// Options.text), and "openmeteo" (current weather; Options.latitude/
-// longitude/units). Has no Group field since header widgets are a flat,
-// ordered list rather than grouped like ServiceEntry/Bookmark.
+// Options.text), "openmeteo" (current weather; Options.latitude/longitude/
+// units), and "kubemetrics" (cluster-wide CPU/memory usage from
+// metrics-server; optional Options.cpuLabel/memoryLabel). Has no Group field
+// since header widgets are a flat, ordered list rather than grouped like
+// ServiceEntry/Bookmark.
 type InfoWidgetSpec struct {
 	// InstanceRef names the Instance this InfoWidget belongs to.
 	// +required

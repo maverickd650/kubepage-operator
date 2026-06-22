@@ -1,0 +1,108 @@
+package dashboard
+
+import (
+	"context"
+	"reflect"
+	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func kubeMetricsScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := metricsv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	return scheme
+}
+
+func node(name, allocCPU, allocMem string) *corev1.Node {
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Status: corev1.NodeStatus{
+			Allocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(allocCPU),
+				corev1.ResourceMemory: resource.MustParse(allocMem),
+			},
+		},
+	}
+}
+
+func nodeMetrics(name, usageCPU, usageMem string) *metricsv1beta1.NodeMetrics {
+	return &metricsv1beta1.NodeMetrics{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Usage: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse(usageCPU),
+			corev1.ResourceMemory: resource.MustParse(usageMem),
+		},
+	}
+}
+
+func TestKubeMetricsWidgetPollCluster(t *testing.T) {
+	scheme := kubeMetricsScheme(t)
+
+	tests := map[string]struct {
+		objs   []client.Object
+		config string
+		want   []Field
+	}{
+		"usage with capacity": {
+			objs: []client.Object{
+				nodeMetrics("n1", "500m", "2Gi"),
+				nodeMetrics("n2", "1500m", "2Gi"),
+				node("n1", "4", "8Gi"),
+				node("n2", "4", "8Gi"),
+			},
+			want: []Field{
+				{Label: labelCPU, Value: "2 / 8 cores (25%)"},
+				{Label: labelMemory, Value: "4 / 16 GiB (25%)"},
+			},
+		},
+		"custom labels": {
+			objs: []client.Object{
+				nodeMetrics("n1", "1", "1Gi"),
+				node("n1", "2", "4Gi"),
+			},
+			config: `{"cpuLabel":"Compute","memoryLabel":"RAM"}`,
+			want: []Field{
+				{Label: "Compute", Value: "1 / 2 cores (50%)"},
+				{Label: "RAM", Value: "1 / 4 GiB (25%)"},
+			},
+		},
+		"no capacity omits percentage": {
+			objs: []client.Object{
+				nodeMetrics("n1", "1500m", "3Gi"),
+			},
+			want: []Field{
+				{Label: labelCPU, Value: "1.5 cores"},
+				{Label: labelMemory, Value: "3 GiB"},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.objs...).Build()
+			got, err := (kubeMetricsWidget{}).PollCluster(context.Background(), c, WidgetConfig{
+				Config: []byte(tc.config),
+			})
+			if err != nil {
+				t.Fatalf("PollCluster() unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("PollCluster() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}

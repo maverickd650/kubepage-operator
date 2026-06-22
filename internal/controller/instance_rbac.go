@@ -11,10 +11,42 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
+
+// kubeMetricsWidgetType is the InfoWidget.Spec.Type whose dashboard widget
+// (internal/dashboard/kubemetrics.go) reads cluster-scoped nodes and
+// metrics.k8s.io; its presence is what gates the cluster RBAC below.
+const kubeMetricsWidgetType = "kubemetrics"
+
+// RBAC verbs shared by the rule sets below, pulled into constants so goconst
+// doesn't flag the repeated literals across dashboardRules/clusterMetricsRules.
+const (
+	verbGet   = "get"
+	verbList  = "list"
+	verbWatch = "watch"
+)
+
+// clusterMetricsRules are the cluster-scoped permissions the dashboard pod
+// needs when it renders a kubemetrics InfoWidget: read nodes (for capacity)
+// and node metrics from metrics-server (for live usage). Granted via a
+// ClusterRole rather than the per-Instance Role because both resources are
+// cluster-scoped.
+var clusterMetricsRules = []rbacv1.PolicyRule{
+	{
+		APIGroups: []string{""},
+		Resources: []string{"nodes"},
+		Verbs:     []string{verbGet, verbList},
+	},
+	{
+		APIGroups: []string{"metrics.k8s.io"},
+		Resources: []string{"nodes"},
+		Verbs:     []string{verbGet, verbList},
+	},
+}
 
 // dashboardRules are the permissions the dashboard pod needs in its
 // Instance's own namespace: read access to the config CRDs it renders
@@ -30,12 +62,12 @@ var dashboardRules = []rbacv1.PolicyRule{
 	{
 		APIGroups: []string{pagev1alpha1.GroupVersion.Group},
 		Resources: []string{"configurations", "serviceentries", "bookmarks", "infowidgets"},
-		Verbs:     []string{"get", "list", "watch"},
+		Verbs:     []string{verbGet, verbList, verbWatch},
 	},
 	{
 		APIGroups: []string{""},
 		Resources: []string{"secrets"},
-		Verbs:     []string{"get", "list", "watch"},
+		Verbs:     []string{verbGet, verbList, verbWatch},
 	},
 }
 
@@ -150,6 +182,121 @@ func policyRulesEqual(a, b []rbacv1.PolicyRule) bool {
 		}
 	}
 	return true
+}
+
+// clusterRBACName is the name of the ClusterRole and ClusterRoleBinding for
+// instance's cluster metrics access. ClusterRole/ClusterRoleBinding are
+// cluster-scoped, so the name must be unique across namespaces — hence the
+// namespace prefix, unlike the namespace-scoped Role/RoleBinding which can
+// just reuse instance.Name.
+func clusterRBACName(instance *pagev1alpha1.Instance) string {
+	return fmt.Sprintf("kubepage-%s-%s", instance.Namespace, instance.Name)
+}
+
+// reconcileClusterMetricsRBAC ensures the cluster-scoped RBAC for a
+// kubemetrics InfoWidget exists only while one is bound to instance: it's
+// created on demand and removed again when the last kubemetrics widget goes
+// away, keeping the dashboard pod least-privileged (it otherwise has only
+// namespace-scoped access, see dashboardRules). These objects carry no owner
+// reference — a namespaced Instance can't own cluster-scoped objects — so
+// cleanup on Instance deletion runs from the finalizer (deleteClusterMetricsRBAC).
+func (r *InstanceReconciler) reconcileClusterMetricsRBAC(ctx context.Context, instance *pagev1alpha1.Instance) error {
+	wanted, err := r.instanceHasKubeMetricsWidget(ctx, instance)
+	if err != nil {
+		return err
+	}
+	if !wanted {
+		return r.deleteClusterMetricsRBAC(ctx, instance)
+	}
+	if err := r.reconcileClusterRole(ctx, instance); err != nil {
+		return fmt.Errorf("reconciling ClusterRole: %w", err)
+	}
+	if err := r.reconcileClusterRoleBinding(ctx, instance); err != nil {
+		return fmt.Errorf("reconciling ClusterRoleBinding: %w", err)
+	}
+	return nil
+}
+
+// instanceHasKubeMetricsWidget reports whether any InfoWidget of type
+// kubemetrics is bound to instance.
+func (r *InstanceReconciler) instanceHasKubeMetricsWidget(ctx context.Context, instance *pagev1alpha1.Instance) (bool, error) {
+	var infoWidgets pagev1alpha1.InfoWidgetList
+	if err := r.List(ctx, &infoWidgets, client.InNamespace(instance.Namespace)); err != nil {
+		return false, fmt.Errorf("listing InfoWidgets: %w", err)
+	}
+	for _, w := range infoWidgets.Items {
+		if w.Spec.InstanceRef.Name == instance.Name && w.Spec.Type == kubeMetricsWidgetType {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *InstanceReconciler) reconcileClusterRole(ctx context.Context, instance *pagev1alpha1.Instance) error {
+	log := logf.FromContext(ctx)
+
+	desired := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterRBACName(instance)},
+		Rules:      clusterMetricsRules,
+	}
+
+	found := &rbacv1.ClusterRole{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name}, found)
+	switch {
+	case apierrors.IsNotFound(err):
+		log.Info("Creating a new ClusterRole", "ClusterRole.Name", desired.Name)
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	case !policyRulesEqual(found.Rules, desired.Rules):
+		found.Rules = desired.Rules
+		return r.Update(ctx, found)
+	}
+	return nil
+}
+
+func (r *InstanceReconciler) reconcileClusterRoleBinding(ctx context.Context, instance *pagev1alpha1.Instance) error {
+	log := logf.FromContext(ctx)
+
+	desired := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterRBACName(instance)},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     clusterRBACName(instance),
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		}},
+	}
+
+	found := &rbacv1.ClusterRoleBinding{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name}, found)
+	if apierrors.IsNotFound(err) {
+		log.Info("Creating a new ClusterRoleBinding", "ClusterRoleBinding.Name", desired.Name)
+		return r.Create(ctx, desired)
+	}
+	// RoleRef is immutable and the Subject never changes for a given
+	// Instance name/namespace, so there's nothing to reconcile beyond creation.
+	return err
+}
+
+// deleteClusterMetricsRBAC removes the cluster-scoped RBAC for instance,
+// tolerating already-absent objects. Used both when the last kubemetrics
+// widget is unbound and from the Instance finalizer on deletion.
+func (r *InstanceReconciler) deleteClusterMetricsRBAC(ctx context.Context, instance *pagev1alpha1.Instance) error {
+	name := clusterRBACName(instance)
+	crb := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := r.Delete(ctx, crb); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting ClusterRoleBinding: %w", err)
+	}
+	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := r.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting ClusterRole: %w", err)
+	}
+	return nil
 }
 
 func stringSlicesEqualSorted(a, b []string) bool {

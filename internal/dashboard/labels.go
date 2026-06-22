@@ -18,4 +18,6 @@ const (
 	labelClients    = "Clients"
 	labelWeather    = "Weather"
 	labelConditions = "Conditions"
+	labelCPU        = "CPU"
+	labelMemory     = "Memory"
 )

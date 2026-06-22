@@ -34,6 +34,12 @@ type Poller struct {
 	// in-memory store for the lifetime of the process.
 	SecretReader client.Reader
 
+	// KubeReader serves cluster-scoped reads for ClusterWidget types (e.g.
+	// kubemetrics reading nodes and metrics.k8s.io). Deliberately not
+	// cache-backed: metrics.k8s.io doesn't support watch, and nodes are
+	// cluster-scoped while the CRD cache is namespace-scoped.
+	KubeReader client.Reader
+
 	Namespace    string
 	InstanceName string
 	Interval     time.Duration
@@ -247,7 +253,15 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		cfg.Secrets[field] = value
 	}
 
-	fields, err := impl.Poll(ctx, p.HTTPClient, cfg)
+	var fields []Field
+	var err error
+	if cw, ok := impl.(ClusterWidget); ok {
+		// Cluster-backed widget (e.g. kubemetrics): read the Kubernetes API
+		// via KubeReader instead of polling an HTTP upstream.
+		fields, err = cw.PollCluster(ctx, p.KubeReader, cfg)
+	} else {
+		fields, err = impl.Poll(ctx, p.HTTPClient, cfg)
+	}
 	if err != nil {
 		card.Err = err.Error()
 	} else {

@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Field is one labeled value shown on a widget's card (e.g. "Status" →
@@ -34,6 +36,16 @@ type WidgetConfig struct {
 // Widget value.
 type Widget interface {
 	Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error)
+}
+
+// ClusterWidget is an optional interface a registered Widget may also
+// implement when it reads from the Kubernetes API (e.g. metrics.k8s.io)
+// rather than polling an HTTP upstream. When a widget implements it, the
+// poller calls PollCluster with a cluster-scoped reader instead of Poll, so
+// the widget never needs an HTTP client. Widgets still register as a Widget
+// (their Poll may be a no-op returning an error) so Lookup keeps working.
+type ClusterWidget interface {
+	PollCluster(ctx context.Context, reader client.Reader, cfg WidgetConfig) ([]Field, error)
 }
 
 // registry maps a ServiceWidget's Type (e.g. "prometheus") to the Widget

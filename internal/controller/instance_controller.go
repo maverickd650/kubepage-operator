@@ -81,6 +81,9 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=metrics.k8s.io,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
@@ -166,11 +169,10 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 			// Perform all operations required before removing the finalizer and allow
 			// the Kubernetes API to remove the custom resource.
-			r.doFinalizerOperationsForInstance(instance)
-
-			// TODO(user): If you add operations to the doFinalizerOperationsForInstance method
-			// then you need to ensure that all worked fine before deleting and updating the Downgrade status
-			// otherwise, you should requeue here.
+			if err := r.doFinalizerOperationsForInstance(ctx, instance); err != nil {
+				log.Error(err, "Failed to run finalizer operations for Instance")
+				return ctrl.Result{}, err
+			}
 
 			// Re-fetch the instance Custom Resource before updating the status
 			// so that we have the latest state of the resource on the cluster and we will avoid
@@ -208,6 +210,12 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Ensure the per-Instance ServiceAccount/Role/RoleBinding the dashboard
 	// pod authenticates as, before the Deployment that references it.
 	if err := r.reconcileDashboardRBAC(ctx, instance); err != nil {
+		return r.failAvailable(ctx, instance, "RBAC", err)
+	}
+
+	// Cluster-scoped RBAC for the kubemetrics InfoWidget, created only while
+	// one is bound and removed otherwise (see reconcileClusterMetricsRBAC).
+	if err := r.reconcileClusterMetricsRBAC(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "RBAC", err)
 	}
 
@@ -281,24 +289,20 @@ func (r *InstanceReconciler) failAvailable(ctx context.Context, instance *pagev1
 	return ctrl.Result{}, err
 }
 
-// finalizeInstance will perform the required operations before delete the CR.
-func (r *InstanceReconciler) doFinalizerOperationsForInstance(cr *pagev1alpha1.Instance) {
-	// TODO(user): Add the cleanup steps that the operator
-	// needs to do before the CR can be deleted. Examples
-	// of finalizers include performing backups and deleting
-	// resources that are not owned by this CR, like a PVC.
-
-	// Note: It is not recommended to use finalizers with the purpose of deleting resources which are
-	// created and managed in the reconciliation. These ones, such as the Deployment created on this reconcile,
-	// are defined as dependent of the custom resource. See that we use the method ctrl.SetControllerReference.
-	// to set the ownerRef which means that the Deployment will be deleted by the Kubernetes API.
-	// More info: https://kubernetes.io/docs/tasks/administer-cluster/use-cascading-deletion/
-
+// doFinalizerOperationsForInstance performs cleanup that owner-reference
+// garbage collection can't: the cluster-scoped RBAC for the kubemetrics
+// InfoWidget (reconcileClusterMetricsRBAC) carries no owner reference, since a
+// namespaced Instance can't own cluster-scoped objects, so it must be deleted
+// explicitly here. Everything else the Instance creates is namespace-scoped
+// and owned via ctrl.SetControllerReference, so the API server cascades it.
+func (r *InstanceReconciler) doFinalizerOperationsForInstance(ctx context.Context, cr *pagev1alpha1.Instance) error {
 	// The following implementation will raise an event
 	r.Recorder.Eventf(cr, nil, corev1.EventTypeWarning, "Deleting", "DeleteCR",
 		"Custom Resource %s is being deleted from the namespace %s",
 		cr.Name,
 		cr.Namespace)
+
+	return r.deleteClusterMetricsRBAC(ctx, cr)
 }
 
 // boundCounts is how many of each config CRD kind are currently bound to an

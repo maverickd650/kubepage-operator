@@ -58,10 +58,19 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("building direct client: %w", err)
 	}
 
+	// Cluster-scoped, uncached client for ClusterWidget types (kubemetrics):
+	// metrics.k8s.io doesn't support watch and nodes are cluster-scoped, so
+	// neither fits the namespace-scoped cache above.
+	kubeClient, err := client.New(opts.RestConfig, client.Options{Scheme: opts.Scheme})
+	if err != nil {
+		return fmt.Errorf("building cluster client: %w", err)
+	}
+
 	store := NewStore()
 	poller := &Poller{
 		Reader:       clu.GetClient(),
 		SecretReader: secretClient,
+		KubeReader:   kubeClient,
 		Namespace:    opts.Namespace,
 		InstanceName: opts.InstanceName,
 		Interval:     opts.PollInterval,
