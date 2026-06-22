@@ -50,6 +50,22 @@ type Site struct {
 
 	BookmarkGroups []BookmarkGroup
 	HeaderWidgets  []HeaderWidget
+	Layout         []LayoutTab
+}
+
+// LayoutTab mirrors api/v1alpha1.LayoutTabSpec, fully resolved.
+type LayoutTab struct {
+	Name   string
+	Groups []LayoutGroup
+}
+
+// LayoutGroup mirrors api/v1alpha1.LayoutGroupSpec, fully resolved (Icon
+// resolved to a URL the same way ServiceEntry/Bookmark Icon is).
+type LayoutGroup struct {
+	Name    string
+	Columns *int32
+	Style   string
+	IconURL string
 }
 
 // HeaderWidget is one InfoWidget rendered in the dashboard header strip
@@ -257,6 +273,29 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 			site.Search.FilterCards = *s.FilterCards
 		}
 	}
+	if spec.Layout != nil {
+		tabs := make([]LayoutTab, 0, len(spec.Layout))
+		for _, t := range spec.Layout {
+			groups := make([]LayoutGroup, 0, len(t.Groups))
+			for _, g := range t.Groups {
+				groups = append(groups, LayoutGroup{
+					Name:    g.Name,
+					Columns: g.Columns,
+					Style:   stringOrEmpty(g.Style),
+					IconURL: IconURL(g.Icon),
+				})
+			}
+			tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
+		}
+		site.Layout = tabs
+	}
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // blurPx maps a Tailwind backdrop-blur size keyword to its CSS pixel value

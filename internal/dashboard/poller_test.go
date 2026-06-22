@@ -29,6 +29,11 @@ const (
 	testWidgetType    = "prometheus"
 	testSecretField   = "token"
 	testBookmarkGroup = "Reading"
+	testOtherGroup    = "Other"
+	testTab1          = "Tab1"
+	testTab2          = "Tab2"
+	testInfraTab      = "Infrastructure"
+	testStyleRow      = "row"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -82,7 +87,7 @@ func TestPollerPollOnce(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-main"},
-			Group:       "Other",
+			Group:       testOtherGroup,
 			Name:        "Skip me",
 			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
 		},

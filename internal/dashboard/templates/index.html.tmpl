@@ -35,7 +35,15 @@
       {{if eq .Site.HeaderStyle "underlined"}} border-bottom: 1px solid var(--accent); padding-bottom: 0.25rem; {{end}}
       {{if eq .Site.HeaderStyle "boxed"}} background: var(--panel); padding: 0.4rem 0.6rem; border-radius: 0.4rem; {{end}}
     }
+    .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab-btn {
+      background: var(--panel); color: var(--text); border: 1px solid var(--border);
+      border-radius: 0.4rem; padding: 0.4rem 0.9rem; font-size: 0.9rem; cursor: pointer;
+    }
+    .tab-btn.active { border-color: var(--accent); color: var(--accent); }
+    .tab-panel.hidden { display: none; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+    .grid.grid-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(220px, 1fr); }
     .card {
       background: var(--panel); border-radius: 0.5rem; padding: 1rem; display: block; text-decoration: none; color: inherit;
       {{if .Site.Background}}
@@ -108,6 +116,20 @@
         el.textContent = now.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
       });
     }, 1000);
+
+    // Tab selection lives outside the polled fragment, so it survives the
+    // htmx swap that re-renders #cards (and would otherwise reset to tab 0)
+    // on every poll.
+    let currentTab = 0;
+    function showTab(i) {
+      currentTab = i;
+      document.querySelectorAll(".tab-btn").forEach(function (b, idx) { b.classList.toggle("active", idx === i); });
+      document.querySelectorAll(".tab-panel").forEach(function (p, idx) { p.classList.toggle("hidden", idx !== i); });
+    }
+    document.getElementById("cards").addEventListener("htmx:afterSwap", function () {
+      const panels = document.querySelectorAll(".tab-panel").length;
+      showTab(panels > 0 && currentTab < panels ? currentTab : 0);
+    });
   </script>
 </body>
 </html>

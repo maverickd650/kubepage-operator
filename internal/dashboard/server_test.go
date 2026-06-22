@@ -234,3 +234,92 @@ func TestGroupCardsPreservesOrder(t *testing.T) {
 		t.Fatalf("groupCards() = %+v", groups)
 	}
 }
+
+func TestLayoutTabsNoLayoutReturnsSingleUnnamedTab(t *testing.T) {
+	cards := []Card{
+		{Group: "A", ServiceName: "a1"},
+		{Group: "B", ServiceName: "b1"},
+	}
+	tabs := layoutTabs(cards, nil)
+	if len(tabs) != 1 || tabs[0].Name != "" || len(tabs[0].Groups) != 2 {
+		t.Fatalf("layoutTabs() with no layout = %+v, want one unnamed tab with both groups", tabs)
+	}
+}
+
+func TestLayoutTabsArrangesGroupsAndStyles(t *testing.T) {
+	cards := []Card{
+		{Group: "A", ServiceName: "a1"},
+		{Group: "B", ServiceName: "b1"},
+	}
+	cols := int32(3)
+	layout := []LayoutTab{
+		{Name: testTab1, Groups: []LayoutGroup{{Name: "A", Columns: &cols, Style: testStyleRow, IconURL: "https://icon.invalid/a.png"}}},
+		{Name: testTab2, Groups: []LayoutGroup{{Name: "B"}}},
+	}
+	tabs := layoutTabs(cards, layout)
+	if len(tabs) != 2 {
+		t.Fatalf("layoutTabs() = %+v, want 2 tabs", tabs)
+	}
+	if tabs[0].Name != testTab1 || len(tabs[0].Groups) != 1 || tabs[0].Groups[0].Name != "A" {
+		t.Fatalf("tabs[0] = %+v", tabs[0])
+	}
+	g := tabs[0].Groups[0]
+	if g.Columns == nil || *g.Columns != cols || g.Style != testStyleRow || g.IconURL != "https://icon.invalid/a.png" {
+		t.Errorf("tabs[0].Groups[0] style = %+v, want columns=3 style=row iconURL set", g)
+	}
+	if tabs[1].Name != testTab2 || len(tabs[1].Groups) != 1 || tabs[1].Groups[0].Name != "B" {
+		t.Fatalf("tabs[1] = %+v", tabs[1])
+	}
+}
+
+func TestLayoutTabsAppendsUnreferencedGroupsToOther(t *testing.T) {
+	cards := []Card{
+		{Group: "A", ServiceName: "a1"},
+		{Group: "B", ServiceName: "b1"},
+	}
+	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{{Name: "A"}}}}
+	tabs := layoutTabs(cards, layout)
+	if len(tabs) != 2 || tabs[1].Name != testOtherGroup || len(tabs[1].Groups) != 1 || tabs[1].Groups[0].Name != "B" {
+		t.Fatalf("layoutTabs() = %+v, want Group B appended to a trailing \"Other\" tab", tabs)
+	}
+}
+
+func TestLayoutTabsGroupReferencedTwiceUsesFirstTab(t *testing.T) {
+	cards := []Card{{Group: "A", ServiceName: "a1"}}
+	layout := []LayoutTab{
+		{Name: testTab1, Groups: []LayoutGroup{{Name: "A"}}},
+		{Name: testTab2, Groups: []LayoutGroup{{Name: "A"}}},
+	}
+	tabs := layoutTabs(cards, layout)
+	if len(tabs) != 2 || len(tabs[0].Groups) != 1 || len(tabs[1].Groups) != 0 {
+		t.Fatalf("layoutTabs() = %+v, want Group A only under Tab1", tabs)
+	}
+}
+
+func TestServerFragmentRendersTabs(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: "ns/a/0", Group: "Infra", ServiceName: "Svc A"})
+	store.Set(Card{Key: "ns/b/0", Group: "Apps", ServiceName: "Svc B"})
+
+	cols := int32(2)
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Infra", Columns: &cols}}},
+			},
+		},
+	}
+	srv := newTestServer(t, store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{testInfraTab, testOtherGroup, "Svc A", "Svc B", "tab-btn"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+}

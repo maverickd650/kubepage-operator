@@ -20,7 +20,7 @@ rationale (kept local-only; ask in-repo if you need a copy).
 | Kind | Purpose |
 |------|---------|
 | `Instance` (`pageinst`) | The dashboard Deployment, Service, optional Ingress, and the per-Instance ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `instanceRef`. |
-| `Configuration` (`pcfg`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, and the header search box. One per Instance. |
+| `Configuration` (`pcfg`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. One per Instance. |
 | `ServiceEntry` (`psvc`) | One service card (with optional widgets polling that service's API) in a named group. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`hideErrors` toggles. |
 | `Bookmark` (`pbmk`) | One static bookmark link in a named group. |
 | `InfoWidget` (`piw`) | One header-strip widget: `datetime` (client-side clock), `greeting` (static text), or `openmeteo` (current weather). |

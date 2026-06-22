@@ -67,6 +67,48 @@ type SearchSpec struct {
 	FilterCards *bool `json:"filterCards,omitempty"`
 }
 
+// LayoutGroupSpec configures one Group's placement and style within a
+// LayoutTabSpec, mirroring homepage's settings.yaml `layout:` per-group
+// style keys (style/columns/icon).
+// See https://gethomepage.dev/configs/settings/#layout
+type LayoutGroupSpec struct {
+	// Name is the ServiceEntry Group this entry places and styles.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Columns is the number of card columns to render this group in,
+	// overriding the dashboard's default auto-fill grid.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=6
+	// +optional
+	Columns *int32 `json:"columns,omitempty"`
+
+	// Style lays the group's cards out in a single row instead of a grid.
+	// +kubebuilder:validation:Enum=row;column
+	// +optional
+	Style *string `json:"style,omitempty"`
+
+	// Icon overrides the group header's icon. Same resolution rules as
+	// ServiceEntry/Bookmark Icon: a full URL passes through, anything else
+	// is resolved as a dashboard-icons slug.
+	// +optional
+	Icon *string `json:"icon,omitempty"`
+}
+
+// LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
+// Groups not referenced by any tab still render, appended to an implicit
+// trailing "Other" tab; a Group referenced by more than one tab is shown
+// under the first tab that lists it.
+type LayoutTabSpec struct {
+	// Name is the tab's label.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Groups lists, in display order, the Groups shown under this tab.
+	// +kubebuilder:validation:MinItems=1
+	Groups []LayoutGroupSpec `json:"groups"`
+}
+
 // ConfigurationSpec defines the desired state of Configuration: the native
 // dashboard's theme/color/background/header-style look and its header search
 // box, applied by internal/dashboard's LoadSite.
@@ -133,6 +175,12 @@ type ConfigurationSpec struct {
 	// filtering + web-search fallthrough).
 	// +optional
 	Search *SearchSpec `json:"search,omitempty"`
+
+	// Layout arranges ServiceEntry Groups into tabs, mirroring homepage's
+	// settings.yaml `layout:` map (group -> style) with tabs added on top.
+	// Omitted/empty renders every group flat with no tab UI, as before.
+	// +optional
+	Layout []LayoutTabSpec `json:"layout,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.

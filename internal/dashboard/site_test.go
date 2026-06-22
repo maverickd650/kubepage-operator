@@ -130,6 +130,44 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	}
 }
 
+func TestLoadSiteAppliesLayout(t *testing.T) {
+	scheme := testScheme(t)
+	cols := int32(4)
+	style := testStyleRow
+	icon := "grafana"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{
+					Name: testInfraTab,
+					Groups: []pagev1alpha1.LayoutGroupSpec{
+						{Name: testGroup, Columns: &cols, Style: &style, Icon: &icon},
+					},
+				},
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if len(site.Layout) != 1 || site.Layout[0].Name != testInfraTab {
+		t.Fatalf("Layout = %+v, want one tab named Infrastructure", site.Layout)
+	}
+	groups := site.Layout[0].Groups
+	if len(groups) != 1 || groups[0].Name != testGroup {
+		t.Fatalf("Layout[0].Groups = %+v", groups)
+	}
+	g := groups[0]
+	if g.Columns == nil || *g.Columns != cols || g.Style != style || g.IconURL != IconURL(&icon) {
+		t.Errorf("Layout[0].Groups[0] = %+v, want columns=4 style=row iconURL=%s", g, IconURL(&icon))
+	}
+}
+
 func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	scheme := testScheme(t)
 	order1 := int32(1)
