@@ -18,6 +18,8 @@ func init() {
 const (
 	openMeteoDefaultBase = "https://api.open-meteo.com"
 	condClear            = "Clear"
+	condRain             = "Rain"
+	condThunderstorm     = "Thunderstorm"
 )
 
 // openMeteoWidget is a header InfoWidget that shows current weather from the
@@ -113,7 +115,7 @@ func weatherCondition(code int) string {
 	case code <= 57:
 		return "Drizzle"
 	case code <= 67:
-		return "Rain"
+		return condRain
 	case code <= 77:
 		return "Snow"
 	case code <= 82:
@@ -121,7 +123,7 @@ func weatherCondition(code int) string {
 	case code <= 86:
 		return "Snow showers"
 	case code <= 99:
-		return "Thunderstorm"
+		return condThunderstorm
 	default:
 		return statusUnknown
 	}

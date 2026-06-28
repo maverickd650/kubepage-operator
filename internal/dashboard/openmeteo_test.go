@@ -26,13 +26,13 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 			config:     `{"latitude":40.7,"longitude":-74,"units":"imperial","label":"NYC"}`,
 			response:   `{"current_weather":{"temperature":61,"weathercode":63}}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: "Rain"}},
+			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: condRain}},
 		},
 		"thunderstorm": {
 			config:     `{"latitude":1,"longitude":1}`,
 			response:   `{"current_weather":{"temperature":20,"weathercode":95}}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: labelWeather, Value: "20°C"}, {Label: labelConditions, Value: "Thunderstorm"}},
+			want:       []Field{{Label: labelWeather, Value: "20°C"}, {Label: labelConditions, Value: condThunderstorm}},
 		},
 		testCaseNon200: {
 			config:     `{"latitude":1,"longitude":1}`,
@@ -84,5 +84,30 @@ func TestOpenMeteoWidgetPollUnreachable(t *testing.T) {
 	want := []Field{{Label: labelStatus, Value: statusUnreach}}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+func TestWeatherCondition(t *testing.T) {
+	tests := map[string]struct {
+		code int
+		want string
+	}{
+		"clear":         {code: 0, want: condClear},
+		"partly cloudy": {code: 2, want: "Partly cloudy"},
+		"fog":           {code: 45, want: "Fog"},
+		"drizzle":       {code: 51, want: "Drizzle"},
+		"rain":          {code: 63, want: condRain},
+		"snow":          {code: 73, want: "Snow"},
+		"rain showers":  {code: 80, want: "Rain showers"},
+		"snow showers":  {code: 85, want: "Snow showers"},
+		"thunderstorm":  {code: 95, want: condThunderstorm},
+		"unknown":       {code: 100, want: statusUnknown},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := weatherCondition(tc.code); got != tc.want {
+				t.Errorf("weatherCondition(%d) = %q, want %q", tc.code, got, tc.want)
+			}
+		})
 	}
 }
