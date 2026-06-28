@@ -69,7 +69,7 @@ var _ = Describe("Configuration Controller", func() {
 
 		It("sets Available=True once the referenced Instance exists", func() {
 			instance := &pagev1alpha1.Instance{
-				ObjectMeta: metav1.ObjectMeta{Name: "inst", Namespace: namespaceName},
+				ObjectMeta: metav1.ObjectMeta{Name: testRefInstanceName, Namespace: namespaceName},
 				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 3000},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
@@ -77,7 +77,7 @@ var _ = Describe("Configuration Controller", func() {
 			cfg := &pagev1alpha1.Configuration{
 				ObjectMeta: metav1.ObjectMeta{Name: configCfg2Name, Namespace: namespaceName},
 				Spec: pagev1alpha1.ConfigurationSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: "inst"},
+					InstanceRef: pagev1alpha1.InstanceRef{Name: testRefInstanceName},
 				},
 			}
 			Expect(k8sClient.Create(ctx, cfg)).To(Succeed())

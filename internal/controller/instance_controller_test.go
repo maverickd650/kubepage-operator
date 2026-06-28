@@ -17,7 +17,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -195,7 +197,7 @@ var _ = Describe("Instance controller", func() {
 						"team": "platform",
 					},
 					Annotations: map[string]string{
-						"example.com/note": "hello",
+						testAnnotationKey: "hello",
 					},
 					PodSecurityContext: &corev1.PodSecurityContext{
 						FSGroup: ptr.To(int64(1000)),
@@ -245,7 +247,7 @@ var _ = Describe("Instance controller", func() {
 
 			By("user Labels and Annotations are merged into the pod template metadata")
 			Expect(dep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("team", "platform"))
-			Expect(dep.Spec.Template.ObjectMeta.Annotations).To(HaveKeyWithValue("example.com/note", "hello"))
+			Expect(dep.Spec.Template.ObjectMeta.Annotations).To(HaveKeyWithValue(testAnnotationKey, "hello"))
 
 			By("the builtin selector labels are still present alongside the user labels")
 			Expect(dep.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "kubepage-operator"))
@@ -576,6 +578,50 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, typeNamespacedName, &networkingv1.Ingress{}))).To(BeTrue())
 			}).Should(Succeed())
 		})
+
+		It("updates the existing Ingress in place when spec.ingress fields drift", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.InstanceSpec{
+					Size:          ptr.To(int32(1)),
+					ContainerPort: 8080,
+					Ingress: &pagev1alpha1.IngressSpec{
+						Enabled: true,
+						Host:    testDashboardHost,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			ing := &networkingv1.Ingress{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, ing)).To(Succeed())
+			}).Should(Succeed())
+			Expect(ing.Spec.Rules[0].Host).To(Equal(testDashboardHost))
+			originalUID := ing.UID
+
+			By("changing spec.ingress.host updates the existing Ingress rather than recreating it")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Ingress.Host = "drifted.example.com"
+			instance.Spec.Ingress.Annotations = map[string]string{testAnnotationKey: "updated"}
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, ing)).To(Succeed())
+				g.Expect(ing.Spec.Rules[0].Host).To(Equal("drifted.example.com"))
+				g.Expect(ing.Annotations).To(HaveKeyWithValue(testAnnotationKey, "updated"))
+			}).Should(Succeed())
+			Expect(ing.UID).To(Equal(originalUID), "drift should update the existing Ingress, not recreate it")
+		})
 	})
 
 	Context("Instance controller Gateway API test", func() {
@@ -750,6 +796,87 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Env).To(ConsistOf(corev1.EnvVar{Name: "FOO", Value: "bar"}))
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]).To(Equal(resource.MustParse("500m")))
 				g.Expect(dep.Spec.Template.Labels).To(HaveKeyWithValue("custom-label", "yes"))
+			}).Should(Succeed())
+		})
+	})
+
+	Context("Instance controller finalizer test", func() {
+
+		const InstanceName = "test-instance-finalizer"
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-finalizer-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+		})
+
+		It("runs finalizer cleanup (deleting cluster-scoped metrics RBAC) and removes the finalizer on deletion", func() {
+			instance := &pagev1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{Name: InstanceName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.InstanceSpec{Size: ptr.To(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			widget := &pagev1alpha1.InfoWidget{
+				ObjectMeta: metav1.ObjectMeta{Name: "metrics", Namespace: namespace.Name},
+				Spec: pagev1alpha1.InfoWidgetSpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
+					Type:        kubeMetricsWidgetType,
+				},
+			}
+			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
+
+			clusterName := fmt.Sprintf("kubepage-%s-%s", namespace.Name, InstanceName)
+			crName := types.NamespacedName{Name: clusterName}
+
+			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage, Recorder: events.NewFakeRecorder(10)}
+
+			By("the first reconcile adds the finalizer and creates cluster-scoped metrics RBAC")
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+				g.Expect(controllerutil.ContainsFinalizer(instance, instanceFinalizer)).To(BeTrue())
+			}).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, crName, &rbacv1.ClusterRole{})).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, crName, &rbacv1.ClusterRoleBinding{})).To(Succeed())
+			}).Should(Succeed())
+
+			By("deleting the Instance leaves it present (blocked by the finalizer) with a deletion timestamp")
+			Expect(k8sClient.Delete(ctx, instance)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+				g.Expect(instance.GetDeletionTimestamp()).NotTo(BeNil())
+			}).Should(Succeed())
+
+			By("reconciling the deletion runs the finalizer, removes the cluster RBAC, and lets the API server remove the Instance")
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, typeNamespacedName, &pagev1alpha1.Instance{}))).To(BeTrue())
+			}).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, crName, &rbacv1.ClusterRole{}))).To(BeTrue())
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, crName, &rbacv1.ClusterRoleBinding{}))).To(BeTrue())
 			}).Should(Succeed())
 		})
 	})
