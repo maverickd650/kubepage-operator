@@ -1,0 +1,101 @@
+package dashboard
+
+templ icon(url string) {
+	if url != "" {
+		<img class="icon" src={ url } alt=""/>
+	}
+}
+
+templ desc(text string) {
+	if text != "" {
+		<div class="desc">{ text }</div>
+	}
+}
+
+templ serviceCardView(c Card, siteTarget string) {
+	<div class="card" id={ "card-" + c.Key } data-name={ c.ServiceName } data-description={ c.Description }>
+		<h3>
+			@icon(c.IconURL)
+			if c.Href != "" {
+				<a href={ c.Href } target={ cardTarget(c, siteTarget) }>{ c.ServiceName }</a>
+			} else {
+				{ c.ServiceName }
+			}
+			if c.Status != "" {
+				switch c.StatusStyle {
+				case "dot":
+					<span class={ "status-dot", "status-" + c.Status } title={ statusWithLatency(c.Status, c.Latency) }></span>
+				case "basic":
+				default:
+					<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
+				}
+			}
+		</h3>
+		@desc(c.Description)
+		if c.Status != "" && c.StatusStyle == "basic" {
+			<div class="field"><span class="label">Status</span><span>{ statusWithLatency(c.Status, c.Latency) }</span></div>
+		}
+		if c.Err != "" {
+			<div class="err">{ c.Err }</div>
+		} else if len(c.Fields) > 0 {
+			<div class="stats">
+				for _, f := range c.Fields {
+					<div class="stat"><span class="label">{ f.Label }</span><span class="value">{ f.Value }</span></div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ bookmarkCardView(b BookmarkCard, siteTarget string) {
+	<a class="card bookmark" href={ b.Href } target={ siteTarget } data-name={ b.Name } data-description={ b.Description }>
+		if b.IconURL != "" {
+			@icon(b.IconURL)
+		} else if b.Abbr != "" {
+			<span class="abbr">{ b.Abbr }</span>
+		}
+		<div>
+			<h3>{ b.Name }</h3>
+			@desc(b.Description)
+		</div>
+	</a>
+}
+
+templ Cards(data fragmentData) {
+	if len(data.Tabs) > 1 {
+		<div class="tabs" role="tablist">
+			for i, t := range data.Tabs {
+				<button type="button" class={ "tab-btn", templ.KV("active", i == 0) } onclick={ templ.JSFuncCall("showTab", i) }>{ t.Name }</button>
+			}
+		</div>
+	}
+	for i, t := range data.Tabs {
+		<div class={ "tab-panel", templ.KV("hidden", i != 0) }>
+			for _, g := range t.Groups {
+				<h2>
+					@icon(g.IconURL)
+					{ " " }
+					{ g.Name }
+				</h2>
+				<div
+					class={ "grid", templ.KV("grid-row", g.Style == "row") }
+					if g.Columns != nil {
+						style={ gridStyle(g.Columns) }
+					}
+				>
+					for _, c := range g.Cards {
+						@serviceCardView(c, data.SiteTarget)
+					}
+				</div>
+			}
+		</div>
+	}
+	for _, bg := range data.BookmarkGroups {
+		<h2>{ bg.Name }</h2>
+		<div class="grid">
+			for _, b := range bg.Bookmarks {
+				@bookmarkCardView(b, data.SiteTarget)
+			}
+		</div>
+	}
+}

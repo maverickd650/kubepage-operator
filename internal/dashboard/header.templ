@@ -1,0 +1,22 @@
+package dashboard
+
+templ Header(data headerData) {
+	for _, w := range data.Widgets {
+		<div class={ "header-widget", "header-widget-" + w.Type }>
+			switch w.Type {
+			case headerTypeGreeting:
+				<span class="greeting">{ w.Greeting }</span>
+			case headerTypeDatetime:
+				<span class="clock" data-clock data-format={ w.Format }></span>
+			default:
+				if w.Err != "" {
+					<span class="err">{ w.Err }</span>
+				} else {
+					for _, f := range w.Fields {
+						<span class="header-field"><span class="label">{ f.Label }</span> { f.Value }</span>
+					}
+				}
+			}
+		</div>
+	}
+}
