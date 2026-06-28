@@ -75,6 +75,7 @@ type HeaderWidget struct {
 	Name    string
 	Type    string
 	Order   *int32
+	IconURL string
 	Options map[string]string
 }
 
@@ -189,6 +190,7 @@ func headerWidgets(items []pagev1alpha1.InfoWidget, instanceName string) []Heade
 			Name:    w.Name,
 			Type:    w.Spec.Type,
 			Order:   w.Spec.Order,
+			IconURL: IconURL(w.Spec.Icon),
 			Options: scalarOptions(w.Spec.Options),
 		})
 	}

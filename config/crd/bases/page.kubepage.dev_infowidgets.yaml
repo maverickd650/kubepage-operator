@@ -54,6 +54,15 @@ spec:
           spec:
             description: spec defines the desired state of InfoWidget
             properties:
+              icon:
+                description: |-
+                  Icon shown to the left of this widget's value(s) in the header strip,
+                  matching homepage's Resource component. Resolved the same way as
+                  ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
+                  anything else is treated as a dashboard-icons slug. Ignored by the
+                  "greeting" and "datetime" widget types, which homepage renders without
+                  an icon.
+                type: string
               instanceRef:
                 description: InstanceRef names the Instance this InfoWidget belongs
                   to.

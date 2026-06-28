@@ -65,8 +65,8 @@ func TestKubeMetricsWidgetPollCluster(t *testing.T) {
 				node("n2", "4", "8Gi"),
 			},
 			want: []Field{
-				{Label: labelCPU, Value: "2 / 8 cores (25%)"},
-				{Label: labelMemory, Value: "4 / 16 GiB (25%)"},
+				{Label: labelCPU, Value: "2 / 8 cores (25%)", Percent: new(25)},
+				{Label: labelMemory, Value: "4 / 16 GiB (25%)", Percent: new(25)},
 			},
 		},
 		"custom labels": {
@@ -76,8 +76,8 @@ func TestKubeMetricsWidgetPollCluster(t *testing.T) {
 			},
 			config: `{"cpuLabel":"Compute","memoryLabel":"RAM"}`,
 			want: []Field{
-				{Label: "Compute", Value: "1 / 2 cores (50%)"},
-				{Label: "RAM", Value: "1 / 4 GiB (25%)"},
+				{Label: "Compute", Value: "1 / 2 cores (50%)", Percent: new(50)},
+				{Label: "RAM", Value: "1 / 4 GiB (25%)", Percent: new(25)},
 			},
 		},
 		"no capacity omits percentage": {
@@ -87,6 +87,16 @@ func TestKubeMetricsWidgetPollCluster(t *testing.T) {
 			want: []Field{
 				{Label: labelCPU, Value: "1.5 cores"},
 				{Label: labelMemory, Value: "3 GiB"},
+			},
+		},
+		"high usage sets highlight": {
+			objs: []client.Object{
+				nodeMetrics("n1", "900m", "900Mi"),
+				node("n1", "1", "1000Mi"),
+			},
+			want: []Field{
+				{Label: labelCPU, Value: "0.9 / 1 cores (90%)", Percent: new(90), Highlight: HighlightDanger},
+				{Label: labelMemory, Value: "0.9 / 1 GiB (90%)", Percent: new(90), Highlight: HighlightDanger},
 			},
 		},
 	}

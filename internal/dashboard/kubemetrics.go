@@ -79,34 +79,53 @@ func (kubeMetricsWidget) PollCluster(ctx context.Context, reader client.Reader, 
 		memTotal.Add(alloc[corev1.ResourceMemory])
 	}
 
+	cpuValue, cpuPct := formatCPU(cpuUsed, cpuTotal)
+	memValue, memPct := formatMemory(memUsed, memTotal)
 	return []Field{
-		{Label: cpuLabel, Value: formatCPU(cpuUsed, cpuTotal)},
-		{Label: memoryLabel, Value: formatMemory(memUsed, memTotal)},
+		{Label: cpuLabel, Value: cpuValue, Percent: cpuPct, Highlight: usageHighlight(cpuPct)},
+		{Label: memoryLabel, Value: memValue, Percent: memPct, Highlight: usageHighlight(memPct)},
 	}, nil
 }
 
+// usageHighlight flags a usage percentage as "warn" (>=75%) or "danger"
+// (>=90%), or "" below that or when pct is unknown (nil, no capacity data).
+func usageHighlight(pct *int) string {
+	switch {
+	case pct == nil:
+		return ""
+	case *pct >= 90:
+		return HighlightDanger
+	case *pct >= 75:
+		return HighlightWarn
+	default:
+		return ""
+	}
+}
+
 // formatCPU renders CPU as "used / total cores (pct%)", using millicores for
-// precision and omitting the percentage when total capacity is unknown.
-func formatCPU(used, total resource.Quantity) string {
+// precision and omitting the percentage when total capacity is unknown. The
+// returned *int is the same percentage, for the usage bar; nil when omitted.
+func formatCPU(used, total resource.Quantity) (string, *int) {
 	usedCores := float64(used.MilliValue()) / 1000
 	totalCores := float64(total.MilliValue()) / 1000
 	if totalCores == 0 {
-		return fmt.Sprintf("%s cores", trimFloat(usedCores))
+		return fmt.Sprintf("%s cores", trimFloat(usedCores)), nil
 	}
-	pct := usedCores / totalCores * 100
-	return fmt.Sprintf("%s / %s cores (%d%%)", trimFloat(usedCores), trimFloat(totalCores), int(pct+0.5))
+	pct := int(usedCores/totalCores*100 + 0.5)
+	return fmt.Sprintf("%s / %s cores (%d%%)", trimFloat(usedCores), trimFloat(totalCores), pct), &pct
 }
 
 // formatMemory renders memory as "used / total GiB (pct%)", omitting the
-// percentage when total capacity is unknown.
-func formatMemory(used, total resource.Quantity) string {
+// percentage when total capacity is unknown. The returned *int is the same
+// percentage, for the usage bar; nil when omitted.
+func formatMemory(used, total resource.Quantity) (string, *int) {
 	usedGiB := float64(used.Value()) / bytesPerGiB
 	totalGiB := float64(total.Value()) / bytesPerGiB
 	if totalGiB == 0 {
-		return fmt.Sprintf("%s GiB", trimFloat(usedGiB))
+		return fmt.Sprintf("%s GiB", trimFloat(usedGiB)), nil
 	}
-	pct := usedGiB / totalGiB * 100
-	return fmt.Sprintf("%s / %s GiB (%d%%)", trimFloat(usedGiB), trimFloat(totalGiB), int(pct+0.5))
+	pct := int(usedGiB/totalGiB*100 + 0.5)
+	return fmt.Sprintf("%s / %s GiB (%d%%)", trimFloat(usedGiB), trimFloat(totalGiB), pct), &pct
 }
 
 // trimFloat formats f with one decimal place, dropping a trailing ".0".

@@ -12,6 +12,14 @@ templ desc(text string) {
 	}
 }
 
+// usageBar renders homepage's Resource/Block percentage bar under a stat
+// whose Field set Percent; renders nothing for a field with no percentage.
+templ usageBar(percent *int) {
+	if percent != nil {
+		<div class="usage-bar"><div class="usage-bar-fill" style={ templ.SafeCSS(percentBarStyle(*percent)) }></div></div>
+	}
+}
+
 templ serviceCardView(c Card, siteTarget string) {
 	<div class="card" id={ "card-" + c.Key } data-name={ c.ServiceName } data-description={ c.Description }>
 		<h3>
@@ -40,7 +48,10 @@ templ serviceCardView(c Card, siteTarget string) {
 		} else if len(c.Fields) > 0 {
 			<div class="stats">
 				for _, f := range c.Fields {
-					<div class="stat"><span class="value">{ f.Value }</span><span class="label">{ f.Label }</span></div>
+					<div class={ "stat", templ.KV("stat-warn", f.Highlight == HighlightWarn), templ.KV("stat-danger", f.Highlight == HighlightDanger) }>
+						<span class="value">{ f.Value }</span><span class="label">{ f.Label }</span>
+						@usageBar(f.Percent)
+					</div>
 				}
 			</div>
 		}
