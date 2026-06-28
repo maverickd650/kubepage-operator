@@ -1,0 +1,8 @@
+name: "CodeQL config"
+
+# Generated code (e.g. templ's *_templ.go output) isn't worth scanning: its
+# "useless assignment" patterns (ctx = templ.InitializeContext(ctx), the
+# templ_*_VarN buffer variables) are inherent to templ's code generator, not
+# something we hand-edit, and would otherwise re-flag on every PR.
+paths-ignore:
+  - "**/*_templ.go"

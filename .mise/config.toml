@@ -29,6 +29,10 @@ run = "controller-gen rbac:roleName=manager-role crd webhook paths='./...' outpu
 description = "Generate DeepCopy method implementations"
 run = "controller-gen object paths='./...'"
 
+[tasks.templ-generate]
+description = "Generate Go code from .templ dashboard templates"
+run = "go tool templ generate ./..."
+
 [tasks.fmt]
 description = "Run go fmt against code"
 run = "go fmt ./..."
@@ -63,7 +67,7 @@ run = "./bin/golangci-lint-custom config verify"
 
 [tasks.test]
 description = "Run unit tests"
-depends = ["manifests", "generate", "fmt", "vet"]
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 run = '''
 # ENVTEST_K8S_VERSION is derived from k8s.io/api, e.g. v0.36.2 -> 1.36, so the
 # envtest binaries track the k8s libraries automatically.
@@ -76,7 +80,7 @@ go test $(go list ./... | grep -v /e2e) -race -coverprofile cover.out
 
 [tasks.test-e2e]
 description = "Run e2e tests against a Kind cluster (Kind must be installed)"
-depends = ["manifests", "generate", "fmt", "vet"]
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 run = '''
 cluster="${KIND_CLUSTER}"
 if ! kind get clusters | grep -qx "$cluster"; then
@@ -91,12 +95,12 @@ KIND=kind KIND_CLUSTER="$cluster" go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 
 [tasks.build]
 description = "Build manager binary"
-depends = ["manifests", "generate", "fmt", "vet"]
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 run = "go build -o bin/manager cmd/main.go"
 
 [tasks.run]
 description = "Run a controller from your host"
-depends = ["manifests", "generate", "fmt", "vet"]
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 run = "go run ./cmd/main.go"
 
 [tasks.docker-build]

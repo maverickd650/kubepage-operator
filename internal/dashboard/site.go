@@ -89,12 +89,14 @@ type Background struct {
 	Opacity    *int32
 }
 
-// Search mirrors api/v1alpha1.SearchSpec, fully defaulted.
+// Search mirrors api/v1alpha1.SearchSpec, fully defaulted. JSON tags match
+// the field names the page shell's client-side searchConfig JS expects
+// (read via templ.JSONScript in index.templ).
 type Search struct {
-	Provider    string
-	URL         string
-	Target      string
-	FilterCards bool
+	Provider    string `json:"provider"`
+	URL         string `json:"url"`
+	Target      string `json:"target"`
+	FilterCards bool   `json:"filterCards"`
 }
 
 // BookmarkGroup is one bookmarks.yaml-style group of static link cards.

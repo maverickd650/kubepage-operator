@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"embed"
-	"html/template"
 	"net/http"
 	"strings"
 
@@ -17,16 +16,11 @@ const (
 	headerTypeDatetime = "datetime"
 )
 
-//go:embed templates/*.tmpl
-var templateFS embed.FS
-
 // assetFS holds static assets served verbatim under /assets/ — currently the
 // self-hosted Manrope font, embedded so the single binary needs no CDN (D11).
 //
 //go:embed assets/*.woff2
 var assetFS embed.FS
-
-var templates = template.Must(template.ParseFS(templateFS, "templates/*.tmpl"))
 
 // cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
@@ -137,7 +131,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := indexData{Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh}
-	if err := templates.ExecuteTemplate(w, "index.html.tmpl", data); err != nil {
+	if err := Index(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -155,7 +149,7 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 		BookmarkGroups: site.BookmarkGroups,
 		SiteTarget:     site.Target,
 	}
-	if err := templates.ExecuteTemplate(w, "cards.html.tmpl", data); err != nil {
+	if err := Cards(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -169,7 +163,7 @@ func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := headerData{Widgets: buildHeader(site.HeaderWidgets, s.Store.Snapshot())}
-	if err := templates.ExecuteTemplate(w, "header.html.tmpl", data); err != nil {
+	if err := Header(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
