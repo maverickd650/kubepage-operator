@@ -11,12 +11,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Highlight severity levels a widget may set on a Field; see Field.Highlight.
+const (
+	HighlightWarn   = "warn"
+	HighlightDanger = "danger"
+)
+
 // Field is one labeled value shown on a widget's card (e.g. "Status" →
 // "Healthy"). Widgets return a small ordered slice of these; the renderer
-// doesn't interpret them beyond display order.
+// doesn't interpret them beyond display order, except for Percent/Highlight
+// below.
 type Field struct {
 	Label string
 	Value string
+
+	// Percent is an optional 0-100 usage percentage. When set, the renderer
+	// draws a usage bar under the value, matching homepage's Resource
+	// component's <UsageBar percent={...}>.
+	Percent *int
+
+	// Highlight optionally flags this field's stat chip with a severity
+	// color: "warn" or "danger". Empty means no highlight. Set by a widget
+	// that has its own notion of a threshold (e.g. kubemetrics' CPU/memory
+	// percentage) — there is no generic, configurable threshold engine.
+	Highlight string
 }
 
 // WidgetConfig is everything a Widget needs to poll its upstream, already

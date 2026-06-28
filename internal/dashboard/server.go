@@ -81,6 +81,7 @@ type headerWidgetView struct {
 	Type     string
 	Greeting string
 	Format   string
+	IconURL  string
 	Fields   []Field
 	Err      string
 }
@@ -199,6 +200,7 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 		case headerTypeDatetime:
 			v.Format = d.Options["format"]
 		default:
+			v.IconURL = d.IconURL
 			if c, ok := live[d.Name]; ok {
 				v.Fields = c.Fields
 				v.Err = c.Err

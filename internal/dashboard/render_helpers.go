@@ -6,6 +6,19 @@ import (
 	"strings"
 )
 
+// percentBarStyle returns the inline width style for a usage bar's fill,
+// clamping p to [0, 100] since a widget-computed percentage could round
+// slightly outside that range.
+func percentBarStyle(p int) string {
+	switch {
+	case p < 0:
+		p = 0
+	case p > 100:
+		p = 100
+	}
+	return fmt.Sprintf("width: %d%%;", p)
+}
+
 func gridStyle(columns *int32) string {
 	return fmt.Sprintf("grid-template-columns: repeat(%d, 1fr);", *columns)
 }

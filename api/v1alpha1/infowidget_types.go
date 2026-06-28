@@ -33,6 +33,15 @@ type InfoWidgetSpec struct {
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
+	// Icon shown to the left of this widget's value(s) in the header strip,
+	// matching homepage's Resource component. Resolved the same way as
+	// ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
+	// anything else is treated as a dashboard-icons slug. Ignored by the
+	// "greeting" and "datetime" widget types, which homepage renders without
+	// an icon.
+	// +optional
+	Icon *string `json:"icon,omitempty"`
+
 	// Secret-bearing option fields. Merged into Options under the same field
 	// names once a renderer for this CRD exists.
 	// +optional
