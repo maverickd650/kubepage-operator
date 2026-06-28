@@ -35,9 +35,15 @@ templ Index(data indexData) {
 				.page-title { margin: 0; font-size: 1.5rem; }
 				.page-desc { margin: 0.25rem 0 1rem; color: var(--muted); }
 				.header-strip { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
-				.header-widget { background: var(--panel); border-radius: 0.5rem; padding: 0.5rem 0.9rem; font-size: 0.9rem; }
-				.header-widget .label { color: var(--muted); }
+				.header-widget {
+					background: color-mix(in srgb, var(--panel) 45%, transparent);
+					box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+					border-radius: 0.5rem; padding: 0.5rem 0.9rem; font-size: 0.9rem;
+				}
+				.header-field { display: inline-flex; align-items: baseline; gap: 0.35rem; }
 				.header-field + .header-field { margin-left: 0.75rem; }
+				.greeting { font-size: 1.25rem; }
+				.clock { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
 				.search-bar { margin-bottom: 1.5rem; }
 				.search-bar input {
 					width: 100%; box-sizing: border-box; padding: 0.6rem 1rem; font-size: 1rem;
@@ -82,10 +88,16 @@ templ Index(data indexData) {
 				.status-pill { margin-left: auto; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; font-weight: 600; background: color-mix(in srgb, var(--muted) 25%, transparent); color: var(--muted); }
 				.status-pill.status-Up { background: color-mix(in srgb, #4ade80 22%, transparent); color: #4ade80; }
 				.status-pill.status-Down { background: color-mix(in srgb, #f87171 22%, transparent); color: #f87171; }
-				.stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin-top: 0.5rem; }
-				.stat { display: flex; flex-direction: column; line-height: 1.2; }
-				.stat .label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-				.stat .value { font-size: 0.95rem; font-weight: 600; }
+				.stats { display: flex; flex-direction: row; width: 100%; margin-top: 0.5rem; }
+				.stat {
+					flex: 1 1 0%; margin: 0.15rem; padding: 0.25rem;
+					background: color-mix(in srgb, var(--muted) 14%, transparent);
+					border-radius: 0.25rem;
+					display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+					line-height: 1.2; min-width: 0;
+				}
+				.stat .value { font-size: 0.85rem; font-weight: 300; }
+				.stat .label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 				.field { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.15rem 0; }
 				.field .label { color: var(--muted); }
 				.card.bookmark { display: flex; align-items: center; gap: 0.65rem; padding: 0.6rem 0.8rem; }

@@ -40,7 +40,7 @@ templ serviceCardView(c Card, siteTarget string) {
 		} else if len(c.Fields) > 0 {
 			<div class="stats">
 				for _, f := range c.Fields {
-					<div class="stat"><span class="label">{ f.Label }</span><span class="value">{ f.Value }</span></div>
+					<div class="stat"><span class="value">{ f.Value }</span><span class="label">{ f.Label }</span></div>
 				}
 			</div>
 		}

@@ -364,12 +364,12 @@ func serviceCardView(c Card, siteTarget string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			for _, f := range c.Fields {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"stat\"><span class=\"label\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"stat\"><span class=\"value\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var22 string
-				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(f.Label)
+				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(f.Value)
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 43, Col: 52}
 				}
@@ -377,12 +377,12 @@ func serviceCardView(c Card, siteTarget string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</span><span class=\"value\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</span><span class=\"label\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var23 string
-				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(f.Value)
+				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(f.Label)
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 43, Col: 90}
 				}

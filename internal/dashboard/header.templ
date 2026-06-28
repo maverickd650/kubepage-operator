@@ -13,7 +13,7 @@ templ Header(data headerData) {
 					<span class="err">{ w.Err }</span>
 				} else {
 					for _, f := range w.Fields {
-						<span class="header-field"><span class="label">{ f.Label }</span> { f.Value }</span>
+						<span class="header-field"><span class="value">{ f.Value }</span><span class="label">{ f.Label }</span></span>
 					}
 				}
 			}
