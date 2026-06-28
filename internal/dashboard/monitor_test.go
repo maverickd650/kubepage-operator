@@ -70,7 +70,7 @@ func TestMonitorResult(t *testing.T) {
 	}
 
 	downStatus, downLatency := monitorResult(context.Background(), http.DefaultClient, testUnreachableAddr)
-	if downStatus != "Down" {
+	if downStatus != statusDown {
 		t.Errorf("monitorResult() status = %q, want Down", downStatus)
 	}
 	if downLatency != "" {

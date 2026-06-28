@@ -84,13 +84,22 @@ func rootVarsCSS(accentHex string, ramp Ramp, cardBlur string, background *Backg
 	return b.String()
 }
 
-// cssStringEscape escapes a value for safe embedding inside a double-quoted
-// CSS string literal (e.g. url("...")). Background.Image is the one CSS
-// value in this page that comes from CRD-supplied free text rather than a
-// fixed lookup table, so it's the one value that needs this.
+// cssStringEscape escapes a value for safe embedding both inside a
+// double-quoted CSS string literal (e.g. url("...")) and inside the raw,
+// unescaped <style> element backgroundStyle emits via @templ.Raw.
+// Background.Image is the one CSS value in this page that comes from
+// CRD-supplied free text rather than a fixed lookup table, so it's the one
+// value that needs this. Backslash/quote escaping alone is enough for a CSS
+// string literal, but templ.Raw means the surrounding HTML is never escaped
+// either: without also escaping '<' and '>', a value containing
+// `"></style><script>...</script>` would close the <style> tag early and
+// inject arbitrary markup into the page, regardless of how the quotes
+// inside it are escaped.
 func cssStringEscape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, `<`, `&lt;`)
+	s = strings.ReplaceAll(s, `>`, `&gt;`)
 	return s
 }
 

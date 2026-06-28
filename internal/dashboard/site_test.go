@@ -80,8 +80,8 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 	if site.Title != title || site.Description != desc || site.Favicon != favicon || site.Target != target {
 		t.Errorf("look fields = %+v", site)
 	}
-	if site.CardBlur != "12px" {
-		t.Errorf("CardBlur = %q, want 12px (md keyword)", site.CardBlur)
+	if want := blurPx(cardBlur); site.CardBlur != want {
+		t.Errorf("CardBlur = %q, want %q (%s keyword)", site.CardBlur, want, cardBlur)
 	}
 }
 
@@ -205,5 +205,26 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	bms := site.BookmarkGroups[0].Bookmarks
 	if len(bms) != 2 || bms[0].Name != "First" || bms[1].Name != "Second" {
 		t.Errorf("Bookmarks = %+v, want First then Second (ordered by Order)", bms)
+	}
+}
+
+func TestBlurPx(t *testing.T) {
+	tests := map[string]struct{ keyword, want string }{
+		"keyword none":    {keyword: "none", want: ""},
+		"default":         {keyword: "", want: "8px"},
+		"keyword sm":      {keyword: "sm", want: "4px"},
+		"keyword md":      {keyword: "md", want: "12px"},
+		"keyword lg":      {keyword: "lg", want: "16px"},
+		"keyword xl":      {keyword: "xl", want: "24px"},
+		"keyword 2xl":     {keyword: "2xl", want: "40px"},
+		"keyword 3xl":     {keyword: "3xl", want: "64px"},
+		"unknown keyword": {keyword: "not-a-size", want: ""},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := blurPx(tc.keyword); got != tc.want {
+				t.Errorf("blurPx(%q) = %q, want %q", tc.keyword, got, tc.want)
+			}
+		})
 	}
 }

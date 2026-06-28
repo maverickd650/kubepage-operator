@@ -1,12 +1,18 @@
 package controller
 
 import (
+	"context"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -42,7 +48,7 @@ func TestHTTPRouteForInstance(t *testing.T) {
 					Namespace:   ptr.To("gateway-system"),
 					SectionName: ptr.To("https"),
 				},
-				Annotations: map[string]string{"example.com/note": "hi"},
+				Annotations: map[string]string{testAnnotationKey: "hi"},
 			},
 		},
 	}
@@ -55,7 +61,7 @@ func TestHTTPRouteForInstance(t *testing.T) {
 	if route.Name != testInstanceObjName || route.Namespace != ns {
 		t.Errorf("route name/namespace = %s/%s, want %s/%s", route.Namespace, route.Name, ns, testInstanceObjName)
 	}
-	if route.Annotations["example.com/note"] != "hi" {
+	if route.Annotations[testAnnotationKey] != "hi" {
 		t.Errorf("route annotations = %+v, want example.com/note=hi", route.Annotations)
 	}
 
@@ -160,7 +166,7 @@ func TestHTTPRouteSpecsEqual(t *testing.T) {
 	}
 
 	changedHost := base
-	changedHost.Hostnames = []gatewayv1.Hostname{"other.example.com"}
+	changedHost.Hostnames = []gatewayv1.Hostname{testOtherHost}
 	if httpRouteSpecsEqual(base, changedHost) {
 		t.Errorf("httpRouteSpecsEqual(base, changedHost) = true, want false (hostname differs)")
 	}
@@ -174,4 +180,299 @@ func TestHTTPRouteSpecsEqual(t *testing.T) {
 	if httpRouteSpecsEqual(base, changedPort) {
 		t.Errorf("httpRouteSpecsEqual(base, changedPort) = true, want false (backend port differs)")
 	}
+}
+
+func TestEqualStringPtr(t *testing.T) {
+	a, b := "x", "x"
+	c := "y"
+	tests := map[string]struct {
+		a, b *string
+		want bool
+	}{
+		testCaseBothNil:         {a: nil, b: nil, want: true},
+		testCaseOneNil:          {a: &a, b: nil, want: false},
+		"other nil":             {a: nil, b: &a, want: false},
+		testCaseEqualValues:     {a: &a, b: &b, want: true},
+		testCaseDifferentValues: {a: &a, b: &c, want: false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := equalStringPtr(tc.a, tc.b); got != tc.want {
+				t.Errorf("equalStringPtr(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEqualGatewayNamespacePtr(t *testing.T) {
+	a := gatewayv1.Namespace("ns-a")
+	b := gatewayv1.Namespace("ns-a")
+	c := gatewayv1.Namespace("ns-c")
+	tests := map[string]struct {
+		a, b *gatewayv1.Namespace
+		want bool
+	}{
+		testCaseBothNil:         {a: nil, b: nil, want: true},
+		testCaseOneNil:          {a: &a, b: nil, want: false},
+		testCaseEqualValues:     {a: &a, b: &b, want: true},
+		testCaseDifferentValues: {a: &a, b: &c, want: false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := equalGatewayNamespacePtr(tc.a, tc.b); got != tc.want {
+				t.Errorf("equalGatewayNamespacePtr() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEqualGatewaySectionNamePtr(t *testing.T) {
+	a := gatewayv1.SectionName("https")
+	b := gatewayv1.SectionName("https")
+	c := gatewayv1.SectionName("http")
+	tests := map[string]struct {
+		a, b *gatewayv1.SectionName
+		want bool
+	}{
+		testCaseBothNil:         {a: nil, b: nil, want: true},
+		testCaseOneNil:          {a: &a, b: nil, want: false},
+		testCaseEqualValues:     {a: &a, b: &b, want: true},
+		testCaseDifferentValues: {a: &a, b: &c, want: false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := equalGatewaySectionNamePtr(tc.a, tc.b); got != tc.want {
+				t.Errorf("equalGatewaySectionNamePtr() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPortsEqualLengthMismatch(t *testing.T) {
+	a := []corev1.ServicePort{{Name: "http", Port: 80}}
+	b := []corev1.ServicePort{{Name: "http", Port: 80}, {Name: "https", Port: 443}}
+	if portsEqual(a, b) {
+		t.Errorf("portsEqual() = true, want false (different lengths)")
+	}
+}
+
+func TestIngressSpecsEqual(t *testing.T) {
+	pathType := networkingv1.PathTypePrefix
+	base := networkingv1.IngressSpec{
+		IngressClassName: ptr.To("nginx"),
+		Rules: []networkingv1.IngressRule{{
+			Host: testDashboardHost,
+			IngressRuleValue: networkingv1.IngressRuleValue{
+				HTTP: &networkingv1.HTTPIngressRuleValue{
+					Paths: []networkingv1.HTTPIngressPath{{
+						Path:     "/",
+						PathType: &pathType,
+						Backend: networkingv1.IngressBackend{
+							Service: &networkingv1.IngressServiceBackend{
+								Name: testInstanceObjName,
+								Port: networkingv1.ServiceBackendPort{Number: 8080},
+							},
+						},
+					}},
+				},
+			},
+		}},
+		TLS: []networkingv1.IngressTLS{{SecretName: "tls-secret", Hosts: []string{testDashboardHost}}},
+	}
+
+	t.Run("identical specs are equal", func(t *testing.T) {
+		if !ingressSpecsEqual(base, base) {
+			t.Errorf("ingressSpecsEqual(base, base) = false, want true")
+		}
+	})
+
+	t.Run("different IngressClassName", func(t *testing.T) {
+		other := base
+		other.IngressClassName = ptr.To("other-class")
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (IngressClassName differs)")
+		}
+	})
+
+	t.Run("different rule count", func(t *testing.T) {
+		other := base
+		other.Rules = append([]networkingv1.IngressRule{}, base.Rules...)
+		other.Rules = append(other.Rules, base.Rules[0])
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (rule count differs)")
+		}
+	})
+
+	t.Run("different host", func(t *testing.T) {
+		other := base
+		otherRule := base.Rules[0]
+		otherRule.Host = testOtherHost
+		other.Rules = []networkingv1.IngressRule{otherRule}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (host differs)")
+		}
+	})
+
+	t.Run("nil HTTP rule value", func(t *testing.T) {
+		other := base
+		otherRule := base.Rules[0]
+		otherRule.IngressRuleValue = networkingv1.IngressRuleValue{}
+		other.Rules = []networkingv1.IngressRule{otherRule}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (HTTP is nil)")
+		}
+	})
+
+	t.Run("different backend service name", func(t *testing.T) {
+		other := base
+		otherRule := base.Rules[0]
+		otherPath := otherRule.HTTP.Paths[0]
+		otherPath.Backend.Service = &networkingv1.IngressServiceBackend{Name: "other-svc", Port: otherPath.Backend.Service.Port}
+		otherRule.HTTP = &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{otherPath}}
+		other.Rules = []networkingv1.IngressRule{otherRule}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (backend service name differs)")
+		}
+	})
+
+	t.Run("different TLS count", func(t *testing.T) {
+		other := base
+		other.TLS = nil
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (TLS count differs)")
+		}
+	})
+
+	t.Run("different TLS secret name", func(t *testing.T) {
+		other := base
+		other.TLS = []networkingv1.IngressTLS{{SecretName: "other-secret", Hosts: []string{testDashboardHost}}}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (TLS secret name differs)")
+		}
+	})
+
+	t.Run("different TLS hosts", func(t *testing.T) {
+		other := base
+		other.TLS = []networkingv1.IngressTLS{{SecretName: "tls-secret", Hosts: []string{testOtherHost}}}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (TLS hosts differ)")
+		}
+	})
+}
+
+// TestReconcileHTTPRouteLifecycle exercises reconcileHTTPRoute's
+// create/update/delete/no-op branches directly against a fake client with
+// GatewayAPIEnabled true. envtest (see instance_controller_test.go) can't
+// cover this: it only installs this project's own CRDs, so
+// GatewayAPIEnabled is always false there, leaving this whole code path
+// (everything past the "Gateway API not installed" check) untested.
+func TestReconcileHTTPRouteLifecycle(t *testing.T) {
+	scheme := networkTestScheme(t)
+	ns := "ghr-fake"
+	ctx := context.Background()
+
+	instance := &pagev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: testInstanceObjName, Namespace: ns, UID: "uid-1"},
+		Spec: pagev1alpha1.InstanceSpec{
+			ContainerPort: 8080,
+			Gateway: &pagev1alpha1.GatewaySpec{
+				Enabled:   true,
+				Hostnames: []string{testDashboardHost},
+				ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
+			},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	r := &InstanceReconciler{Client: cl, Scheme: scheme, GatewayAPIEnabled: true}
+	nn := types.NamespacedName{Name: instance.Name, Namespace: ns}
+
+	t.Run("creates the HTTPRoute when enabled and missing", func(t *testing.T) {
+		if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
+			t.Fatalf("reconcileHTTPRoute() unexpected error: %v", err)
+		}
+		route := &gatewayv1.HTTPRoute{}
+		if err := cl.Get(ctx, nn, route); err != nil {
+			t.Fatalf("expected HTTPRoute to be created: %v", err)
+		}
+		if len(route.Spec.Hostnames) != 1 || route.Spec.Hostnames[0] != gatewayv1.Hostname(testDashboardHost) {
+			t.Errorf("route.Spec.Hostnames = %v, want [%s]", route.Spec.Hostnames, testDashboardHost)
+		}
+	})
+
+	t.Run("corrects drift on an existing HTTPRoute", func(t *testing.T) {
+		route := &gatewayv1.HTTPRoute{}
+		if err := cl.Get(ctx, nn, route); err != nil {
+			t.Fatalf("getting HTTPRoute: %v", err)
+		}
+		route.Spec.Hostnames = []gatewayv1.Hostname{"stale.example.com"}
+		if err := cl.Update(ctx, route); err != nil {
+			t.Fatalf("seeding drift: %v", err)
+		}
+
+		if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
+			t.Fatalf("reconcileHTTPRoute() unexpected error: %v", err)
+		}
+
+		corrected := &gatewayv1.HTTPRoute{}
+		if err := cl.Get(ctx, nn, corrected); err != nil {
+			t.Fatalf("getting HTTPRoute: %v", err)
+		}
+		if len(corrected.Spec.Hostnames) != 1 || corrected.Spec.Hostnames[0] != gatewayv1.Hostname(testDashboardHost) {
+			t.Errorf("corrected.Spec.Hostnames = %v, want drift corrected back to [%s]", corrected.Spec.Hostnames, testDashboardHost)
+		}
+	})
+
+	t.Run("deletes the HTTPRoute once spec.gateway is disabled", func(t *testing.T) {
+		disabled := instance.DeepCopy()
+		disabled.Spec.Gateway.Enabled = false
+
+		if err := r.reconcileHTTPRoute(ctx, disabled); err != nil {
+			t.Fatalf("reconcileHTTPRoute() unexpected error: %v", err)
+		}
+		err := cl.Get(ctx, nn, &gatewayv1.HTTPRoute{})
+		if !apierrors.IsNotFound(err) {
+			t.Errorf("expected HTTPRoute to be deleted, Get() returned err=%v", err)
+		}
+	})
+
+	t.Run("is a no-op when disabled and already absent", func(t *testing.T) {
+		disabled := instance.DeepCopy()
+		disabled.Spec.Gateway.Enabled = false
+
+		if err := r.reconcileHTTPRoute(ctx, disabled); err != nil {
+			t.Errorf("reconcileHTTPRoute() unexpected error: %v", err)
+		}
+	})
+}
+
+func TestMapToInstance(t *testing.T) {
+	extract := func(b *pagev1alpha1.Bookmark) string { return b.Spec.InstanceRef.Name }
+	mapFn := mapToInstance(extract)
+	ctx := context.Background()
+
+	t.Run("enqueues the referenced Instance in the object's namespace", func(t *testing.T) {
+		bm := &pagev1alpha1.Bookmark{
+			ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: "ns"},
+			Spec:       pagev1alpha1.BookmarkSpec{InstanceRef: pagev1alpha1.InstanceRef{Name: testRefInstanceName}},
+		}
+		reqs := mapFn(ctx, bm)
+		if len(reqs) != 1 || reqs[0].Name != testRefInstanceName || reqs[0].Namespace != "ns" {
+			t.Errorf("mapFn() = %+v, want a single request for ns/inst", reqs)
+		}
+	})
+
+	t.Run("returns nil when the instanceRef name is empty", func(t *testing.T) {
+		bm := &pagev1alpha1.Bookmark{ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: "ns"}}
+		if reqs := mapFn(ctx, bm); reqs != nil {
+			t.Errorf("mapFn() = %+v, want nil", reqs)
+		}
+	})
+
+	t.Run("returns nil for an object of the wrong type", func(t *testing.T) {
+		cfg := &pagev1alpha1.Configuration{ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: "ns"}}
+		if reqs := mapFn(ctx, cfg); reqs != nil {
+			t.Errorf("mapFn() = %+v, want nil for a non-Bookmark object", reqs)
+		}
+	})
 }

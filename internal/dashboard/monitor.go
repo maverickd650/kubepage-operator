@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const statusDown = "Down"
+
 // probeHTTP performs an HTTP reachability check of url, returning whether the
 // endpoint is up (responded with a 2xx/3xx status) and how long the request
 // took. It is the shared implementation behind both ServiceEntry.Ping and
@@ -48,7 +50,7 @@ func doProbe(ctx context.Context, httpClient *http.Client, method, url string) (
 func monitorResult(ctx context.Context, httpClient *http.Client, url string) (status, latency string) {
 	up, took, err := probeHTTP(ctx, httpClient, url)
 	if err != nil || !up {
-		return "Down", ""
+		return statusDown, ""
 	}
 	return "Up", took.Round(time.Millisecond).String()
 }

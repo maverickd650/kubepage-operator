@@ -25,3 +25,16 @@ func TestPaletteRampFallsBackToSlate(t *testing.T) {
 		}
 	}
 }
+
+func TestAccentHexUnknownColorFallsBackToDefault(t *testing.T) {
+	for _, color := range []string{"", "not-a-color"} {
+		if got := AccentHex(color); got != defaultAccentHex {
+			t.Errorf("AccentHex(%q) = %q, want default %q", color, got, defaultAccentHex)
+		}
+	}
+	// "white" has its own palette entry, distinct from the unrecognized-value
+	// default, so it must not be conflated with the fallback case above.
+	if got, want := AccentHex("white"), accentPalette["white"]; got != want {
+		t.Errorf(`AccentHex("white") = %q, want %q`, got, want)
+	}
+}
