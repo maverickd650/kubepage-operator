@@ -23,6 +23,13 @@ func gridStyle(columns *int32) string {
 	return fmt.Sprintf("grid-template-columns: repeat(%d, 1fr);", *columns)
 }
 
+// isHTTPURL reports whether s has an http(s) scheme. Used to defensively
+// re-check Configuration.Spec.Search.URL before it's passed into a
+// client-side window.open()/href — see the call site in site.go.
+func isHTTPURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
 // cardTarget resolves a card's link target: its own override, else the
 // site default.
 func cardTarget(c Card, siteTarget string) string {

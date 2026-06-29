@@ -267,7 +267,13 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 		if s.Provider != nil {
 			site.Search.Provider = *s.Provider
 		}
-		if s.URL != nil {
+		if s.URL != nil && isHTTPURL(*s.URL) {
+			// The CRD schema's Pattern marker already rejects non-http(s)
+			// URLs at apply time, but re-check here defensively: this value
+			// is passed straight into a client-side window.open()/href, so a
+			// non-http(s) scheme (e.g. "javascript:") would be a stored
+			// script-injection vector, and existing CRs predate the schema
+			// change.
 			site.Search.URL = *s.URL
 		}
 		if s.Target != nil {
