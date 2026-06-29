@@ -2,6 +2,8 @@ package controller
 
 import (
 	"path/filepath"
+	"slices"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -11,7 +13,42 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
+	"github.com/maverickd650/kubepage-operator/internal/dashboard"
 )
+
+// serviceEntryWidgetTypes and infoWidgetPollableTypes must be kept identical
+// to the two CEL allow-lists in config/admission/widget_type_policy.yaml.
+// TestRegisteredWidgetTypesCoveredByPolicy below fails if a type registered
+// in internal/dashboard is missing from both lists, which is the drift the
+// YAML's own comment promises but the envtest specs in this file (which only
+// probe a handful of fixed type strings) don't actually catch for a type
+// *addition*.
+var (
+	serviceEntryWidgetTypes = []string{
+		"plex", "stash", "paperlessngx", "grafana", testWidgetTypePrometheus,
+		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
+		"homeassistant", "mealie",
+	}
+	// infoWidgetPollableTypes is the subset of config/admission's infowidget-type
+	// allow-list that's also a registered dashboard.Widget; "greeting" and
+	// "datetime" are rendered statically by internal/dashboard/server.go and
+	// never go through Register, so they're intentionally excluded here.
+	infoWidgetPollableTypes = []string{"openmeteo", "kubemetrics"}
+)
+
+// TestRegisteredWidgetTypesCoveredByPolicy guards against a widget added to
+// internal/dashboard (via Register in some widget's init()) being forgotten
+// in config/admission/widget_type_policy.yaml's CEL allow-lists: every
+// registered type must appear in at least one of the two lists above, or a
+// valid, working widget type would be rejected at admission time.
+func TestRegisteredWidgetTypesCoveredByPolicy(t *testing.T) {
+	allowed := slices.Concat(serviceEntryWidgetTypes, infoWidgetPollableTypes)
+	for _, widgetType := range dashboard.RegisteredTypes() {
+		if !slices.Contains(allowed, widgetType) {
+			t.Errorf("dashboard widget type %q is registered but missing from both serviceEntryWidgetTypes and infoWidgetPollableTypes; add it to config/admission/widget_type_policy.yaml and to one of these lists", widgetType)
+		}
+	}
+}
 
 // These specs verify the shipped widget-type ValidatingAdmissionPolicies
 // (config/admission/widget_type_policy.yaml) reject unknown widget types,

@@ -115,7 +115,7 @@ var _ = Describe("Secret-source ValidatingAdmissionPolicies", Ordered, func() {
 // widget carries one secret keyed secretField set to src (nil src => no
 // secrets).
 func serviceEntryWithSecret(name string, src *pagev1alpha1.SecretValueSource) *pagev1alpha1.ServiceEntry {
-	widget := pagev1alpha1.ServiceWidget{Type: "prometheus"}
+	widget := pagev1alpha1.ServiceWidget{Type: testWidgetTypePrometheus}
 	if src != nil {
 		widget.Secrets = map[string]pagev1alpha1.SecretValueSource{secretField: *src}
 	}

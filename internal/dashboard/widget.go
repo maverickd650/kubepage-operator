@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -85,4 +86,19 @@ func Register(widgetType string, w Widget) {
 func Lookup(widgetType string) (Widget, bool) {
 	w, ok := registry[widgetType]
 	return w, ok
+}
+
+// RegisteredTypes returns every widget type currently registered, sorted.
+// Used by internal/controller's widget-type admission policy tests to catch
+// a widget added here without also adding it to the corresponding CEL
+// allow-list in config/admission/widget_type_policy.yaml — see that test for
+// why this drift can't otherwise be caught short of a real apiserver
+// rejecting a previously-valid type.
+func RegisteredTypes() []string {
+	types := make([]string, 0, len(registry))
+	for t := range registry {
+		types = append(types, t)
+	}
+	slices.Sort(types)
+	return types
 }
