@@ -1,12 +1,21 @@
 # kubepage-operator
 
+[![Tests](https://github.com/maverickd650/kubepage-operator/actions/workflows/test.yml/badge.svg)](https://github.com/maverickd650/kubepage-operator/actions/workflows/test.yml)
+[![Lint](https://github.com/maverickd650/kubepage-operator/actions/workflows/lint.yml/badge.svg)](https://github.com/maverickd650/kubepage-operator/actions/workflows/lint.yml)
+[![Latest release](https://img.shields.io/github/v/release/maverickd650/kubepage-operator)](https://github.com/maverickd650/kubepage-operator/releases)
+[![License](https://img.shields.io/github/license/maverickd650/kubepage-operator)](LICENSE)
+
 A Kubernetes operator that serves a small, native dashboard (Go + htmx, a
 single binary, no Node/React build step) for a curated set of self-hosted
 services — Plex, Stash, Paperless-ngx, Grafana, Prometheus, UniFi, TrueNAS,
 Cloudflared, Linkwarden, Home Assistant, Mealie — driven entirely by CRDs.
 Define services, bookmarks, and dashboard look/settings as Kubernetes
 objects, and the operator runs a per-Instance dashboard Deployment that reads
-those CRDs directly and polls each service's API on an interval.
+those CRDs directly and polls each service's API on an interval. The
+dashboard also ships a homepage-style quick-launch palette (`Ctrl`/`Cmd`+`K`,
+or `/`) that fuzzy-jumps to any service or bookmark card, falling back to a
+web search — built client-side from the same cards already on the page, so
+it needs no extra CRD configuration.
 
 The dashboard process resolves any Secret-backed credentials (a `ServiceEntry`
 widget's API key, etc.) itself, in-process — the plaintext value never
@@ -23,7 +32,7 @@ rationale (kept local-only; ask in-repo if you need a copy).
 | `Configuration` (`pcfg`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. One per Instance. |
 | `ServiceEntry` (`psvc`) | One service card (with optional widgets polling that service's API) in a named group. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`hideErrors` toggles. |
 | `Bookmark` (`pbmk`) | One static bookmark link in a named group. |
-| `InfoWidget` (`piw`) | One header-strip widget: `datetime` (client-side clock), `greeting` (static text), or `openmeteo` (current weather). |
+| `InfoWidget` (`piw`) | One header-strip widget: `datetime` (client-side clock), `greeting` (static text), `openmeteo` (current weather), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
 Every config CRD (`Configuration`, `ServiceEntry`, `Bookmark`, `InfoWidget`)
 carries an `instanceRef.name` naming the `Instance` it belongs to, and any
@@ -98,8 +107,10 @@ mise run undeploy    # removes the controller
 Tooling is managed by [mise](https://mise.jdx.dev) — it pins every tool version
 (Go, golangci-lint, controller-gen, kustomize, helm, kind, etc.) in
 [`.mise/config.toml`](.mise/config.toml), so local development matches CI
-exactly. Docker and access to a Kubernetes v1.11.3+ cluster are the only other
-prerequisites.
+exactly. Docker and access to a Kubernetes cluster are the only other
+prerequisites — v1.30+ to get the `ValidatingAdmissionPolicy`-based admission
+checks (see [Admission validation](#admission-validation)); older clusters
+work too with `--set admissionPolicies.enabled=false` on the Helm chart.
 
 ```sh
 curl https://mise.run | sh   # one-time: install mise
@@ -126,7 +137,10 @@ mise run lint-fix test
 ```
 
 See [`AGENTS.md`](AGENTS.md) for the full kubebuilder mechanics this project
-follows (project structure, never-hand-edit files, RBAC marker conventions).
+follows (project structure, never-hand-edit files, RBAC marker conventions),
+and [`CLAUDE.md`](CLAUDE.md) for a higher-level architecture overview
+(manager vs. dashboard binary modes, the CRD/controller/dashboard package
+relationships).
 
 ## Project Distribution
 
@@ -174,4 +188,4 @@ More information can be found via the
 
 ## License
 
-// TODO: a LICENSE file has not been added to this repository yet.
+Apache License 2.0 — see [`LICENSE`](LICENSE).
