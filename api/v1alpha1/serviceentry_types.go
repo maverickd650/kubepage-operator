@@ -24,6 +24,7 @@ type ServiceWidget struct {
 	Type string `json:"type"`
 
 	// Base URL the widget talks to.
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +optional
 	URL *string `json:"url,omitempty"`
 
@@ -99,11 +100,13 @@ type ServiceEntrySpec struct {
 	// Ping is a URL probed over HTTP for reachability and latency, shown as
 	// an up/down status on the card. (Raw ICMP is not used, so a pod needs
 	// no elevated capabilities.)
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +optional
 	Ping *string `json:"ping,omitempty"`
 
 	// SiteMonitor is a URL probed over HTTP, shown as an up/down status with
 	// response latency on the card.
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +optional
 	SiteMonitor *string `json:"siteMonitor,omitempty"`
 

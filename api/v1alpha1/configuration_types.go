@@ -48,7 +48,11 @@ type SearchSpec struct {
 	Provider *string `json:"provider,omitempty"`
 
 	// URL is the search endpoint used when Provider is "custom". The query
-	// is appended as a URL-encoded "q" parameter.
+	// is appended as a URL-encoded "q" parameter. Must be an http(s) URL —
+	// the dashboard passes this straight into a client-side window.open()/
+	// href, so a non-http(s) scheme (e.g. "javascript:") would be a stored
+	// script-injection vector rather than a search endpoint.
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +optional
 	URL *string `json:"url,omitempty"`
 

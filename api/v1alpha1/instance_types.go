@@ -23,6 +23,8 @@ type InstanceSpec struct {
 	Size *int32 `json:"size,omitempty"`
 
 	// containerPort defines the port the dashboard HTTP server listens on
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	// +required
 	ContainerPort int32 `json:"containerPort"`
 
@@ -90,6 +92,7 @@ type IngressSpec struct {
 	Enabled bool `json:"enabled,omitempty"`
 
 	// Host is the hostname routed to the dashboard Service.
+	// +kubebuilder:validation:Pattern=`^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +required
 	Host string `json:"host"`
 
@@ -130,6 +133,7 @@ type GatewaySpec struct {
 
 	// Hostnames the HTTPRoute matches. At least one is required.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:Pattern=`^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +required
 	Hostnames []string `json:"hostnames"`
 

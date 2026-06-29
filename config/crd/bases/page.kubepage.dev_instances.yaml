@@ -69,6 +69,8 @@ spec:
                 description: containerPort defines the port the dashboard HTTP server
                   listens on
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               containerSecurityContext:
                 description: Container security context
@@ -441,6 +443,7 @@ spec:
                     description: Hostnames the HTTPRoute matches. At least one is
                       required.
                     items:
+                      pattern: ^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     minItems: 1
                     type: array
@@ -497,6 +500,7 @@ spec:
                     type: boolean
                   host:
                     description: Host is the hostname routed to the dashboard Service.
+                    pattern: ^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                   ingressClassName:
                     description: |-
