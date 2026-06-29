@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -356,7 +355,7 @@ var _ = Describe("Instance controller", func() {
 					Group:       "Monitoring",
 					Name:        "Prometheus",
 					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type: "prometheus",
+						Type: testWidgetTypePrometheus,
 						URL:  &url,
 						Secrets: map[string]pagev1alpha1.SecretValueSource{
 							"token": {SecretKeyRef: &corev1.SecretKeySelector{
@@ -412,7 +411,7 @@ var _ = Describe("Instance controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
 
-			clusterName := fmt.Sprintf("kubepage-%s-%s", namespace.Name, InstanceName)
+			clusterName := clusterRBACName(instance)
 			crName := types.NamespacedName{Name: clusterName}
 
 			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
@@ -842,7 +841,7 @@ var _ = Describe("Instance controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
 
-			clusterName := fmt.Sprintf("kubepage-%s-%s", namespace.Name, InstanceName)
+			clusterName := clusterRBACName(instance)
 			crName := types.NamespacedName{Name: clusterName}
 
 			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage, Recorder: events.NewFakeRecorder(10)}

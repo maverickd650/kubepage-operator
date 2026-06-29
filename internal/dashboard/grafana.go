@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -37,19 +36,9 @@ func (grafanaWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return []Field{{Label: labelStatus, Value: fmt.Sprintf("HTTP %d", resp.StatusCode)}}, nil
-	}
-
 	var parsed grafanaHealthResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decoding health response: %w", err)
+	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+		return fields, err
 	}
 
 	status := statusHealthy

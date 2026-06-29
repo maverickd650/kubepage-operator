@@ -258,8 +258,16 @@ func policyRulesEqual(a, b []rbacv1.PolicyRule) bool {
 // cluster-scoped, so the name must be unique across namespaces — hence the
 // namespace prefix, unlike the namespace-scoped Role/RoleBinding which can
 // just reuse instance.Name.
+//
+// The namespace is length-prefixed rather than just hyphen-joined: both
+// namespace and name are valid DNS-1123 labels that may themselves contain
+// hyphens, so a bare "kubepage-<namespace>-<name>" join is ambiguous (e.g.
+// namespace "a", name "b-c" produces the same string as namespace "a-b",
+// name "c"). Prefixing the namespace with its own length makes the encoding
+// unambiguous: a decoder reads the length, then knows exactly how many
+// characters of namespace follow before the separator and name.
 func clusterRBACName(instance *pagev1alpha1.Instance) string {
-	return fmt.Sprintf("kubepage-%s-%s", instance.Namespace, instance.Name)
+	return fmt.Sprintf("kubepage-%d-%s-%s", len(instance.Namespace), instance.Namespace, instance.Name)
 }
 
 // reconcileClusterMetricsRBAC ensures the cluster-scoped RBAC for a
@@ -354,10 +362,23 @@ func (r *InstanceReconciler) reconcileClusterRoleBinding(ctx context.Context, in
 
 // deleteClusterMetricsRBAC removes the cluster-scoped RBAC for instance,
 // tolerating already-absent objects. Used both when the last kubemetrics
-// widget is unbound and from the Instance finalizer on deletion.
+// widget is unbound and from the Instance finalizer on deletion. Most
+// reconciles of an Instance with no kubemetrics widget reach here with
+// nothing to clean up, so it Gets the ClusterRoleBinding first rather than
+// unconditionally issuing two Deletes every time: the ClusterRole/
+// ClusterRoleBinding pair is always created and deleted together by this
+// file, so a missing ClusterRoleBinding means there's nothing to delete.
 func (r *InstanceReconciler) deleteClusterMetricsRBAC(ctx context.Context, instance *pagev1alpha1.Instance) error {
 	name := clusterRBACName(instance)
-	crb := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name}}
+
+	crb := &rbacv1.ClusterRoleBinding{}
+	switch err := r.Get(ctx, types.NamespacedName{Name: name}, crb); {
+	case apierrors.IsNotFound(err):
+		return nil
+	case err != nil:
+		return fmt.Errorf("getting ClusterRoleBinding: %w", err)
+	}
+
 	if err := r.Delete(ctx, crb); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("deleting ClusterRoleBinding: %w", err)
 	}

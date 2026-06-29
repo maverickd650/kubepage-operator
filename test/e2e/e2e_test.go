@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -28,6 +29,62 @@ const metricsServiceName = "kubepage-operator-controller-manager-metrics-service
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "kubepage-operator-metrics-binding"
+
+// dashboardTestNamespace is a separate namespace (not the operator's own
+// namespace) where the Dashboard scenario applies an Instance plus config
+// CRDs and exercises the per-Instance dashboard Deployment it produces.
+const dashboardTestNamespace = "kubepage-e2e-dashboard"
+
+// dashboardInstanceName is both the Instance name and (per
+// internal/controller/instance_controller.go's deploymentForInstance /
+// instance_network.go's serviceForInstance, which both reuse instance.Name)
+// the name of the Deployment and Service it produces.
+const dashboardInstanceName = "e2e-dashboard"
+
+// dashboardConfigTitle and dashboardBookmarkName are distinctive strings
+// this scenario looks for in the dashboard's rendered HTML to confirm it's
+// actually reading the applied CRDs, not just returning a static page.
+const (
+	dashboardConfigTitle  = "E2E Dashboard Title"
+	dashboardBookmarkName = "E2E Bookmark Card"
+)
+
+// dashboardSampleManifest is a minimal, self-contained Instance plus
+// Configuration and Bookmark, deliberately avoiding ServiceEntry widgets
+// (which need a real upstream and Secret) so this scenario has no external
+// dependencies.
+var dashboardSampleManifest = fmt.Sprintf(`
+apiVersion: page.kubepage.dev/v1alpha1
+kind: Instance
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  size: 1
+  containerPort: 8080
+---
+apiVersion: page.kubepage.dev/v1alpha1
+kind: Configuration
+metadata:
+  name: e2e-dashboard-config
+  namespace: %[2]s
+spec:
+  instanceRef:
+    name: %[1]s
+  title: %[3]s
+---
+apiVersion: page.kubepage.dev/v1alpha1
+kind: Bookmark
+metadata:
+  name: e2e-dashboard-bookmark
+  namespace: %[2]s
+spec:
+  instanceRef:
+    name: %[1]s
+  group: Links
+  name: %[4]s
+  href: https://example.com
+`, dashboardInstanceName, dashboardTestNamespace, dashboardConfigTitle, dashboardBookmarkName)
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -254,16 +311,98 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
+	})
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	Context("Dashboard", Ordered, func() {
+		BeforeAll(func() {
+			By("creating a namespace for the dashboard scenario")
+			cmd := exec.Command("kubectl", "create", "ns", dashboardTestNamespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+
+			By("labeling the namespace to enforce the restricted security policy")
+			cmd = exec.Command("kubectl", "label", "--overwrite", "ns", dashboardTestNamespace,
+				"pod-security.kubernetes.io/enforce=restricted")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+
+			By("applying an Instance plus Configuration and Bookmark")
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(dashboardSampleManifest)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply the dashboard sample manifest")
+		})
+
+		AfterAll(func() {
+			By("deleting the dashboard scenario's namespace")
+			cmd := exec.Command("kubectl", "delete", "ns", dashboardTestNamespace)
+			_, _ = utils.Run(cmd)
+		})
+
+		It("serves a dashboard reflecting the applied CRDs", func() {
+			By("waiting for the dashboard Deployment to become ready")
+			verifyDashboardDeploymentReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", dashboardInstanceName,
+					"-n", dashboardTestNamespace, "-o", "jsonpath={.status.readyReplicas}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("1"), "Dashboard Deployment not yet ready")
+			}
+			Eventually(verifyDashboardDeploymentReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			dashboardURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:8080", dashboardInstanceName, dashboardTestNamespace)
+
+			By("creating a curl pod to reach the dashboard Service from inside the cluster")
+			cmd := exec.Command("kubectl", "run", "curl-dashboard", "--restart=Never",
+				"--namespace", dashboardTestNamespace,
+				"--image=curlimages/curl:latest",
+				"--overrides",
+				fmt.Sprintf(`{
+					"spec": {
+						"containers": [{
+							"name": "curl",
+							"image": "curlimages/curl:latest",
+							"command": ["/bin/sh", "-c"],
+							"args": [
+								"for i in $(seq 1 30); do curl -sf %s/ && curl -sf %s/fragment && curl -sf %s/header && exit 0 || sleep 2; done; exit 1"
+							],
+							"securityContext": {
+								"readOnlyRootFilesystem": true,
+								"allowPrivilegeEscalation": false,
+								"capabilities": {"drop": ["ALL"]},
+								"runAsNonRoot": true,
+								"runAsUser": 1000,
+								"seccompProfile": {"type": "RuntimeDefault"}
+							}
+						}]
+					}
+				}`, dashboardURL, dashboardURL, dashboardURL))
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create curl-dashboard pod")
+
+			By("waiting for the curl-dashboard pod to complete")
+			verifyCurlUp := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pods", "curl-dashboard",
+					"-o", "jsonpath={.status.phase}", "-n", dashboardTestNamespace)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Succeeded"), "curl-dashboard pod in wrong status")
+			}
+			Eventually(verifyCurlUp, 3*time.Minute).Should(Succeed())
+
+			By("verifying the page shell reflects the applied Configuration's title")
+			cmd = exec.Command("kubectl", "logs", "curl-dashboard", "-n", dashboardTestNamespace)
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl-dashboard pod")
+			Expect(output).To(ContainSubstring(dashboardConfigTitle))
+
+			By("verifying the card fragment reflects the applied Bookmark")
+			Expect(output).To(ContainSubstring(dashboardBookmarkName))
+
+			By("cleaning up the curl pod for the dashboard scenario")
+			cmd = exec.Command("kubectl", "delete", "pod", "curl-dashboard", "-n", dashboardTestNamespace)
+			_, _ = utils.Run(cmd)
+		})
 	})
 })
 

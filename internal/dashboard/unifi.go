@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -142,7 +143,7 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 	}
 
 	var parsed unifiHealthResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxWidgetResponseBytes)).Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("decoding health response: %w", err)
 	}
 

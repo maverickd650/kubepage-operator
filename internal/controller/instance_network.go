@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -18,6 +20,47 @@ import (
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
+
+// managedAnnotationsKey records, on the Ingress/HTTPRoute this controller
+// owns, exactly which annotation keys it last set from spec.ingress.annotations
+// /spec.gateway.annotations. mergeManagedAnnotations uses it to prune a key
+// that's since been removed from the spec without touching any annotation a
+// different controller (an ingress controller, cert-manager, ...) wrote onto
+// the same object — a wholesale found.Annotations = desired.Annotations
+// would otherwise clobber those on every drift-triggering reconcile.
+const managedAnnotationsKey = "page.kubepage.dev/managed-annotations"
+
+// mergeManagedAnnotations returns existing with desired's keys set, any key
+// this controller previously recorded as managed but that's no longer in
+// desired removed, and every other (foreign) key left untouched.
+func mergeManagedAnnotations(existing, desired map[string]string) map[string]string {
+	merged := maps.Clone(existing)
+	if merged == nil {
+		merged = map[string]string{}
+	}
+
+	for k := range strings.SplitSeq(merged[managedAnnotationsKey], ",") {
+		if k == "" {
+			continue
+		}
+		if _, stillDesired := desired[k]; !stillDesired {
+			delete(merged, k)
+		}
+	}
+	maps.Copy(merged, desired)
+
+	keys := make([]string, 0, len(desired))
+	for k := range desired {
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		delete(merged, managedAnnotationsKey)
+		return merged
+	}
+	slices.Sort(keys)
+	merged[managedAnnotationsKey] = strings.Join(keys, ",")
+	return merged
+}
 
 // serviceForInstance returns the ClusterIP Service fronting instance's
 // dashboard pods, owned by instance.
@@ -167,9 +210,10 @@ func (r *InstanceReconciler) reconcileIngress(ctx context.Context, instance *pag
 	if err != nil {
 		return fmt.Errorf("defining Ingress: %w", err)
 	}
-	if !ingressSpecsEqual(found.Spec, desired.Spec) || !maps.Equal(found.Annotations, desired.Annotations) {
+	mergedAnnotations := mergeManagedAnnotations(found.Annotations, desired.Annotations)
+	if !ingressSpecsEqual(found.Spec, desired.Spec) || !maps.Equal(found.Annotations, mergedAnnotations) {
 		found.Spec = desired.Spec
-		found.Annotations = desired.Annotations
+		found.Annotations = mergedAnnotations
 		if err := r.Update(ctx, found); err != nil {
 			return fmt.Errorf("updating Ingress %s/%s: %w", found.Namespace, found.Name, err)
 		}
@@ -360,9 +404,10 @@ func (r *InstanceReconciler) reconcileHTTPRoute(ctx context.Context, instance *p
 		return fmt.Errorf("getting HTTPRoute %s/%s: %w", instance.Namespace, instance.Name, err)
 	}
 
-	if !httpRouteSpecsEqual(found.Spec, desired.Spec) || !maps.Equal(found.Annotations, desired.Annotations) {
+	mergedAnnotations := mergeManagedAnnotations(found.Annotations, desired.Annotations)
+	if !httpRouteSpecsEqual(found.Spec, desired.Spec) || !maps.Equal(found.Annotations, mergedAnnotations) {
 		found.Spec = desired.Spec
-		found.Annotations = desired.Annotations
+		found.Annotations = mergedAnnotations
 		if err := r.Update(ctx, found); err != nil {
 			return fmt.Errorf("updating HTTPRoute %s/%s: %w", found.Namespace, found.Name, err)
 		}

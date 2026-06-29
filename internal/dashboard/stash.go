@@ -3,7 +3,6 @@ package dashboard
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -45,19 +44,9 @@ func (stashWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		req.Header.Set("ApiKey", token)
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return []Field{{Label: labelStatus, Value: fmt.Sprintf("HTTP %d", resp.StatusCode)}}, nil
-	}
-
 	var parsed stashStatsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decoding stats response: %w", err)
+	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+		return fields, err
 	}
 
 	return []Field{

@@ -62,19 +62,9 @@ func (prometheusMetricWidget) Poll(ctx context.Context, httpClient *http.Client,
 		return nil, fmt.Errorf("building request: %w", err)
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return []Field{{Label: labelStatus, Value: fmt.Sprintf("HTTP %d", resp.StatusCode)}}, nil
-	}
-
 	var parsed prometheusQueryResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decoding query response: %w", err)
+	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+		return fields, err
 	}
 
 	if len(parsed.Data.Result) == 0 {

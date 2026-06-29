@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -234,7 +235,7 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 
 	start := time.Now()
 	fields, err := impl.Poll(ctx, p.HTTPClient, cfg)
-	observePoll(widget.Type, err, time.Since(start).Seconds())
+	observePoll(widget.Type, metricErr(err, fields), time.Since(start).Seconds())
 	switch {
 	case err != nil && !card.HideErrors:
 		card.Err = err.Error()
@@ -242,6 +243,28 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		card.Fields = fields
 	}
 	p.Store.Set(card)
+}
+
+// metricErr returns the error to record for a poll metric, treating an
+// "Unreachable"/"HTTP <code>" Status field the same as a returned error: by
+// convention (see e.g. grafana.go), a widget reports a transport failure or
+// non-2xx upstream response via this Field rather than a Go error, so that
+// the card still renders a status instead of falling back to card.Err — but
+// that means a real outage would otherwise be recorded as poll metric
+// "success".
+func metricErr(err error, fields []Field) error {
+	if err != nil {
+		return err
+	}
+	for _, f := range fields {
+		if f.Label != labelStatus {
+			continue
+		}
+		if f.Value == statusUnreach || strings.HasPrefix(f.Value, "HTTP ") {
+			return fmt.Errorf("widget reported status %q", f.Value)
+		}
+	}
+	return nil
 }
 
 // pollInfoWidget builds and stores the header Card for one InfoWidget whose
@@ -293,7 +316,7 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 	} else {
 		fields, err = impl.Poll(ctx, p.HTTPClient, cfg)
 	}
-	observePoll(iw.Spec.Type, err, time.Since(start).Seconds())
+	observePoll(iw.Spec.Type, metricErr(err, fields), time.Since(start).Seconds())
 	if err != nil {
 		card.Err = err.Error()
 	} else {

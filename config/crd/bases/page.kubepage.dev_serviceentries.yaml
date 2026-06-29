@@ -101,6 +101,7 @@ spec:
                   Ping is a URL probed over HTTP for reachability and latency, shown as
                   an up/down status on the card. (Raw ICMP is not used, so a pod needs
                   no elevated capabilities.)
+                pattern: ^https?://
                 type: string
               showStats:
                 description: |-
@@ -112,6 +113,7 @@ spec:
                 description: |-
                   SiteMonitor is a URL probed over HTTP, shown as an up/down status with
                   response latency on the card.
+                pattern: ^https?://
                 type: string
               statusStyle:
                 description: |-
@@ -204,6 +206,7 @@ spec:
                       type: string
                     url:
                       description: Base URL the widget talks to.
+                      pattern: ^https?://
                       type: string
                   required:
                   - type

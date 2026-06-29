@@ -9,6 +9,9 @@ const (
 	testInstanceObjName          = "main"
 	testRefInstanceName          = "inst"
 	testAnnotationKey            = "example.com/note"
+	testWidgetTypePrometheus     = "prometheus"
+	testForeignAnnotationKey     = "foo.io/bar"
+	testForeignAnnotationValue   = "baz"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.
