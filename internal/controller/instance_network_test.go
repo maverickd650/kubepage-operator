@@ -476,3 +476,50 @@ func TestMapToInstance(t *testing.T) {
 		}
 	})
 }
+
+func TestMergeManagedAnnotations(t *testing.T) {
+	t.Run("preserves a foreign annotation no spec ever set", func(t *testing.T) {
+		existing := map[string]string{testForeignAnnotationKey: testForeignAnnotationValue}
+		desired := map[string]string{}
+		got := mergeManagedAnnotations(existing, desired)
+		if got[testForeignAnnotationKey] != testForeignAnnotationValue {
+			t.Errorf("mergeManagedAnnotations() = %+v, want %s preserved", got, testForeignAnnotationKey)
+		}
+	})
+
+	t.Run("sets a newly desired key and records it as managed", func(t *testing.T) {
+		got := mergeManagedAnnotations(nil, map[string]string{"a": "1"})
+		if got["a"] != "1" {
+			t.Errorf("mergeManagedAnnotations() = %+v, want a=1", got)
+		}
+		if got[managedAnnotationsKey] != "a" {
+			t.Errorf("mergeManagedAnnotations()[%s] = %q, want %q", managedAnnotationsKey, got[managedAnnotationsKey], "a")
+		}
+	})
+
+	t.Run("prunes a previously-managed key removed from desired, without touching a foreign key", func(t *testing.T) {
+		existing := map[string]string{
+			"a":                      "1",
+			testForeignAnnotationKey: testForeignAnnotationValue,
+			managedAnnotationsKey:    "a",
+		}
+		got := mergeManagedAnnotations(existing, map[string]string{})
+		if _, ok := got["a"]; ok {
+			t.Errorf("mergeManagedAnnotations() = %+v, want key %q removed", got, "a")
+		}
+		if got[testForeignAnnotationKey] != testForeignAnnotationValue {
+			t.Errorf("mergeManagedAnnotations() = %+v, want %s preserved", got, testForeignAnnotationKey)
+		}
+		if _, ok := got[managedAnnotationsKey]; ok {
+			t.Errorf("mergeManagedAnnotations() = %+v, want marker removed once nothing is managed", got)
+		}
+	})
+
+	t.Run("updates the value of an already-managed key", func(t *testing.T) {
+		existing := map[string]string{"a": "1", managedAnnotationsKey: "a"}
+		got := mergeManagedAnnotations(existing, map[string]string{"a": "2"})
+		if got["a"] != "2" {
+			t.Errorf("mergeManagedAnnotations() = %+v, want a=2", got)
+		}
+	})
+}
