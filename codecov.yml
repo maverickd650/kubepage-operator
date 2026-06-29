@@ -1,11 +1,23 @@
 coverage:
   status:
+    # Project coverage must not regress by more than 2% from the base commit.
+    # `target: auto` (rather than a fixed percentage) avoids having to pick
+    # and maintain an absolute number for a codebase that mixes well-tested
+    # reconciliation/widget logic with wiring-only functions (SetupWithManager,
+    # dashboard.Run, poller.Run) that pull the package average down.
     project:
       default:
-        informational: true
+        target: auto
+        threshold: 2%
+        informational: false
+    # New/changed lines in a PR should be reasonably well-tested even though
+    # the project-wide average (currently ~66-71% per package) is dragged
+    # down by wiring code — unlike the project check, this is a real,
+    # PR-blocking floor.
     patch:
       default:
-        informational: true
+        target: 70%
+        informational: false
 
 comment:
   require_changes: true
