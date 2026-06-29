@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -47,19 +46,9 @@ func (prometheusWidget) Poll(ctx context.Context, httpClient *http.Client, cfg W
 		return nil, fmt.Errorf("building request: %w", err)
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return []Field{{Label: labelStatus, Value: fmt.Sprintf("HTTP %d", resp.StatusCode)}}, nil
-	}
-
 	var parsed prometheusTargetsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decoding targets response: %w", err)
+	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+		return fields, err
 	}
 
 	total := len(parsed.Data.ActiveTargets)
