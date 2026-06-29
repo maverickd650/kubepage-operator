@@ -242,8 +242,15 @@ templ Index(data indexData) {
 						a.className = "ql-item" + (idx === 0 ? " active" : "");
 						a.href = it.href;
 						a.target = searchConfig.target || "_blank";
-						a.innerHTML = (it.icon ? '<img src="' + it.icon + '" alt="">' : "") +
-							"<span>" + it.name + "</span>";
+						if (it.icon) {
+							const img = document.createElement("img");
+							img.src = it.icon;
+							img.alt = "";
+							a.appendChild(img);
+						}
+						const nameSpan = document.createElement("span");
+						nameSpan.textContent = it.name;
+						a.appendChild(nameSpan);
 						qlResults.appendChild(a);
 					});
 					if (q) {
@@ -251,7 +258,13 @@ templ Index(data indexData) {
 						ws.className = "ql-item" + (qlResults.children.length === 0 ? " active" : "");
 						ws.href = searchURL(qlInput.value.trim());
 						ws.target = searchConfig.target || "_blank";
-						ws.innerHTML = "<span>Search the web for “" + qlInput.value.trim() + "”</span><span class='ql-sub'>↵</span>";
+						const querySpan = document.createElement("span");
+						querySpan.textContent = "Search the web for “" + qlInput.value.trim() + "”";
+						ws.appendChild(querySpan);
+						const subSpan = document.createElement("span");
+						subSpan.className = "ql-sub";
+						subSpan.textContent = "↵";
+						ws.appendChild(subSpan);
 						qlResults.appendChild(ws);
 					}
 				}
