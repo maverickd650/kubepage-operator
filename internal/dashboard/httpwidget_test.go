@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -24,7 +23,7 @@ func TestDoJSONRequestMalformedBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
 	if err != nil {
 		t.Fatalf("building request: %v", err)
 	}

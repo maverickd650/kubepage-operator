@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -40,7 +39,7 @@ func TestMealieWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (mealieWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (mealieWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Secrets: map[string]string{testSecretField: "mealtok"},
 			})
@@ -58,13 +57,13 @@ func TestMealieWidgetPoll(t *testing.T) {
 }
 
 func TestMealieWidgetPollMissingURL(t *testing.T) {
-	if _, err := (mealieWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (mealieWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestMealieWidgetPollUnreachable(t *testing.T) {
-	got, err := (mealieWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (mealieWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

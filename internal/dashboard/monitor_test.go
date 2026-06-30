@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,7 +31,7 @@ func TestProbeHTTP(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			up, latency, err := probeHTTP(context.Background(), srv.Client(), srv.URL)
+			up, latency, err := probeHTTP(t.Context(), srv.Client(), srv.URL)
 			if err != nil {
 				t.Fatalf("probeHTTP() unexpected error: %v", err)
 			}
@@ -47,7 +46,7 @@ func TestProbeHTTP(t *testing.T) {
 }
 
 func TestProbeHTTPUnreachable(t *testing.T) {
-	up, _, err := probeHTTP(context.Background(), http.DefaultClient, testUnreachableAddr)
+	up, _, err := probeHTTP(t.Context(), http.DefaultClient, testUnreachableAddr)
 	if err == nil {
 		t.Fatal("probeHTTP() expected transport error for unreachable host, got nil")
 	}
@@ -64,7 +63,7 @@ func TestProbeHTTPUnreachable(t *testing.T) {
 func TestProbeHTTPMalformedURL(t *testing.T) {
 	const malformedURL = "http://example.com/\x7f"
 
-	up, _, err := probeHTTP(context.Background(), http.DefaultClient, malformedURL)
+	up, _, err := probeHTTP(t.Context(), http.DefaultClient, malformedURL)
 	if err == nil {
 		t.Fatal("probeHTTP() error = nil, want a request-building error for a malformed URL")
 	}
@@ -82,7 +81,7 @@ func TestMonitorResult(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	status, latency := monitorResult(context.Background(), srv.Client(), srv.URL)
+	status, latency := monitorResult(t.Context(), srv.Client(), srv.URL)
 	if status != "Up" {
 		t.Errorf("monitorResult() status = %q, want Up", status)
 	}
@@ -90,7 +89,7 @@ func TestMonitorResult(t *testing.T) {
 		t.Error("monitorResult() latency empty, want a duration when up")
 	}
 
-	downStatus, downLatency := monitorResult(context.Background(), http.DefaultClient, testUnreachableAddr)
+	downStatus, downLatency := monitorResult(t.Context(), http.DefaultClient, testUnreachableAddr)
 	if downStatus != statusDown {
 		t.Errorf("monitorResult() status = %q, want Down", downStatus)
 	}

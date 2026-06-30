@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -59,7 +58,7 @@ func TestCloudflaredWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (cloudflaredWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (cloudflaredWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Config:  []byte(`{"accountId":"acct123","tunnelId":"tun456"}`),
 				Secrets: map[string]string{testSecretField: "cftok"},
@@ -81,13 +80,13 @@ func TestCloudflaredWidgetPoll(t *testing.T) {
 }
 
 func TestCloudflaredWidgetPollMissingConfig(t *testing.T) {
-	if _, err := (cloudflaredWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (cloudflaredWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing config, got nil")
 	}
 }
 
 func TestCloudflaredWidgetPollUnreachable(t *testing.T) {
-	got, err := (cloudflaredWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{
+	got, err := (cloudflaredWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		URL:    testUnreachableAddr,
 		Config: []byte(`{"accountId":"a","tunnelId":"t"}`),
 	})

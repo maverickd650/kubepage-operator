@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -40,7 +39,7 @@ func TestLinkwardenWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (linkwardenWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (linkwardenWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Secrets: map[string]string{testSecretField: "lwtok"},
 			})
@@ -58,13 +57,13 @@ func TestLinkwardenWidgetPoll(t *testing.T) {
 }
 
 func TestLinkwardenWidgetPollMissingURL(t *testing.T) {
-	if _, err := (linkwardenWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (linkwardenWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestLinkwardenWidgetPollUnreachable(t *testing.T) {
-	got, err := (linkwardenWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (linkwardenWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

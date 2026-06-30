@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"slices"
 	"testing"
 
@@ -365,7 +364,7 @@ func TestIngressSpecsEqual(t *testing.T) {
 func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 	scheme := networkTestScheme(t)
 	ns := "ghr-fake"
-	ctx := context.Background()
+	ctx := t.Context()
 
 	instance := &pagev1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: testInstanceObjName, Namespace: ns, UID: "uid-1"},
@@ -445,7 +444,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 func TestMapToInstance(t *testing.T) {
 	extract := func(b *pagev1alpha1.Bookmark) string { return b.Spec.InstanceRef.Name }
 	mapFn := mapToInstance(extract)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("enqueues the referenced Instance in the object's namespace", func(t *testing.T) {
 		bm := &pagev1alpha1.Bookmark{

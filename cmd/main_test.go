@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -24,7 +23,7 @@ func TestOwnDashboardImageMissingEnvVars(t *testing.T) {
 			t.Setenv("POD_NAME", tc.podName)
 			t.Setenv("POD_NAMESPACE", tc.podNamespace)
 
-			_, err := ownDashboardImage(context.Background(), nil, scheme)
+			_, err := ownDashboardImage(t.Context(), nil, scheme)
 			if err == nil {
 				t.Fatal("ownDashboardImage() error = nil, want error when POD_NAME/POD_NAMESPACE are unset")
 			}
@@ -57,7 +56,7 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 		t.Fatalf("building setup client: %v", err)
 	}
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "own-image-"}}
-	if err := setupClient.Create(context.Background(), ns); err != nil {
+	if err := setupClient.Create(t.Context(), ns); err != nil {
 		t.Fatalf("creating namespace: %v", err)
 	}
 
@@ -73,14 +72,14 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 				},
 			},
 		}
-		if err := setupClient.Create(context.Background(), pod); err != nil {
+		if err := setupClient.Create(t.Context(), pod); err != nil {
 			t.Fatalf("creating pod: %v", err)
 		}
 
 		t.Setenv("POD_NAME", pod.Name)
 		t.Setenv("POD_NAMESPACE", pod.Namespace)
 
-		got, err := ownDashboardImage(context.Background(), cfg, scheme)
+		got, err := ownDashboardImage(t.Context(), cfg, scheme)
 		if err != nil {
 			t.Fatalf("ownDashboardImage() error = %v", err)
 		}
@@ -96,14 +95,14 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 				Containers: []corev1.Container{{Name: "sidecar", Image: "sidecar:latest"}},
 			},
 		}
-		if err := setupClient.Create(context.Background(), pod); err != nil {
+		if err := setupClient.Create(t.Context(), pod); err != nil {
 			t.Fatalf("creating pod: %v", err)
 		}
 
 		t.Setenv("POD_NAME", pod.Name)
 		t.Setenv("POD_NAMESPACE", pod.Namespace)
 
-		_, err := ownDashboardImage(context.Background(), cfg, scheme)
+		_, err := ownDashboardImage(t.Context(), cfg, scheme)
 		if err == nil {
 			t.Fatal("ownDashboardImage() error = nil, want error when no container is named \"manager\"")
 		}
@@ -116,7 +115,7 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 		t.Setenv("POD_NAME", "does-not-exist")
 		t.Setenv("POD_NAMESPACE", ns.Name)
 
-		_, err := ownDashboardImage(context.Background(), cfg, scheme)
+		_, err := ownDashboardImage(t.Context(), cfg, scheme)
 		if err == nil {
 			t.Fatal("ownDashboardImage() error = nil, want error when the Pod doesn't exist")
 		}

@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -48,7 +47,7 @@ func TestTruenasWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (truenasWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Secrets: map[string]string{testSecretField: "nastok"},
 			})
@@ -66,13 +65,13 @@ func TestTruenasWidgetPoll(t *testing.T) {
 }
 
 func TestTruenasWidgetPollMissingURL(t *testing.T) {
-	if _, err := (truenasWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (truenasWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestTruenasWidgetPollUnreachable(t *testing.T) {
-	got, err := (truenasWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (truenasWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

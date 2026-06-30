@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -56,7 +55,7 @@ func TestPrometheusMetricWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (prometheusMetricWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (prometheusMetricWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:    srv.URL,
 				Config: []byte(tc.config),
 			})
@@ -78,13 +77,13 @@ func TestPrometheusMetricWidgetPoll(t *testing.T) {
 }
 
 func TestPrometheusMetricWidgetPollMissingURL(t *testing.T) {
-	if _, err := (prometheusMetricWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{Config: []byte(`{"query":"up"}`)}); err == nil {
+	if _, err := (prometheusMetricWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{Config: []byte(`{"query":"up"}`)}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestPrometheusMetricWidgetPollUnreachable(t *testing.T) {
-	got, err := (prometheusMetricWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{
+	got, err := (prometheusMetricWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		URL:    testUnreachableAddr,
 		Config: []byte(`{"query":"up"}`),
 	})
