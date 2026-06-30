@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -89,6 +90,82 @@ func TestEvaluateNumericRules(t *testing.T) {
 				t.Errorf("ruleMatches(%+v, %q) = %v, want %v", tc.rule, tc.value, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestApplyHighlightsFieldNotInRules(t *testing.T) {
+	rules := map[string]pagev1alpha1.FieldHighlight{
+		testFieldStatus: {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: "danger", When: whenEquals, Value: "down"}}},
+	}
+	fields := []Field{{Label: testFieldQueued, Value: "5"}}
+	got := applyHighlights(fields, rules)
+	if got[0].Highlight != "" {
+		t.Errorf("applyHighlights() = %q, want empty for a field with no matching rule entry", got[0].Highlight)
+	}
+}
+
+func TestNumericValueOverflowIsUnparseable(t *testing.T) {
+	huge := strings.Repeat("9", 400)
+	if _, ok := numericValue(huge); ok {
+		t.Errorf("numericValue(%d nines) = ok, want unparseable (float64 overflow)", len(huge))
+	}
+}
+
+func TestEvaluateNumericRuleUnparseableBound(t *testing.T) {
+	r := pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "n/a"}
+	if evaluateNumericRule(r, "10") {
+		t.Errorf("evaluateNumericRule() = true, want false for an unparseable rule bound")
+	}
+}
+
+func TestEvaluateNumericRuleLessThan(t *testing.T) {
+	r := pagev1alpha1.HighlightRuleSpec{When: whenLT, Value: "10"}
+	if !evaluateNumericRule(r, "5") {
+		t.Errorf("evaluateNumericRule(lt) = false, want true for 5 < 10")
+	}
+	if evaluateNumericRule(r, "10") {
+		t.Errorf("evaluateNumericRule(lt) = true, want false for 10 < 10")
+	}
+}
+
+func TestEvaluateNumericRuleBetweenMissingValue2(t *testing.T) {
+	r := pagev1alpha1.HighlightRuleSpec{When: whenBetween, Value: "10"}
+	if evaluateNumericRule(r, "15") {
+		t.Errorf("evaluateNumericRule(between) = true, want false when Value2 is nil")
+	}
+}
+
+func TestEvaluateNumericRuleBetweenUnparseableValue2(t *testing.T) {
+	bad := "n/a"
+	r := pagev1alpha1.HighlightRuleSpec{When: whenBetween, Value: "10", Value2: &bad}
+	if evaluateNumericRule(r, "15") {
+		t.Errorf("evaluateNumericRule(between) = true, want false for an unparseable Value2")
+	}
+}
+
+func TestEvaluateNumericRuleBetweenReversedBounds(t *testing.T) {
+	lo := "20"
+	r := pagev1alpha1.HighlightRuleSpec{When: whenBetween, Value: "10", Value2: &lo}
+	// Value (10) > Value2 (20) is backwards from the documented lo/hi order;
+	// the implementation should still treat it as the [10,20] range.
+	if !evaluateNumericRule(r, "15") {
+		t.Errorf("evaluateNumericRule(between, reversed bounds) = false, want true for 15 within [10,20]")
+	}
+}
+
+func TestEvaluateNumericRuleUnknownOperator(t *testing.T) {
+	// evaluateRule only ever dispatches the documented operators into
+	// evaluateNumericRule; call it directly to exercise its defensive default.
+	r := pagev1alpha1.HighlightRuleSpec{When: "bogus", Value: "5"}
+	if evaluateNumericRule(r, "10") {
+		t.Errorf("evaluateNumericRule(unknown When) = true, want false")
+	}
+}
+
+func TestEvaluateStringRuleUnknownOperator(t *testing.T) {
+	r := pagev1alpha1.HighlightRuleSpec{When: "bogus", Value: "x"}
+	if evaluateStringRule(r, "x") {
+		t.Errorf("evaluateStringRule(unknown When) = true, want false")
 	}
 }
 

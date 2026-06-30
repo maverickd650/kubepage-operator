@@ -496,6 +496,111 @@ func TestLayoutTabsGroupReferencedTwiceUsesFirstTab(t *testing.T) {
 	}
 }
 
+func TestServerHealthzRoute(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+// failingConfigListServer wraps a fake client so the ConfigurationList read
+// LoadSite issues first fails, exercising every handler's LoadSite-error
+// branch without needing a real apiserver.
+func failingConfigListServer(t *testing.T, store *Store) *Server {
+	t.Helper()
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	failing := errInjectingReader{
+		Reader: cl,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*pagev1alpha1.ConfigurationList)
+			return ok
+		},
+	}
+	return &Server{Store: store, Reader: failing, Namespace: testNamespace, InstanceName: testInstanceName}
+}
+
+func TestServerHandlersReturn500OnLoadSiteError(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"manifest", "/manifest.json"},
+		{"robots", "/robots.txt"},
+		{"index", "/"},
+		{"fragment", "/fragment"},
+		{"header", "/header"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := failingConfigListServer(t, NewStore())
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+			srv.Routes().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("%s status = %d, want 500", tc.path, rec.Code)
+			}
+		})
+	}
+}
+
+func TestServerManifestLightThemeUsesC50Background(t *testing.T) {
+	theme := themeLight
+	color := testColor
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Theme:       &theme,
+			Color:       &color,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/manifest.json", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	want := `"background_color":"` + PaletteRamp(testColor).C50 + `"`
+	if !strings.Contains(rec.Body.String(), want) {
+		t.Errorf("manifest body = %s, want %q (light theme uses C50 background)", rec.Body.String(), want)
+	}
+}
+
+func TestBuildHeaderDatetimeWidget(t *testing.T) {
+	defs := []HeaderWidget{
+		{Type: headerTypeDatetime, Options: map[string]string{"format": "medium"}},
+	}
+	views := buildHeader(defs, nil)
+	if len(views) != 1 || views[0].Format != "medium" {
+		t.Fatalf("buildHeader(datetime) = %+v, want Format=medium", views)
+	}
+}
+
+func TestLayoutTabsAppliesGroupOverridePointers(t *testing.T) {
+	cards := []Card{{Group: "A", ServiceName: "a1"}}
+	header := false
+	collapsed := true
+	equalHeights := true
+	layout := []LayoutTab{
+		{Name: testTab1, Groups: []LayoutGroup{{
+			Name: "A", Header: &header, InitiallyCollapsed: &collapsed, UseEqualHeights: &equalHeights,
+		}}},
+	}
+	tabs := layoutTabs(cards, Site{Layout: layout})
+	if len(tabs) != 1 || len(tabs[0].Groups) != 1 {
+		t.Fatalf("layoutTabs() = %+v", tabs)
+	}
+	g := tabs[0].Groups[0]
+	if g.Header != false || g.InitiallyCollapsed != true || g.UseEqualHeights != true {
+		t.Errorf("layoutTabs() group override = %+v, want Header=false InitiallyCollapsed=true UseEqualHeights=true", g)
+	}
+}
+
 func TestServerFragmentRendersTabs(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: "Infra", ServiceName: testSvcAName})
@@ -521,5 +626,208 @@ func TestServerFragmentRendersTabs(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestServerFragmentRendersStatusDotAndUsageBar(t *testing.T) {
+	pct := 42
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/dot/0", Group: testGroup, ServiceName: "Dotted", IconURL: "https://icon.invalid/dot.png",
+		Status: "Up", StatusStyle: "dot",
+		Fields: []Field{{Label: labelStatus, Value: statusHealthy, Percent: &pct}},
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`class="status-dot status-Up"`, `class="icon"`, `class="usage-bar"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerFragmentRendersStatusPillAndHrefLessCard(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/pill/0", Group: testGroup, ServiceName: "NoLink",
+		Status: "Down", StatusStyle: "pill",
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="status-pill status-Down"`) {
+		t.Errorf("fragment body missing status-pill:\n%s", body)
+	}
+	if strings.Contains(body, `<a href=""`) {
+		t.Errorf("fragment body rendered a link for a card with no Href:\n%s", body)
+	}
+}
+
+func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testCardKeyA, Group: "Infra", ServiceName: testSvcAName})
+
+	header := false
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Infra", Header: &header}}},
+			},
+		},
+	}
+	srv := newTestServer(t, store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, `data-group-name="Infra"`) || strings.Contains(body, "<h2>") {
+		t.Errorf("fragment body rendered a header for a header-less group:\n%s", body)
+	}
+	if !strings.Contains(body, testSvcAName) {
+		t.Errorf("fragment body missing %q for the header-less group's card grid:\n%s", testSvcAName, body)
+	}
+}
+
+func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
+	abbr := "W2"
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "wiki2", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Group:       testBookmarkGroup,
+			Name:        "Wiki Two",
+			Href:        "https://example.invalid/wiki2",
+			Abbr:        &abbr,
+		},
+	}
+	disable := true
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
+			DisableCollapse: &disable,
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmark, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`class="abbr"`, "W2", "<h2>" + testBookmarkGroup + "</h2>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `data-group-name="bookmark:`) {
+		t.Errorf("fragment body rendered a collapsible bookmark group with DisableCollapse=true:\n%s", body)
+	}
+}
+
+func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "header/weather", ServiceName: testHeaderWeather, Header: true,
+		Err: "upstream unreachable",
+	})
+
+	clock := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "clock", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        headerTypeDatetime,
+			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
+		},
+	}
+	weather := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        "openmeteo",
+		},
+	}
+	srv := newTestServer(t, store, clock, weather)
+	req := httptest.NewRequest(http.MethodGet, "/header", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`class="err"`, "upstream unreachable", "data-clock", `data-format="medium"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("header body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerIndexRendersBackgroundAndCustomCSS(t *testing.T) {
+	img := "https://example.invalid/bg.png"
+	css := "body { color: red; }"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Background:  &pagev1alpha1.BackgroundSpec{Image: &img},
+			CustomCSS:   &css,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"background-image: url(", img, css} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerIndexHidesSwitcherWhenThemeAndColorFixed(t *testing.T) {
+	theme := themeLight
+	color := testColor
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Theme:       &theme,
+			Color:       &color,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, unwanted := range []string{"switcher-config", `<div class="switcher">`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("index body has %q with both Theme and Color fixed, want the switcher script/buttons skipped:\n%s", unwanted, body)
+		}
+	}
+}
+
+func TestServerIndexDefaultTitleOmitsHeadingNoDescription(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, `class="page-title"`) {
+		t.Errorf("index body has page-title heading for the default \"kubepage\" title, want it omitted:\n%s", body)
+	}
+	if strings.Contains(body, `class="page-desc"`) {
+		t.Errorf("index body has page-desc with no Description configured, want it omitted:\n%s", body)
 	}
 }
