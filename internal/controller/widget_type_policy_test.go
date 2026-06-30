@@ -25,7 +25,7 @@ import (
 // *addition*.
 var (
 	serviceEntryWidgetTypes = []string{
-		"plex", "stash", "paperlessngx", "grafana", testWidgetTypePrometheus,
+		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
 		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
 		"homeassistant", "mealie",
 	}
@@ -33,7 +33,7 @@ var (
 	// allow-list that's also a registered dashboard.Widget; "greeting" and
 	// "datetime" are rendered statically by internal/dashboard/server.go and
 	// never go through Register, so they're intentionally excluded here.
-	infoWidgetPollableTypes = []string{"openmeteo", "kubemetrics"}
+	infoWidgetPollableTypes = []string{testWidgetTypeOpenMeteo, "kubemetrics"}
 )
 
 // TestRegisteredWidgetTypesCoveredByPolicy guards against a widget added to
@@ -82,7 +82,7 @@ var _ = Describe("Widget-type ValidatingAdmissionPolicies", Ordered, func() {
 		})
 
 		It("admits a supported service widget type", func() {
-			se := serviceEntryWithWidgetType("se-good-type", "grafana")
+			se := serviceEntryWithWidgetType("se-good-type", testWidgetTypeGrafana)
 			Expect(k8sClient.Create(ctx, se)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, se)).To(Succeed())
 		})

@@ -28,6 +28,8 @@ const (
 	verbGet   = "get"
 	verbList  = "list"
 	verbWatch = "watch"
+
+	resourcePods = "pods"
 )
 
 // clusterMetricsRules are the cluster-scoped permissions the dashboard pod
@@ -70,7 +72,7 @@ var dashboardConfigRule = rbacv1.PolicyRule{
 // PodSelector usage comes and goes — there's no GC/finalizer cost to it.
 var dashboardPodsRule = rbacv1.PolicyRule{
 	APIGroups: []string{""},
-	Resources: []string{"pods"},
+	Resources: []string{resourcePods},
 	Verbs:     []string{verbGet, verbList, verbWatch},
 }
 
