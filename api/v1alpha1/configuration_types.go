@@ -97,6 +97,23 @@ type LayoutGroupSpec struct {
 	// is resolved as a dashboard-icons slug.
 	// +optional
 	Icon *string `json:"icon,omitempty"`
+
+	// Header renders this group's header (name + icon) when true (the
+	// default). Set false to hide it while still rendering the group's
+	// cards.
+	// +optional
+	Header *bool `json:"header,omitempty"`
+
+	// InitiallyCollapsed collapses this group by default on first load,
+	// overriding the Configuration's GroupsInitiallyCollapsed. Ignored when
+	// DisableCollapse is set.
+	// +optional
+	InitiallyCollapsed *bool `json:"initiallyCollapsed,omitempty"`
+
+	// UseEqualHeights makes every card in this group the same height,
+	// overriding the Configuration's UseEqualHeights.
+	// +optional
+	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
 }
 
 // LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
@@ -185,6 +202,47 @@ type ConfigurationSpec struct {
 	// Omitted/empty renders every group flat with no tab UI, as before.
 	// +optional
 	Layout []LayoutTabSpec `json:"layout,omitempty"`
+
+	// DisableCollapse disables the collapsible expand/collapse control on
+	// service and bookmark group headers. Collapsing is enabled by default.
+	// +optional
+	DisableCollapse *bool `json:"disableCollapse,omitempty"`
+
+	// GroupsInitiallyCollapsed collapses every group by default on first
+	// load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
+	// group. Ignored when DisableCollapse is set.
+	// +optional
+	GroupsInitiallyCollapsed *bool `json:"groupsInitiallyCollapsed,omitempty"`
+
+	// UseEqualHeights makes every card in a group the same height. A
+	// LayoutGroupSpec's own UseEqualHeights overrides this per group.
+	// +optional
+	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
+
+	// BookmarksStyle renders every bookmark card icon-only (no name or
+	// description), matching homepage's `bookmarksStyle: icons`.
+	// +kubebuilder:validation:Enum=icons
+	// +optional
+	BookmarksStyle *string `json:"bookmarksStyle,omitempty"`
+
+	// DisableIndexing asks search engines not to index the dashboard:
+	// disallows all crawlers in robots.txt and adds a noindex meta tag.
+	// +optional
+	DisableIndexing *bool `json:"disableIndexing,omitempty"`
+
+	// StartURL is the PWA manifest's start_url, used when the dashboard is
+	// installed as an app. Defaults to "/".
+	// +kubebuilder:validation:Pattern=`^(https?://|/)`
+	// +optional
+	StartURL *string `json:"startUrl,omitempty"`
+
+	// CustomCSS is raw CSS injected into the dashboard's page in a second
+	// <style> block appended after the built-in stylesheet, so its rules
+	// can override it. Trusted, operator-supplied content — the same trust
+	// level as every other Configuration field (e.g. Background.Image).
+	// +kubebuilder:validation:MaxLength=10000
+	// +optional
+	CustomCSS *string `json:"customCSS,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.

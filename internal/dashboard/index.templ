@@ -18,6 +18,10 @@ templ Index(data indexData) {
 			if data.Site.Favicon != "" {
 				<link rel="icon" href={ data.Site.Favicon }/>
 			}
+			if data.Site.DisableIndexing {
+				<meta name="robots" content="noindex, nofollow"/>
+			}
+			<link rel="manifest" href="/manifest.json"/>
 			<style>
 				@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/manrope-400.woff2") format("woff2"); }
 				@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("/assets/manrope-600.woff2") format("woff2"); }
@@ -30,7 +34,7 @@ templ Index(data indexData) {
 					font-family: Manrope, system-ui, sans-serif;
 					letter-spacing: 0.1px; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 				}
-				.wrap { max-width: 1200px; margin: 0 auto; }
+				.wrap { max-width: 1200px; margin: 0 auto; position: relative; }
 				[data-full-width] .wrap { max-width: none; }
 				.page-title { margin: 0; font-size: 1.5rem; }
 				.page-desc { margin: 0.25rem 0 1rem; color: var(--muted); }
@@ -44,6 +48,7 @@ templ Index(data indexData) {
 				.header-field { display: inline-flex; flex-direction: column; gap: 0.15rem; }
 				.header-field + .header-field { margin-left: 0.75rem; }
 				.header-field-row { display: flex; align-items: baseline; gap: 0.35rem; }
+				.header-field.hl-good .value { color: #4ade80; }
 				.header-field.hl-warn .value { color: #fbbf24; }
 				.header-field.hl-danger .value { color: #f87171; }
 				.greeting { font-size: 1.25rem; }
@@ -58,9 +63,20 @@ templ Index(data indexData) {
 					font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
 					margin: 1.5rem 0 0.5rem;
 				}
-				[data-header-style="underlined"] h2 { border-bottom: 1px solid var(--accent); padding-bottom: 0.25rem; }
-				[data-header-style="boxed"] h2, [data-header-style="boxedWidgets"] h2 { background: var(--panel); padding: 0.4rem 0.6rem; border-radius: 0.4rem; }
-				[data-header-style="clean"] h2 { color: var(--text); letter-spacing: 0.02em; }
+				[data-header-style="underlined"] h2, [data-header-style="underlined"] summary { border-bottom: 1px solid var(--accent); padding-bottom: 0.25rem; }
+				[data-header-style="boxed"] h2, [data-header-style="boxedWidgets"] h2,
+				[data-header-style="boxed"] summary, [data-header-style="boxedWidgets"] summary { background: var(--panel); padding: 0.4rem 0.6rem; border-radius: 0.4rem; }
+				[data-header-style="clean"] h2, [data-header-style="clean"] summary { color: var(--text); letter-spacing: 0.02em; }
+				details.group summary {
+					font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
+					margin: 1.5rem 0 0.5rem; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.3rem;
+				}
+				details.group summary::-webkit-details-marker { display: none; }
+				details.group summary::before { content: "▸"; display: inline-block; transition: transform .12s ease; font-size: 0.7em; }
+				details.group[open] summary::before { transform: rotate(90deg); }
+				details.group > .grid { margin-top: 0.5rem; }
+				.grid.grid-equal { align-items: stretch; }
+				.grid.grid-equal .card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 				.tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
 				.tab-btn {
 					background: var(--panel); color: var(--text); border: 1px solid var(--border);
@@ -102,12 +118,15 @@ templ Index(data indexData) {
 				}
 				.stat .value { font-size: 0.85rem; font-weight: 300; }
 				.stat .label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+				.stat-good { background: color-mix(in srgb, #4ade80 22%, transparent); }
+				.stat-good .value { color: #4ade80; }
 				.stat-warn { background: color-mix(in srgb, #fbbf24 22%, transparent); }
 				.stat-warn .value { color: #fbbf24; }
 				.stat-danger { background: color-mix(in srgb, #f87171 22%, transparent); }
 				.stat-danger .value { color: #f87171; }
 				.usage-bar { width: 100%; height: 4px; margin-top: 0.3rem; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--muted) 25%, transparent); }
 				.usage-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+				.stat-good .usage-bar-fill { background: #4ade80; }
 				.stat-warn .usage-bar-fill { background: #fbbf24; }
 				.stat-danger .usage-bar-fill { background: #f87171; }
 				.header-field .usage-bar { width: 4rem; }
@@ -115,6 +134,7 @@ templ Index(data indexData) {
 				.field .label { color: var(--muted); }
 				.card.bookmark { display: flex; align-items: center; gap: 0.65rem; padding: 0.6rem 0.8rem; }
 				.card.bookmark h3 { margin: 0; font-size: 0.9rem; }
+				.card.bookmark-icons-only { justify-content: center; padding: 0.6rem; }
 				.abbr { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; flex: none; border-radius: 0.4rem; background: var(--accent); color: #fff; font-size: 0.7rem; font-weight: 700; }
 				.desc { font-size: 0.8rem; color: var(--muted); }
 				.err { color: #f87171; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; }
@@ -128,9 +148,60 @@ templ Index(data indexData) {
 				.ql-item.active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 				.ql-item img { width: 1.1rem; height: 1.1rem; object-fit: contain; }
 				.ql-item .ql-sub { margin-left: auto; font-size: 0.7rem; color: var(--muted); }
+				.switcher { position: absolute; top: 0; right: 0; display: flex; gap: 0.4rem; }
+				.switcher-btn {
+					background: var(--panel); color: var(--text); border: 1px solid var(--border);
+					border-radius: 0.4rem; width: 2rem; height: 2rem; font-size: 0.95rem; cursor: pointer;
+					display: inline-flex; align-items: center; justify-content: center; padding: 0;
+				}
+				.switcher-btn:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+				.color-swatch { width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--accent); border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+				.color-menu {
+					position: absolute; right: 0; margin-top: 0.3rem; z-index: 40; display: none;
+					grid-template-columns: repeat(7, 1.4rem); gap: 0.35rem; padding: 0.5rem;
+					background: var(--panel); border: 1px solid var(--border); border-radius: 0.5rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+				}
+				.color-menu.open { display: grid; }
+				.color-menu button { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); cursor: pointer; padding: 0; }
 			</style>
 			if data.Site.Background != nil {
 				@templ.Raw(backgroundStyle(data.Site.Background))
+			}
+			if data.Site.CustomCSS != "" {
+				@templ.Raw("<style>" + cssStringEscape(data.Site.CustomCSS) + "</style>")
+			}
+			if !data.Site.ThemeFixed || !data.Site.ColorFixed {
+				@templ.JSONScript("switcher-config", switcherConfig{ThemeFixed: data.Site.ThemeFixed, ColorFixed: data.Site.ColorFixed})
+				@templ.JSONScript("palette-ramps", AllPalettes())
+				<script>
+					// Apply any stored theme/color override before first paint
+					// (standard dark-mode-FOUC-avoidance pattern), only for the axis
+					// that isn't fixed by Configuration. window.__paletteRamps is also
+					// read by the switcher click handlers further down the page.
+					(function () {
+						var cfg = JSON.parse(document.getElementById("switcher-config").textContent);
+						var ramps = JSON.parse(document.getElementById("palette-ramps").textContent);
+						window.__paletteRamps = ramps;
+						if (!cfg.themeFixed) {
+							var theme = localStorage.getItem("kubepage-theme");
+							if (theme) document.documentElement.setAttribute("data-theme", theme);
+						}
+						if (!cfg.colorFixed) {
+							var color = localStorage.getItem("kubepage-color");
+							var ramp = color && ramps[color];
+							if (ramp) applyPaletteVars(ramp);
+						}
+					})();
+					// Shared by the FOUC-avoidance script above and the
+					// color-switcher click handler further down the page.
+					function applyPaletteVars(ramp) {
+						var el = document.documentElement;
+						el.style.setProperty("--accent", ramp.accent);
+						["c50", "c100", "c200", "c300", "c400", "c500", "c600", "c700", "c800", "c900"].forEach(function (k) {
+							el.style.setProperty("--" + k, ramp[k]);
+						});
+					}
+				</script>
 			}
 		</head>
 		<body>
@@ -142,6 +213,19 @@ templ Index(data indexData) {
 					<p class="page-desc">{ data.Site.Description }</p>
 				}
 				<div class="header-strip" id="header" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="innerHTML"></div>
+				if !data.Site.ThemeFixed || !data.Site.ColorFixed {
+					<div class="switcher">
+						if !data.Site.ColorFixed {
+							<div style="position: relative;">
+								<button type="button" class="switcher-btn" id="color-switcher-btn" title="Color palette" aria-label="Color palette"><span class="color-swatch"></span></button>
+								<div class="color-menu" id="color-menu"></div>
+							</div>
+						}
+						if !data.Site.ThemeFixed {
+							<button type="button" class="switcher-btn" id="theme-switcher-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+						}
+					</div>
+				}
 				<div class="search-bar">
 					<input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off"/>
 				</div>
@@ -203,9 +287,28 @@ templ Index(data indexData) {
 					document.querySelectorAll(".tab-btn").forEach(function (b, idx) { b.classList.toggle("active", idx === i); });
 					document.querySelectorAll(".tab-panel").forEach(function (p, idx) { p.classList.toggle("hidden", idx !== i); });
 				}
+				// Collapsible group open/closed state likewise lives outside the
+				// polled fragment: captured from the old DOM just before htmx
+				// discards it, reapplied (by data-group-name) to the freshly
+				// rendered <details> elements right after.
+				let groupOpenState = {};
+				function captureGroupState() {
+					document.querySelectorAll("#cards details.group[data-group-name]").forEach(function (d) {
+						groupOpenState[d.dataset.groupName] = d.open;
+					});
+				}
+				function restoreGroupState() {
+					document.querySelectorAll("#cards details.group[data-group-name]").forEach(function (d) {
+						const name = d.dataset.groupName;
+						if (Object.prototype.hasOwnProperty.call(groupOpenState, name)) d.open = groupOpenState[name];
+					});
+				}
+				document.getElementById("cards").addEventListener("htmx:beforeSwap", captureGroupState);
+
 				document.getElementById("cards").addEventListener("htmx:afterSwap", function () {
 					const panels = document.querySelectorAll(".tab-panel").length;
 					showTab(panels > 0 && currentTab < panels ? currentTab : 0);
+					restoreGroupState();
 				});
 
 				// Quick-launch overlay (homepage-style): Ctrl/Cmd-K or "/" opens a palette
@@ -299,6 +402,47 @@ templ Index(data indexData) {
 						if (els[qlActive]) { e.preventDefault(); window.open(els[qlActive].href, els[qlActive].target); qlClose(); }
 					}
 				});
+
+				// Theme/color switcher: only present when index.templ's FOUC-avoidance
+				// script ran (window.__paletteRamps set), i.e. at least one axis isn't
+				// fixed by Configuration — each button is itself only rendered for the
+				// axis that applies, so these listeners no-op via the null checks below
+				// when a button is absent.
+				const themeBtn = document.getElementById("theme-switcher-btn");
+				if (themeBtn) {
+					themeBtn.addEventListener("click", function () {
+						const current = document.documentElement.getAttribute("data-theme");
+						const next = current === "dark" ? "light" : "dark";
+						document.documentElement.setAttribute("data-theme", next);
+						localStorage.setItem("kubepage-theme", next);
+					});
+				}
+
+				const colorBtn = document.getElementById("color-switcher-btn");
+				const colorMenu = document.getElementById("color-menu");
+				if (colorBtn && colorMenu && window.__paletteRamps) {
+					Object.keys(window.__paletteRamps).sort().forEach(function (name) {
+						const ramp = window.__paletteRamps[name];
+						const swatch = document.createElement("button");
+						swatch.type = "button";
+						swatch.title = name;
+						swatch.setAttribute("aria-label", name);
+						swatch.style.background = ramp.accent;
+						swatch.addEventListener("click", function () {
+							applyPaletteVars(ramp);
+							localStorage.setItem("kubepage-color", name);
+							colorMenu.classList.remove("open");
+						});
+						colorMenu.appendChild(swatch);
+					});
+					colorBtn.addEventListener("click", function (e) {
+						e.stopPropagation();
+						colorMenu.classList.toggle("open");
+					});
+					document.addEventListener("click", function (e) {
+						if (!colorMenu.contains(e.target) && e.target !== colorBtn) colorMenu.classList.remove("open");
+					});
+				}
 			</script>
 		</body>
 	</html>

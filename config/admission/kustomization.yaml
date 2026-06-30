@@ -1,6 +1,7 @@
 resources:
 - secret_source_policy.yaml
 - widget_type_policy.yaml
+- serviceentry_monitor_source_policy.yaml
 
 # Keep each ValidatingAdmissionPolicyBinding's spec.policyName pointing at its
 # (possibly prefixed) ValidatingAdmissionPolicy.

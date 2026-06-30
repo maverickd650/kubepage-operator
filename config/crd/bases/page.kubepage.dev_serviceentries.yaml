@@ -103,6 +103,60 @@ spec:
                   no elevated capabilities.)
                 pattern: ^https?://
                 type: string
+              podSelector:
+                description: |-
+                  PodSelector selects pods in this ServiceEntry's namespace whose
+                  readiness determines this service's up/down status — a
+                  Kubernetes-native alternative to Ping/SiteMonitor for services that
+                  run as pods in this cluster, needing no externally reachable URL.
+                  With multiple matches, any Ready pod renders "Up"; the card shows
+                  "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
+                  Mutually exclusive with Ping and SiteMonitor (enforced by the
+                  serviceentry-monitor-source ValidatingAdmissionPolicy).
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
               showStats:
                 description: |-
                   ShowStats controls whether the polled widget fields are displayed on
@@ -117,9 +171,9 @@ spec:
                 type: string
               statusStyle:
                 description: |-
-                  StatusStyle controls how the Ping/SiteMonitor status renders: "dot" a
-                  colored status dot, "basic" up/down text. Ignored unless Ping or
-                  SiteMonitor is set.
+                  StatusStyle controls how the Ping/SiteMonitor/PodSelector status
+                  renders: "dot" a colored status dot, "basic" up/down text. Ignored
+                  unless one of Ping, SiteMonitor, or PodSelector is set.
                 enum:
                 - dot
                 - basic
@@ -152,6 +206,97 @@ spec:
                         Remaining widget-type-specific options (e.g. PrometheusMetric's
                         "query", Cloudflared's "accountId"/"tunnelId").
                       x-kubernetes-preserve-unknown-fields: true
+                    fields:
+                      description: |-
+                        Fields restricts which of the widget's returned fields are rendered,
+                        by label (e.g. "queued", "wanted"). Unset (the default) renders every
+                        field the widget returns.
+                      items:
+                        type: string
+                      type: array
+                    highlight:
+                      additionalProperties:
+                        description: |-
+                          FieldHighlight configures highlight rules for one widget field, keyed by
+                          the field's label in ServiceWidget.Highlight.
+                        properties:
+                          rules:
+                            description: |-
+                              Rules are evaluated in order; the first match sets the field's
+                              highlight level. No match leaves the field unhighlighted.
+                            items:
+                              description: |-
+                                HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules
+                                are evaluated in order; the first match sets the field's highlight level.
+                                Mirrors homepage's per-field highlight rule, see
+                                https://gethomepage.dev/configs/services/#block-highlighting.
+                              properties:
+                                caseSensitive:
+                                  description: |-
+                                    CaseSensitive makes a string operator's comparison case-sensitive.
+                                    Defaults to false (case-insensitive); ignored by numeric operators.
+                                  type: boolean
+                                level:
+                                  description: Level this rule sets when it matches.
+                                  enum:
+                                  - good
+                                  - warn
+                                  - danger
+                                  type: string
+                                negate:
+                                  description: Negate inverts the rule's match.
+                                  type: boolean
+                                value:
+                                  description: |-
+                                    Value is the rule's comparison value: a number for a numeric
+                                    operator, text for a string operator. For "between"/"outside" this is
+                                    the lower bound.
+                                  minLength: 1
+                                  type: string
+                                value2:
+                                  description: |-
+                                    Value2 is the upper bound for the "between"/"outside" operators;
+                                    ignored by every other operator.
+                                  type: string
+                                when:
+                                  description: |-
+                                    When is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
+                                    ne/between/outside (Value/Value2 parsed as numbers); string fields use
+                                    equals/includes/startsWith/endsWith/regex (Value compared as text).
+                                  enum:
+                                  - gt
+                                  - gte
+                                  - lt
+                                  - lte
+                                  - eq
+                                  - ne
+                                  - between
+                                  - outside
+                                  - equals
+                                  - includes
+                                  - startsWith
+                                  - endsWith
+                                  - regex
+                                  type: string
+                              required:
+                              - level
+                              - value
+                              - when
+                              type: object
+                            minItems: 1
+                            type: array
+                          valueOnly:
+                            description: |-
+                              ValueOnly highlights only the field's value rather than its whole
+                              stat chip (label included) when a rule matches.
+                            type: boolean
+                        required:
+                        - rules
+                        type: object
+                      description: |-
+                        Highlight tints a field's stat chip by severity (good/warn/danger),
+                        keyed by the field's label. See FieldHighlight.
+                      type: object
                     secrets:
                       additionalProperties:
                         description: |-

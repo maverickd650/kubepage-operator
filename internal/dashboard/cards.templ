@@ -48,7 +48,12 @@ templ serviceCardView(c Card, siteTarget string) {
 		} else if len(c.Fields) > 0 {
 			<div class="stats">
 				for _, f := range c.Fields {
-					<div class={ "stat", templ.KV("stat-warn", f.Highlight == HighlightWarn), templ.KV("stat-danger", f.Highlight == HighlightDanger) }>
+					<div
+						class={ "stat",
+							templ.KV("stat-good", f.Highlight == HighlightGood),
+							templ.KV("stat-warn", f.Highlight == HighlightWarn),
+							templ.KV("stat-danger", f.Highlight == HighlightDanger) }
+					>
 						<span class="value">{ f.Value }</span><span class="label">{ f.Label }</span>
 						@usageBar(f.Percent)
 					</div>
@@ -58,18 +63,90 @@ templ serviceCardView(c Card, siteTarget string) {
 	</div>
 }
 
-templ bookmarkCardView(b BookmarkCard, siteTarget string) {
-	<a class="card bookmark" href={ b.Href } target={ siteTarget } data-name={ b.Name } data-description={ b.Description }>
+templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
+	<a
+		class={ "card", "bookmark", templ.KV("bookmark-icons-only", iconsOnly) }
+		href={ b.Href } target={ siteTarget } data-name={ b.Name } data-description={ b.Description }
+		title={ b.Name }
+	>
 		if b.IconURL != "" {
 			@icon(b.IconURL)
 		} else if b.Abbr != "" {
 			<span class="abbr">{ b.Abbr }</span>
 		}
-		<div>
-			<h3>{ b.Name }</h3>
-			@desc(b.Description)
-		</div>
+		if !iconsOnly {
+			<div>
+				<h3>{ b.Name }</h3>
+				@desc(b.Description)
+			</div>
+		}
 	</a>
+}
+
+// groupHeading renders a group's icon+name, shared by the collapsible
+// (<summary>) and plain (<h2>) group header markup below.
+templ groupHeading(name, iconURL string) {
+	@icon(iconURL)
+	{ " " }
+	{ name }
+}
+
+// serviceGroupBlock renders one service group's header (if any) and card
+// grid. A header-less group (LayoutGroupSpec.Header=false) can't be
+// collapsed — there's nothing to click — so it always renders its grid
+// directly regardless of collapsible.
+templ serviceGroupBlock(g cardGroup, siteTarget string, collapsible bool) {
+	if !g.Header {
+		@serviceCardGrid(g, siteTarget)
+	} else if collapsible {
+		<details class="group" data-group-name={ g.Name } open?={ !g.InitiallyCollapsed }>
+			<summary>
+				@groupHeading(g.Name, g.IconURL)
+			</summary>
+			@serviceCardGrid(g, siteTarget)
+		</details>
+	} else {
+		<h2>
+			@groupHeading(g.Name, g.IconURL)
+		</h2>
+		@serviceCardGrid(g, siteTarget)
+	}
+}
+
+templ serviceCardGrid(g cardGroup, siteTarget string) {
+	<div
+		class={ "grid", templ.KV("grid-row", g.Style == "row"), templ.KV("grid-equal", g.UseEqualHeights) }
+		if g.Columns != nil {
+			style={ gridStyle(g.Columns) }
+		}
+	>
+		for _, c := range g.Cards {
+			@serviceCardView(c, siteTarget)
+		}
+	</div>
+}
+
+// bookmarkGroupBlock mirrors serviceGroupBlock for a bookmarks.yaml-style
+// group; bookmark groups have no per-group Header override (they don't go
+// through LayoutGroupSpec), so a header always renders when collapsible.
+templ bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, collapsible, initiallyCollapsed, iconsOnly bool) {
+	if collapsible {
+		<details class="group" data-group-name={ "bookmark:" + bg.Name } open?={ !initiallyCollapsed }>
+			<summary>{ bg.Name }</summary>
+			@bookmarkCardGrid(bg, siteTarget, iconsOnly)
+		</details>
+	} else {
+		<h2>{ bg.Name }</h2>
+		@bookmarkCardGrid(bg, siteTarget, iconsOnly)
+	}
+}
+
+templ bookmarkCardGrid(bg BookmarkGroup, siteTarget string, iconsOnly bool) {
+	<div class="grid">
+		for _, b := range bg.Bookmarks {
+			@bookmarkCardView(b, siteTarget, iconsOnly)
+		}
+	</div>
 }
 
 templ Cards(data fragmentData) {
@@ -83,30 +160,11 @@ templ Cards(data fragmentData) {
 	for i, t := range data.Tabs {
 		<div class={ "tab-panel", templ.KV("hidden", i != 0) }>
 			for _, g := range t.Groups {
-				<h2>
-					@icon(g.IconURL)
-					{ " " }
-					{ g.Name }
-				</h2>
-				<div
-					class={ "grid", templ.KV("grid-row", g.Style == "row") }
-					if g.Columns != nil {
-						style={ gridStyle(g.Columns) }
-					}
-				>
-					for _, c := range g.Cards {
-						@serviceCardView(c, data.SiteTarget)
-					}
-				</div>
+				@serviceGroupBlock(g, data.SiteTarget, !data.DisableCollapse)
 			}
 		</div>
 	}
 	for _, bg := range data.BookmarkGroups {
-		<h2>{ bg.Name }</h2>
-		<div class="grid">
-			for _, b := range bg.Bookmarks {
-				@bookmarkCardView(b, data.SiteTarget)
-			}
-		</div>
+		@bookmarkGroupBlock(bg, data.SiteTarget, !data.DisableCollapse, data.BookmarksInitiallyCollapsed, data.BookmarksIconsOnly)
 	}
 }

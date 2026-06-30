@@ -32,7 +32,7 @@ func TestLoadSiteDefaults(t *testing.T) {
 
 func TestLoadSitePicksLexicographicallyFirstConfiguration(t *testing.T) {
 	scheme := testScheme(t)
-	themeB := "light"
+	themeB := themeLight
 	themeA := defaultTheme
 	cfgB := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: "z-cfg", Namespace: testNamespace},
@@ -205,6 +205,95 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	bms := site.BookmarkGroups[0].Bookmarks
 	if len(bms) != 2 || bms[0].Name != "First" || bms[1].Name != "Second" {
 		t.Errorf("Bookmarks = %+v, want First then Second (ordered by Order)", bms)
+	}
+}
+
+func TestLoadSiteThemeFixedAndColorFixed(t *testing.T) {
+	scheme := testScheme(t)
+	theme := themeLight
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Theme:       &theme,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if !site.ThemeFixed {
+		t.Error("ThemeFixed = false, want true when Configuration.Theme is set")
+	}
+	if site.ColorFixed {
+		t.Error("ColorFixed = true, want false when Configuration.Color is unset")
+	}
+}
+
+func TestLoadSiteAppliesNewLookFields(t *testing.T) {
+	scheme := testScheme(t)
+	disableCollapse := true
+	groupsCollapsed := true
+	equalHeights := true
+	bookmarksStyle := bookmarksStyleIcons
+	disableIndexing := true
+	startURL := "/dash"
+	customCSS := "body{color:red}"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef:              pagev1alpha1.InstanceRef{Name: testInstanceName},
+			DisableCollapse:          &disableCollapse,
+			GroupsInitiallyCollapsed: &groupsCollapsed,
+			UseEqualHeights:          &equalHeights,
+			BookmarksStyle:           &bookmarksStyle,
+			DisableIndexing:          &disableIndexing,
+			StartURL:                 &startURL,
+			CustomCSS:                &customCSS,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if !site.DisableCollapse || !site.GroupsInitiallyCollapsed || !site.UseEqualHeights ||
+		!site.BookmarksIconsOnly || !site.DisableIndexing || site.StartURL != startURL || site.CustomCSS != customCSS {
+		t.Errorf("new look fields = %+v", site)
+	}
+}
+
+func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
+	scheme := testScheme(t)
+	header := false
+	initiallyCollapsed := true
+	equalHeights := true
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{
+					Name: testInfraTab,
+					Groups: []pagev1alpha1.LayoutGroupSpec{
+						{Name: testGroup, Header: &header, InitiallyCollapsed: &initiallyCollapsed, UseEqualHeights: &equalHeights},
+					},
+				},
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	g := site.Layout[0].Groups[0]
+	if g.Header == nil || *g.Header || g.InitiallyCollapsed == nil || !*g.InitiallyCollapsed || g.UseEqualHeights == nil || !*g.UseEqualHeights {
+		t.Errorf("Layout[0].Groups[0] overrides = %+v, want Header=false InitiallyCollapsed=true UseEqualHeights=true", g)
 	}
 }
 

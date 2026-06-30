@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"embed"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -24,14 +25,18 @@ var assetFS embed.FS
 
 // cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
-// Style/IconURL come from the Configuration's Layout, when one places this
-// group in a tab.
+// Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights come from the
+// Configuration's Layout, when one places this group in a tab, already
+// resolved against the Site-wide defaults by layoutTabs.
 type cardGroup struct {
-	Name    string
-	Cards   []Card
-	Columns *int32
-	Style   string
-	IconURL string
+	Name               string
+	Cards              []Card
+	Columns            *int32
+	Style              string
+	IconURL            string
+	Header             bool
+	InitiallyCollapsed bool
+	UseEqualHeights    bool
 }
 
 // layoutTab is one tab's display-ready groups.
@@ -73,6 +78,15 @@ type fragmentData struct {
 	// SiteTarget is the default link target a card uses when it has no
 	// per-card Target override.
 	SiteTarget string
+
+	// DisableCollapse disables the collapsible control on every group
+	// header (service and bookmark groups alike).
+	DisableCollapse bool
+	// BookmarksInitiallyCollapsed/BookmarksIconsOnly are the Site-wide
+	// bookmark-group settings; bookmark groups have no per-group override
+	// (they don't go through LayoutGroupSpec).
+	BookmarksInitiallyCollapsed bool
+	BookmarksIconsOnly          bool
 }
 
 // headerWidgetView is one rendered header widget: a static definition joined
@@ -97,9 +111,67 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /fragment", s.handleFragment)
 	mux.HandleFunc("GET /header", s.handleHeader)
 	mux.HandleFunc("GET /assets/{file}", handleAsset)
+	mux.HandleFunc("GET /manifest.json", s.handleManifest)
+	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /metrics", promhttp.Handler())
 	return mux
+}
+
+// pwaManifest is the GET /manifest.json response shape, letting the
+// dashboard be installed as a Progressive Web App (homepage's documented
+// PWA support: https://gethomepage.dev/configs/settings/#progressive-web-app-pwa).
+type pwaManifest struct {
+	Name            string `json:"name"`
+	ShortName       string `json:"short_name"`
+	ThemeColor      string `json:"theme_color"`
+	BackgroundColor string `json:"background_color"`
+	Display         string `json:"display"`
+	StartURL        string `json:"start_url"`
+}
+
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	bg := PaletteRamp(site.Color).C900
+	if site.Theme == themeLight {
+		bg = PaletteRamp(site.Color).C50
+	}
+	manifest := pwaManifest{
+		Name:            site.Title,
+		ShortName:       site.Title,
+		ThemeColor:      AccentHex(site.Color),
+		BackgroundColor: bg,
+		Display:         "standalone",
+		StartURL:        site.StartURL,
+	}
+
+	w.Header().Set("Content-Type", "application/manifest+json")
+	if err := json.NewEncoder(w).Encode(manifest); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handleRobots serves a permissive robots.txt by default, or a disallow-all
+// one when the Configuration sets DisableIndexing — homepage's documented
+// "ask search engines not to index" setting.
+func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if site.DisableIndexing {
+		_, _ = w.Write([]byte("User-agent: *\nDisallow: /\n"))
+		return
+	}
+	_, _ = w.Write([]byte("User-agent: *\nAllow: /\n"))
 }
 
 // handleAsset serves an embedded static asset by its bare filename. {file} is
@@ -146,9 +218,12 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := fragmentData{
-		Tabs:           layoutTabs(serviceCards(s.Store.Snapshot()), site.Layout),
-		BookmarkGroups: site.BookmarkGroups,
-		SiteTarget:     site.Target,
+		Tabs:                        layoutTabs(serviceCards(s.Store.Snapshot()), site),
+		BookmarkGroups:              site.BookmarkGroups,
+		SiteTarget:                  site.Target,
+		DisableCollapse:             site.DisableCollapse,
+		BookmarksInitiallyCollapsed: site.GroupsInitiallyCollapsed,
+		BookmarksIconsOnly:          site.BookmarksIconsOnly,
 	}
 	if err := Cards(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -213,7 +288,10 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 
 // groupCards buckets an already-ordered card slice into display groups,
 // preserving the incoming order of both groups and cards within a group.
-func groupCards(cards []Card) []cardGroup {
+// Header defaults to true (shown) — only an explicit LayoutGroupSpec.Header
+// false (applied in layoutTabs) turns it off; InitiallyCollapsed/
+// UseEqualHeights start at the Site-wide defaults, also overridable there.
+func groupCards(cards []Card, site Site) []cardGroup {
 	var groups []cardGroup
 	index := map[string]int{}
 	for _, c := range cards {
@@ -221,7 +299,12 @@ func groupCards(cards []Card) []cardGroup {
 		if !ok {
 			i = len(groups)
 			index[c.Group] = i
-			groups = append(groups, cardGroup{Name: c.Group})
+			groups = append(groups, cardGroup{
+				Name:               c.Group,
+				Header:             true,
+				InitiallyCollapsed: site.GroupsInitiallyCollapsed,
+				UseEqualHeights:    site.UseEqualHeights,
+			})
 		}
 		groups[i].Cards = append(groups[i].Cards, c)
 	}
@@ -234,8 +317,9 @@ func groupCards(cards []Card) []cardGroup {
 // Group placed by more than one LayoutTab is shown only under the first;
 // any Group not referenced by any tab is appended to a trailing "Other"
 // tab so nothing silently disappears from the dashboard.
-func layoutTabs(cards []Card, layout []LayoutTab) []layoutTab {
-	groups := groupCards(cards)
+func layoutTabs(cards []Card, site Site) []layoutTab {
+	groups := groupCards(cards, site)
+	layout := site.Layout
 	if len(layout) == 0 {
 		return []layoutTab{{Groups: groups}}
 	}
@@ -258,6 +342,15 @@ func layoutTabs(cards []Card, layout []LayoutTab) []layoutTab {
 			g.Columns = lg.Columns
 			g.Style = lg.Style
 			g.IconURL = lg.IconURL
+			if lg.Header != nil {
+				g.Header = *lg.Header
+			}
+			if lg.InitiallyCollapsed != nil {
+				g.InitiallyCollapsed = *lg.InitiallyCollapsed
+			}
+			if lg.UseEqualHeights != nil {
+				g.UseEqualHeights = *lg.UseEqualHeights
+			}
 			tab.Groups = append(tab.Groups, g)
 		}
 		tabs = append(tabs, tab)

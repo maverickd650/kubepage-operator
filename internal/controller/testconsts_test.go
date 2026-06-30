@@ -10,6 +10,7 @@ const (
 	testRefInstanceName          = "inst"
 	testAnnotationKey            = "example.com/note"
 	testWidgetTypePrometheus     = "prometheus"
+	policyTestGroup              = "media"
 	testForeignAnnotationKey     = "foo.io/bar"
 	testForeignAnnotationValue   = "baz"
 

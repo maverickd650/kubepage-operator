@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -145,16 +146,18 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	p.Store.Prune(keep)
 }
 
-// monitor probes the entry's Ping/SiteMonitor (SiteMonitor preferred when both
-// set) over HTTP, returning the resolved status/style/latency, or empty
-// strings when neither is configured.
+// monitor probes the entry's monitor source — Ping, SiteMonitor, or
+// PodSelector, mutually exclusive by admission policy (config/admission/
+// serviceentry_monitor_source_policy.yaml) — returning the resolved
+// status/style/latency, or empty strings when none is configured.
 func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (status, statusStyle, latency string) {
-	url := ""
 	switch {
+	case entry.Spec.PodSelector != nil:
+		status, latency = p.podStatus(ctx, entry)
 	case entry.Spec.SiteMonitor != nil && *entry.Spec.SiteMonitor != "":
-		url = *entry.Spec.SiteMonitor
+		status, latency = monitorResult(ctx, p.HTTPClient, *entry.Spec.SiteMonitor)
 	case entry.Spec.Ping != nil && *entry.Spec.Ping != "":
-		url = *entry.Spec.Ping
+		status, latency = monitorResult(ctx, p.HTTPClient, *entry.Spec.Ping)
 	default:
 		return "", "", ""
 	}
@@ -163,13 +166,57 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (
 	if entry.Spec.StatusStyle != nil {
 		style = *entry.Spec.StatusStyle
 	}
-	status, latency = monitorResult(ctx, p.HTTPClient, url)
 	up := 0.0
 	if status == "Up" {
 		up = 1
 	}
 	monitorUp.WithLabelValues(entry.Namespace + "/" + entry.Name).Set(up)
 	return status, style, latency
+}
+
+// podStatus computes an up/down status from entry's PodSelector: pods are
+// listed in entry's own namespace through the same namespace-scoped,
+// cache-backed Reader as ServiceEntry itself (RBAC granted by
+// internal/controller/instance_rbac.go's dashboardPodsRule — namespaced and
+// owner-referenced, unlike the cluster-scoped KubeReader used by
+// ClusterWidget types). Any matching pod with a Ready condition of True
+// renders "Up"; the monitor's latency slot is repurposed to show
+// "<ready>/<total> ready" in place of a network latency figure.
+func (p *Poller) podStatus(ctx context.Context, entry pagev1alpha1.ServiceEntry) (status, readyText string) {
+	selector, err := metav1.LabelSelectorAsSelector(entry.Spec.PodSelector)
+	if err != nil {
+		pollerLog.Error(err, "invalid PodSelector", "serviceEntry", entry.Name)
+		return statusDown, ""
+	}
+
+	var pods corev1.PodList
+	if err := p.Reader.List(ctx, &pods, client.InNamespace(entry.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+		pollerLog.Error(err, "listing pods for PodSelector", "serviceEntry", entry.Name)
+		return statusDown, ""
+	}
+
+	ready := 0
+	for _, pod := range pods.Items {
+		if podReady(&pod) {
+			ready++
+		}
+	}
+	status = statusDown
+	if ready > 0 {
+		status = "Up"
+	}
+	return status, fmt.Sprintf("%d/%d ready", ready, len(pods.Items))
+}
+
+// podReady reports whether pod's Ready condition is True — stricter than
+// phase=Running, which a pod failing its readiness probe still reports.
+func podReady(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady {
+			return c.Status == corev1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // pollWidget builds and stores the Card for one of an entry's widgets, with
@@ -240,7 +287,7 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 	case err != nil && !card.HideErrors:
 		card.Err = err.Error()
 	case err == nil && card.ShowStats:
-		card.Fields = fields
+		card.Fields = applyHighlights(filterFields(fields, widget.Fields), widget.Highlight)
 	}
 	p.Store.Set(card)
 }

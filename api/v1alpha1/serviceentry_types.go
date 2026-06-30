@@ -9,6 +9,60 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules
+// are evaluated in order; the first match sets the field's highlight level.
+// Mirrors homepage's per-field highlight rule, see
+// https://gethomepage.dev/configs/services/#block-highlighting.
+type HighlightRuleSpec struct {
+	// Level this rule sets when it matches.
+	// +kubebuilder:validation:Enum=good;warn;danger
+	// +required
+	Level string `json:"level"`
+
+	// When is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
+	// ne/between/outside (Value/Value2 parsed as numbers); string fields use
+	// equals/includes/startsWith/endsWith/regex (Value compared as text).
+	// +kubebuilder:validation:Enum=gt;gte;lt;lte;eq;ne;between;outside;equals;includes;startsWith;endsWith;regex
+	// +required
+	When string `json:"when"`
+
+	// Value is the rule's comparison value: a number for a numeric
+	// operator, text for a string operator. For "between"/"outside" this is
+	// the lower bound.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Value string `json:"value"`
+
+	// Value2 is the upper bound for the "between"/"outside" operators;
+	// ignored by every other operator.
+	// +optional
+	Value2 *string `json:"value2,omitempty"`
+
+	// Negate inverts the rule's match.
+	// +optional
+	Negate *bool `json:"negate,omitempty"`
+
+	// CaseSensitive makes a string operator's comparison case-sensitive.
+	// Defaults to false (case-insensitive); ignored by numeric operators.
+	// +optional
+	CaseSensitive *bool `json:"caseSensitive,omitempty"`
+}
+
+// FieldHighlight configures highlight rules for one widget field, keyed by
+// the field's label in ServiceWidget.Highlight.
+type FieldHighlight struct {
+	// Rules are evaluated in order; the first match sets the field's
+	// highlight level. No match leaves the field unhighlighted.
+	// +kubebuilder:validation:MinItems=1
+	// +required
+	Rules []HighlightRuleSpec `json:"rules"`
+
+	// ValueOnly highlights only the field's value rather than its whole
+	// stat chip (label included) when a rule matches.
+	// +optional
+	ValueOnly *bool `json:"valueOnly,omitempty"`
+}
+
 // ServiceWidget configures one of the native dashboard's pollable widgets
 // (internal/dashboard's Widget interface) for a service card. Type and URL
 // are typed because nearly every widget has them; everything else
@@ -39,6 +93,17 @@ type ServiceWidget struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Config *apiextensionsv1.JSON `json:"config,omitempty"`
+
+	// Fields restricts which of the widget's returned fields are rendered,
+	// by label (e.g. "queued", "wanted"). Unset (the default) renders every
+	// field the widget returns.
+	// +optional
+	Fields []string `json:"fields,omitempty"`
+
+	// Highlight tints a field's stat chip by severity (good/warn/danger),
+	// keyed by the field's label. See FieldHighlight.
+	// +optional
+	Highlight map[string]FieldHighlight `json:"highlight,omitempty"`
 }
 
 // ServiceEntrySpec defines one service card rendered by the native
@@ -110,9 +175,20 @@ type ServiceEntrySpec struct {
 	// +optional
 	SiteMonitor *string `json:"siteMonitor,omitempty"`
 
-	// StatusStyle controls how the Ping/SiteMonitor status renders: "dot" a
-	// colored status dot, "basic" up/down text. Ignored unless Ping or
-	// SiteMonitor is set.
+	// PodSelector selects pods in this ServiceEntry's namespace whose
+	// readiness determines this service's up/down status — a
+	// Kubernetes-native alternative to Ping/SiteMonitor for services that
+	// run as pods in this cluster, needing no externally reachable URL.
+	// With multiple matches, any Ready pod renders "Up"; the card shows
+	// "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
+	// Mutually exclusive with Ping and SiteMonitor (enforced by the
+	// serviceentry-monitor-source ValidatingAdmissionPolicy).
+	// +optional
+	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
+
+	// StatusStyle controls how the Ping/SiteMonitor/PodSelector status
+	// renders: "dot" a colored status dot, "basic" up/down text. Ignored
+	// unless one of Ping, SiteMonitor, or PodSelector is set.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`

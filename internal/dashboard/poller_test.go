@@ -26,6 +26,8 @@ const (
 	testInstanceName  = "main"
 	testGroup         = "Monitoring"
 	testServiceName   = "Prometheus"
+	testSvcAName      = "Svc A"
+	testCardKeyA      = "ns/a/0"
 	testWidgetType    = "prometheus"
 	testSecretField   = "token"
 	testBookmarkGroup = "Reading"
@@ -199,6 +201,68 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 	}
 	if c.WidgetType != "" {
 		t.Errorf("card.WidgetType = %q, want empty for monitor-only", c.WidgetType)
+	}
+}
+
+func TestPollerPodSelector(t *testing.T) {
+	readyPod := func(name string, ready bool) *corev1.Pod {
+		status := corev1.ConditionFalse
+		if ready {
+			status = corev1.ConditionTrue
+		}
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: map[string]string{"app": "demo"}},
+			Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: status}}},
+		}
+	}
+
+	cases := []struct {
+		name       string
+		pods       []client.Object
+		wantStatus string
+		wantText   string
+	}{
+		{"no matching pods", nil, statusDown, "0/0 ready"},
+		{"one ready pod", []client.Object{readyPod("p1", true)}, "Up", "1/1 ready"},
+		{"one not-ready pod", []client.Object{readyPod("p1", false)}, statusDown, "0/1 ready"},
+		{"mixed readiness reports any-ready as Up", []client.Object{readyPod("p1", false), readyPod("p2", true)}, "Up", "1/2 ready"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "demo"}}
+			style := testStatusBasic
+			entry := &pagev1alpha1.ServiceEntry{
+				ObjectMeta: metav1.ObjectMeta{Name: "podsvc", Namespace: testNamespace},
+				Spec: pagev1alpha1.ServiceEntrySpec{
+					InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+					Group:       "G",
+					Name:        "PodService",
+					PodSelector: selector,
+					StatusStyle: &style,
+				},
+			}
+
+			scheme := testScheme(t)
+			objs := append([]client.Object{entry}, tc.pods...)
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+			store := NewStore()
+			p := &Poller{
+				Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+				Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+			}
+			p.pollOnce(context.Background())
+
+			cards := store.Snapshot()
+			if len(cards) != 1 {
+				t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+			}
+			if cards[0].Status != tc.wantStatus {
+				t.Errorf("card.Status = %q, want %q", cards[0].Status, tc.wantStatus)
+			}
+			if cards[0].Latency != tc.wantText {
+				t.Errorf("card.Latency = %q, want %q", cards[0].Latency, tc.wantText)
+			}
+		})
 	}
 }
 

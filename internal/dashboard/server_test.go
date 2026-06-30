@@ -168,7 +168,7 @@ func TestServerIndexServesShell(t *testing.T) {
 }
 
 func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
-	theme := "light"
+	theme := themeLight
 	color := testColor
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
@@ -188,6 +188,141 @@ func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("index body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestServerFragmentRendersCollapsibleGroupsByDefault(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testCardKeyA, Group: testGroup, ServiceName: testSvcAName})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`<details class="group" data-group-name="` + testGroup + `"`, "<summary>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerFragmentDisableCollapseRendersPlainHeaders(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testCardKeyA, Group: testGroup, ServiceName: testSvcAName})
+	disable := true
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
+			DisableCollapse: &disable,
+		},
+	}
+	srv := newTestServer(t, store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<details") {
+		t.Errorf("fragment body has <details> with DisableCollapse=true:\n%s", body)
+	}
+	if !strings.Contains(body, "<h2>") {
+		t.Errorf("fragment body missing plain <h2> group header:\n%s", body)
+	}
+}
+
+func TestServerFragmentBookmarksIconsOnly(t *testing.T) {
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "wiki", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Group:       testBookmarkGroup,
+			Name:        "Wiki",
+			Href:        "https://example.invalid/wiki",
+		},
+	}
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef:    pagev1alpha1.InstanceRef{Name: testInstanceName},
+			BookmarksStyle: new(bookmarksStyleIcons),
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmark, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "bookmark-icons-only") {
+		t.Errorf("fragment body missing bookmark-icons-only class:\n%s", body)
+	}
+	if strings.Contains(body, "<h3>Wiki</h3>") {
+		t.Errorf("fragment body should hide bookmark name text in icons-only mode:\n%s", body)
+	}
+}
+
+func TestServerManifestRoute(t *testing.T) {
+	title := "My Lab"
+	startURL := "/dashboard"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Title:       &title,
+			StartURL:    &startURL,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/manifest.json", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/manifest+json" {
+		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"name":"My Lab"`, `"start_url":"/dashboard"`, `"display":"standalone"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("manifest body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerRobotsRoute(t *testing.T) {
+	disable := true
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
+			DisableIndexing: &disable,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/robots.txt", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Disallow: /") {
+		t.Errorf("robots.txt = %q, want Disallow: / when DisableIndexing", rec.Body.String())
+	}
+}
+
+func TestServerRobotsRouteDefaultAllows(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/robots.txt", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "Allow: /") {
+		t.Errorf("robots.txt = %q, want Allow: / by default", rec.Body.String())
 	}
 }
 
@@ -294,7 +429,7 @@ func TestGroupCardsPreservesOrder(t *testing.T) {
 		{Group: "A", ServiceName: "a2"},
 		{Group: "B", ServiceName: "b1"},
 	}
-	groups := groupCards(cards)
+	groups := groupCards(cards, Site{})
 	if len(groups) != 2 || groups[0].Name != "A" || len(groups[0].Cards) != 2 || groups[1].Name != "B" {
 		t.Fatalf("groupCards() = %+v", groups)
 	}
@@ -305,7 +440,7 @@ func TestLayoutTabsNoLayoutReturnsSingleUnnamedTab(t *testing.T) {
 		{Group: "A", ServiceName: "a1"},
 		{Group: "B", ServiceName: "b1"},
 	}
-	tabs := layoutTabs(cards, nil)
+	tabs := layoutTabs(cards, Site{})
 	if len(tabs) != 1 || tabs[0].Name != "" || len(tabs[0].Groups) != 2 {
 		t.Fatalf("layoutTabs() with no layout = %+v, want one unnamed tab with both groups", tabs)
 	}
@@ -321,7 +456,7 @@ func TestLayoutTabsArrangesGroupsAndStyles(t *testing.T) {
 		{Name: testTab1, Groups: []LayoutGroup{{Name: "A", Columns: &cols, Style: testStyleRow, IconURL: "https://icon.invalid/a.png"}}},
 		{Name: testTab2, Groups: []LayoutGroup{{Name: "B"}}},
 	}
-	tabs := layoutTabs(cards, layout)
+	tabs := layoutTabs(cards, Site{Layout: layout})
 	if len(tabs) != 2 {
 		t.Fatalf("layoutTabs() = %+v, want 2 tabs", tabs)
 	}
@@ -343,7 +478,7 @@ func TestLayoutTabsAppendsUnreferencedGroupsToOther(t *testing.T) {
 		{Group: "B", ServiceName: "b1"},
 	}
 	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{{Name: "A"}}}}
-	tabs := layoutTabs(cards, layout)
+	tabs := layoutTabs(cards, Site{Layout: layout})
 	if len(tabs) != 2 || tabs[1].Name != testOtherGroup || len(tabs[1].Groups) != 1 || tabs[1].Groups[0].Name != "B" {
 		t.Fatalf("layoutTabs() = %+v, want Group B appended to a trailing \"Other\" tab", tabs)
 	}
@@ -355,7 +490,7 @@ func TestLayoutTabsGroupReferencedTwiceUsesFirstTab(t *testing.T) {
 		{Name: testTab1, Groups: []LayoutGroup{{Name: "A"}}},
 		{Name: testTab2, Groups: []LayoutGroup{{Name: "A"}}},
 	}
-	tabs := layoutTabs(cards, layout)
+	tabs := layoutTabs(cards, Site{Layout: layout})
 	if len(tabs) != 2 || len(tabs[0].Groups) != 1 || len(tabs[1].Groups) != 0 {
 		t.Fatalf("layoutTabs() = %+v, want Group A only under Tab1", tabs)
 	}
@@ -363,7 +498,7 @@ func TestLayoutTabsGroupReferencedTwiceUsesFirstTab(t *testing.T) {
 
 func TestServerFragmentRendersTabs(t *testing.T) {
 	store := NewStore()
-	store.Set(Card{Key: "ns/a/0", Group: "Infra", ServiceName: "Svc A"})
+	store.Set(Card{Key: testCardKeyA, Group: "Infra", ServiceName: testSvcAName})
 	store.Set(Card{Key: "ns/b/0", Group: "Apps", ServiceName: "Svc B"})
 
 	cols := int32(2)
@@ -382,7 +517,7 @@ func TestServerFragmentRendersTabs(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{testInfraTab, testOtherGroup, "Svc A", "Svc B", "tab-btn"} {
+	for _, want := range []string{testInfraTab, testOtherGroup, testSvcAName, "Svc B", "tab-btn"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
