@@ -14,6 +14,7 @@ import (
 
 // Highlight severity levels a widget may set on a Field; see Field.Highlight.
 const (
+	HighlightGood   = "good"
 	HighlightWarn   = "warn"
 	HighlightDanger = "danger"
 )
@@ -32,9 +33,12 @@ type Field struct {
 	Percent *int
 
 	// Highlight optionally flags this field's stat chip with a severity
-	// color: "warn" or "danger". Empty means no highlight. Set by a widget
-	// that has its own notion of a threshold (e.g. kubemetrics' CPU/memory
-	// percentage) — there is no generic, configurable threshold engine.
+	// color: "good", "warn", or "danger". Empty means no highlight. Set
+	// either by a widget with its own notion of a threshold (e.g.
+	// kubemetrics' CPU/memory percentage) or, after Poll returns, by
+	// highlight.go's generic rule engine evaluating the ServiceWidget's
+	// configured Highlight rules (keyed by Label) — the latter only runs
+	// for fields a widget hasn't already highlighted itself.
 	Highlight string
 }
 

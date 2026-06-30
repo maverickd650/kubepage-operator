@@ -61,19 +61,32 @@ var dashboardConfigRule = rbacv1.PolicyRule{
 	Verbs:     []string{verbGet, verbList, verbWatch},
 }
 
+// dashboardPodsRule is the read access the dashboard pod needs in its own
+// namespace to evaluate a ServiceEntry's PodSelector
+// (internal/dashboard/poller.go's monitor): listing/watching pods to compute
+// "M/N ready" status. Unlike the kubemetrics ClusterRole below, this is
+// namespace-scoped and owner-referenced like the rest of the per-Instance
+// Role, so it's granted unconditionally rather than added/removed as
+// PodSelector usage comes and goes — there's no GC/finalizer cost to it.
+var dashboardPodsRule = rbacv1.PolicyRule{
+	APIGroups: []string{""},
+	Resources: []string{"pods"},
+	Verbs:     []string{verbGet, verbList, verbWatch},
+}
+
 // dashboardRoles builds the per-Instance Role's rules: always read access to
-// the config CRDs (dashboardConfigRule), plus get access to exactly the
-// Secrets referenced by the Instance's widgets (secretNames, already sorted
-// and de-duplicated). The Secret rule is scoped with resourceNames and
-// limited to get: the Poller only ever Gets a referenced Secret
-// (internal/dashboard/poller.go resolveSecret, via a separate uncached
-// client), and RBAC resourceNames can't restrict list/watch — so the
-// dashboard pod can read only the credentials it actually uses, not every
-// Secret in the namespace. When nothing references a Secret the rule is
-// omitted entirely, since an empty resourceNames would instead mean "all
-// Secrets" — the opposite of the intent.
+// the config CRDs (dashboardConfigRule) and to Pods (dashboardPodsRule),
+// plus get access to exactly the Secrets referenced by the Instance's
+// widgets (secretNames, already sorted and de-duplicated). The Secret rule
+// is scoped with resourceNames and limited to get: the Poller only ever Gets
+// a referenced Secret (internal/dashboard/poller.go resolveSecret, via a
+// separate uncached client), and RBAC resourceNames can't restrict
+// list/watch — so the dashboard pod can read only the credentials it
+// actually uses, not every Secret in the namespace. When nothing references
+// a Secret the rule is omitted entirely, since an empty resourceNames would
+// instead mean "all Secrets" — the opposite of the intent.
 func dashboardRoles(secretNames []string) []rbacv1.PolicyRule {
-	rules := []rbacv1.PolicyRule{dashboardConfigRule}
+	rules := []rbacv1.PolicyRule{dashboardConfigRule, dashboardPodsRule}
 	if len(secretNames) > 0 {
 		rules = append(rules, rbacv1.PolicyRule{
 			APIGroups:     []string{""},

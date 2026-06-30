@@ -1,0 +1,36 @@
+# ValidatingAdmissionPolicy enforcing the ServiceEntry monitor-source
+# invariant documented in api/v1alpha1/serviceentry_types.go: ping,
+# siteMonitor, and podSelector are three independent ways to compute the
+# same up/down status badge, so at most one may be set — otherwise it's
+# silently ambiguous which one wins. CEL admission catches this at apply
+# time, with no webhook server / certificate to manage, mirroring
+# secret_source_policy.yaml.
+#
+# Requires Kubernetes v1.30+ (ValidatingAdmissionPolicy is GA from 1.30).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: serviceentry-monitor-source
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["page.kubepage.dev"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["serviceentries"]
+  validations:
+    - expression: >-
+        (has(object.spec.ping) ? 1 : 0) +
+        (has(object.spec.siteMonitor) ? 1 : 0) +
+        (has(object.spec.podSelector) ? 1 : 0) <= 1
+      message: "a ServiceEntry may set at most one of ping, siteMonitor, or podSelector"
+      reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: serviceentry-monitor-source
+spec:
+  policyName: serviceentry-monitor-source
+  validationActions: ["Deny"]

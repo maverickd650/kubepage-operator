@@ -122,7 +122,7 @@ func serviceEntryWithWidgetType(name, widgetType string) *pagev1alpha1.ServiceEn
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
-			Group:       "media",
+			Group:       policyTestGroup,
 			Name:        name,
 		},
 	}

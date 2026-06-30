@@ -123,7 +123,7 @@ func serviceEntryWithSecret(name string, src *pagev1alpha1.SecretValueSource) *p
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
-			Group:       "media",
+			Group:       policyTestGroup,
 			Name:        name,
 			Widgets:     []pagev1alpha1.ServiceWidget{widget},
 		},

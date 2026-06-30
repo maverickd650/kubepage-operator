@@ -84,6 +84,11 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=metrics.k8s.io,resources=nodes,verbs=get;list;watch
+// Pods get/list/watch, like the secrets rule below, is needed only so the
+// manager can delegate it: it provisions a per-Instance Role granting the
+// dashboard pod the same access, to evaluate a ServiceEntry's PodSelector
+// (internal/controller/instance_rbac.go, internal/dashboard/poller.go's
+// monitor). The manager itself never lists Pods.
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // Secrets get is needed only so the manager can delegate it: it provisions a
 // per-Instance Role granting the dashboard pod get on the specific Secrets its

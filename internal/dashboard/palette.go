@@ -93,3 +93,35 @@ func PaletteRamp(color string) Ramp {
 	}
 	return colorRamps[defaultColor]
 }
+
+// switcherConfig is the page shell's small JSON data island (index.templ)
+// telling the client-side theme/color switcher script which axes it's
+// allowed to override — homepage's "fixed theme/palette disables the
+// switcher" behavior, applied per-axis.
+type switcherConfig struct {
+	ThemeFixed bool `json:"themeFixed"`
+	ColorFixed bool `json:"colorFixed"`
+}
+
+// AllPalettes returns every color accentPalette has an entry for — the same
+// set ConfigurationSpec.Color's kubebuilder enum accepts, plus "orange"
+// (defined here but not part of that enum; a harmless switcher-only bonus
+// since it's never written back to a Configuration) — keyed by name, with
+// its ramp + accent, JSON-shaped for the client-side color switcher
+// (index.templ): rather than reloading the page to pick a different
+// palette, the switcher ships every palette to the browser once and flips
+// CSS custom properties locally. Iterating accentPalette's own keys (rather
+// than a second hardcoded name list) avoids restating each color name as a
+// literal a third time.
+func AllPalettes() map[string]map[string]string {
+	out := make(map[string]map[string]string, len(accentPalette))
+	for name := range accentPalette {
+		r := PaletteRamp(name)
+		out[name] = map[string]string{
+			"c50": r.C50, "c100": r.C100, "c200": r.C200, "c300": r.C300, "c400": r.C400,
+			"c500": r.C500, "c600": r.C600, "c700": r.C700, "c800": r.C800, "c900": r.C900,
+			"accent": AccentHex(name),
+		}
+	}
+	return out
+}

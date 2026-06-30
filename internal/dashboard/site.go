@@ -20,11 +20,16 @@ var siteLog = ctrl.Log.WithName("dashboard-site")
 // Default look, matching homepage's own out-of-the-box settings.yaml.
 const (
 	defaultTheme       = "dark"
+	themeLight         = "light"
 	defaultColor       = "slate"
 	defaultHeaderStyle = "underlined"
 	defaultTitle       = "kubepage"
 	defaultTarget      = "_blank"
 )
+
+// bookmarksStyleIcons is ConfigurationSpec.BookmarksStyle's one valid value,
+// matching homepage's `bookmarksStyle: icons`.
+const bookmarksStyleIcons = "icons"
 
 // Site is everything the dashboard's look (6.1) needs beyond the polled
 // widget cards: the Instance's Configuration (theme/color/background/...)
@@ -35,6 +40,12 @@ type Site struct {
 	HeaderStyle string
 	Language    string
 	FullWidth   bool
+
+	// ThemeFixed/ColorFixed report whether Configuration.Spec.Theme/Color
+	// was set, disabling the corresponding client-side switcher control —
+	// homepage's documented "fixed theme/palette" behavior.
+	ThemeFixed bool
+	ColorFixed bool
 
 	Title       string
 	Description string
@@ -48,6 +59,27 @@ type Site struct {
 	Background *Background
 	Search     Search
 
+	// DisableCollapse/GroupsInitiallyCollapsed/UseEqualHeights are the
+	// site-wide defaults for collapsible group headers; a LayoutGroup's own
+	// fields override these per group.
+	DisableCollapse          bool
+	GroupsInitiallyCollapsed bool
+	UseEqualHeights          bool
+
+	// BookmarksIconsOnly renders every bookmark card icon-only, matching
+	// homepage's `bookmarksStyle: icons`.
+	BookmarksIconsOnly bool
+
+	// DisableIndexing asks search engines not to index the dashboard.
+	DisableIndexing bool
+
+	// StartURL is the PWA manifest's start_url, defaulting to "/".
+	StartURL string
+
+	// CustomCSS is raw, operator-supplied CSS appended after the built-in
+	// stylesheet.
+	CustomCSS string
+
 	BookmarkGroups []BookmarkGroup
 	HeaderWidgets  []HeaderWidget
 	Layout         []LayoutTab
@@ -60,12 +92,18 @@ type LayoutTab struct {
 }
 
 // LayoutGroup mirrors api/v1alpha1.LayoutGroupSpec, fully resolved (Icon
-// resolved to a URL the same way ServiceEntry/Bookmark Icon is).
+// resolved to a URL the same way ServiceEntry/Bookmark Icon is). Header/
+// InitiallyCollapsed/UseEqualHeights stay pointers here (unlike Columns'
+// sibling Style) so layoutTabs (server.go) can tell "unset" apart from an
+// explicit false/true and fall back to the Site-wide default.
 type LayoutGroup struct {
-	Name    string
-	Columns *int32
-	Style   string
-	IconURL string
+	Name               string
+	Columns            *int32
+	Style              string
+	IconURL            string
+	Header             *bool
+	InitiallyCollapsed *bool
+	UseEqualHeights    *bool
 }
 
 // HeaderWidget is one InfoWidget rendered in the dashboard header strip
@@ -127,6 +165,7 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		HeaderStyle: defaultHeaderStyle,
 		Title:       defaultTitle,
 		Target:      defaultTarget,
+		StartURL:    "/",
 		Search:      Search{Provider: "duckduckgo", Target: "_blank", FilterCards: true},
 	}
 
@@ -240,9 +279,11 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	}
 	if spec.Theme != nil {
 		site.Theme = *spec.Theme
+		site.ThemeFixed = true
 	}
 	if spec.Color != nil {
 		site.Color = *spec.Color
+		site.ColorFixed = true
 	}
 	if spec.HeaderStyle != nil {
 		site.HeaderStyle = *spec.HeaderStyle
@@ -289,15 +330,39 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 			groups := make([]LayoutGroup, 0, len(t.Groups))
 			for _, g := range t.Groups {
 				groups = append(groups, LayoutGroup{
-					Name:    g.Name,
-					Columns: g.Columns,
-					Style:   stringOrEmpty(g.Style),
-					IconURL: IconURL(g.Icon),
+					Name:               g.Name,
+					Columns:            g.Columns,
+					Style:              stringOrEmpty(g.Style),
+					IconURL:            IconURL(g.Icon),
+					Header:             g.Header,
+					InitiallyCollapsed: g.InitiallyCollapsed,
+					UseEqualHeights:    g.UseEqualHeights,
 				})
 			}
 			tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
 		}
 		site.Layout = tabs
+	}
+	if spec.DisableCollapse != nil {
+		site.DisableCollapse = *spec.DisableCollapse
+	}
+	if spec.GroupsInitiallyCollapsed != nil {
+		site.GroupsInitiallyCollapsed = *spec.GroupsInitiallyCollapsed
+	}
+	if spec.UseEqualHeights != nil {
+		site.UseEqualHeights = *spec.UseEqualHeights
+	}
+	if spec.BookmarksStyle != nil {
+		site.BookmarksIconsOnly = *spec.BookmarksStyle == bookmarksStyleIcons
+	}
+	if spec.DisableIndexing != nil {
+		site.DisableIndexing = *spec.DisableIndexing
+	}
+	if spec.StartURL != nil {
+		site.StartURL = *spec.StartURL
+	}
+	if spec.CustomCSS != nil {
+		site.CustomCSS = *spec.CustomCSS
 	}
 }
 

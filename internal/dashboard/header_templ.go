@@ -118,7 +118,10 @@ func Header(data headerData) templ.Component {
 					}
 				} else {
 					for _, f := range w.Fields {
-						var templ_7745c5c3_Var7 = []any{"header-field", templ.KV("hl-warn", f.Highlight == HighlightWarn), templ.KV("hl-danger", f.Highlight == HighlightDanger)}
+						var templ_7745c5c3_Var7 = []any{"header-field",
+							templ.KV("hl-good", f.Highlight == HighlightGood),
+							templ.KV("hl-warn", f.Highlight == HighlightWarn),
+							templ.KV("hl-danger", f.Highlight == HighlightDanger)}
 						templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var7...)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -143,7 +146,7 @@ func Header(data headerData) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(f.Value)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 18, Col: 67}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 23, Col: 67}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -156,7 +159,7 @@ func Header(data headerData) templ.Component {
 						var templ_7745c5c3_Var10 string
 						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(f.Label)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 18, Col: 105}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 23, Col: 105}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 						if templ_7745c5c3_Err != nil {
