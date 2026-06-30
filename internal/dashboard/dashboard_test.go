@@ -84,7 +84,17 @@ func TestRunStopsAllGoroutinesOnContextCancel(t *testing.T) {
 		t.Fatal("Run() did not return within 10s of context cancellation")
 	}
 
-	if err := goleak.Find(leakOpt); err != nil {
+	// http2's per-connection read loop is a known goleak false positive for
+	// any code using a Kubernetes REST client: client-go's transport pools
+	// HTTP/2 connections and keeps their read loop goroutine alive on an
+	// idle timeout rather than tearing it down on context cancellation
+	// (neither client-go nor controller-runtime expose a way to force-close
+	// a rest.Config's underlying transport). That's an intentional
+	// keep-alive/connection-reuse tradeoff, not a leak Run introduced — it
+	// would still be there with a correctly-implemented Run.
+	ignoreHTTP2ReadLoop := goleak.IgnoreTopFunction("golang.org/x/net/http2.(*clientConnReadLoop).run")
+
+	if err := goleak.Find(leakOpt, ignoreHTTP2ReadLoop); err != nil {
 		t.Errorf("goroutines leaked after Run() returned: %v", err)
 	}
 }
