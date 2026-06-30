@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -52,6 +53,26 @@ func TestProbeHTTPUnreachable(t *testing.T) {
 	}
 	if up {
 		t.Error("probeHTTP() up = true for unreachable host, want false")
+	}
+}
+
+// TestProbeHTTPMalformedURL exercises doProbe's request-building error path
+// (http.NewRequestWithContext itself rejecting the URL), distinct from
+// TestProbeHTTPUnreachable's transport-level failure. A URL containing a raw
+// control character is invalid at the net/url parsing stage, before any
+// network call happens.
+func TestProbeHTTPMalformedURL(t *testing.T) {
+	const malformedURL = "http://example.com/\x7f"
+
+	up, _, err := probeHTTP(context.Background(), http.DefaultClient, malformedURL)
+	if err == nil {
+		t.Fatal("probeHTTP() error = nil, want a request-building error for a malformed URL")
+	}
+	if !strings.Contains(err.Error(), "building HEAD request") {
+		t.Errorf("probeHTTP() error = %q, want it to mention building the request", err.Error())
+	}
+	if up {
+		t.Error("probeHTTP() up = true for a malformed URL, want false")
 	}
 }
 

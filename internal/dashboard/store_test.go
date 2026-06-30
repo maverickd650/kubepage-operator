@@ -1,6 +1,53 @@
 package dashboard
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
+
+// TestStoreConcurrentSetAndSnapshot exercises the exact reader/writer pattern
+// CLAUDE.md calls out (poller writes on its own ticker, the HTTP server reads
+// on every request): Set and Snapshot running at the same instant, not one
+// after the other. Run with -race, this is what would actually catch a
+// regression that drops or misuses Store.mu (e.g. Snapshot reading s.cards
+// without RLock) — the other Store tests only ever call Snapshot after all
+// writers have already joined via wg.Wait(), so they pass under -race even
+// with a broken lock.
+func TestStoreConcurrentSetAndSnapshot(t *testing.T) {
+	s := NewStore()
+	const writers = 8
+	const readers = 4
+	const iterations = 500
+
+	var writersWG sync.WaitGroup
+	for i := range writers {
+		writersWG.Go(func() {
+			key := "card-" + intToStr(i)
+			for j := range iterations {
+				s.Set(Card{Key: key, ServiceName: intToStr(j)})
+			}
+		})
+	}
+
+	stop := make(chan struct{})
+	var readersWG sync.WaitGroup
+	for range readers {
+		readersWG.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = s.Snapshot()
+				}
+			}
+		})
+	}
+
+	writersWG.Wait()
+	close(stop)
+	readersWG.Wait()
+}
 
 func TestCompareOrder(t *testing.T) {
 	one := int32(1)
