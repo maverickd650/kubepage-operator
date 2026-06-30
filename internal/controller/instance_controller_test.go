@@ -33,17 +33,8 @@ var _ = Describe("Instance controller", func() {
 
 		ctx := context.Background()
 
-		namespace := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      InstanceName,
-				Namespace: InstanceName,
-			},
-		}
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      InstanceName,
-			Namespace: InstanceName,
-		}
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
 		instance := &pagev1alpha1.Instance{}
 
 		SetDefaultEventuallyTimeout(2 * time.Minute)
@@ -51,11 +42,14 @@ var _ = Describe("Instance controller", func() {
 
 		BeforeEach(func() {
 			By("Creating the Namespace to perform the tests")
-			err := k8sClient.Create(ctx, namespace)
-			Expect(err).NotTo(HaveOccurred())
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
 
 			By("creating the custom resource for the Kind Instance")
-			err = k8sClient.Get(ctx, typeNamespacedName, instance)
+			err := k8sClient.Get(ctx, typeNamespacedName, instance)
 			if err != nil && errors.IsNotFound(err) {
 				// Let's mock our custom resource at the same way that we would
 				// apply on the cluster the manifest under config/samples
@@ -140,20 +134,16 @@ var _ = Describe("Instance controller", func() {
 
 		ctx := context.Background()
 
-		namespace := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: InstanceName,
-			},
-		}
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      InstanceName,
-			Namespace: InstanceName,
-		}
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
 			By("Creating the Namespace to perform the tests")
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-spec-fields-"},
+			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: InstanceName, Namespace: namespace.Name}
 		})
 
 		AfterEach(func() {

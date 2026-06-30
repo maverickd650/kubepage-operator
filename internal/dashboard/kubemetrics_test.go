@@ -49,6 +49,22 @@ func nodeMetrics(name, usageCPU, usageMem string) *metricsv1beta1.NodeMetrics {
 	}
 }
 
+// TestKubeMetricsWidgetPollNeverCalledInProduction documents Poll's stub
+// contract: kubemetrics is a ClusterWidget, so the poller always prefers
+// PollCluster and never reaches this — but it still has to satisfy the
+// Widget interface to live in the registry (see widget.go's ClusterWidget
+// doc comment), so a regression that makes Poll panic instead of returning
+// its documented error would only ever surface if that invariant broke.
+func TestKubeMetricsWidgetPollNeverCalledInProduction(t *testing.T) {
+	fields, err := (kubeMetricsWidget{}).Poll(context.Background(), nil, WidgetConfig{})
+	if fields != nil {
+		t.Errorf("Poll() fields = %+v, want nil", fields)
+	}
+	if err == nil {
+		t.Fatal("Poll() error = nil, want a cluster-only error")
+	}
+}
+
 func TestKubeMetricsWidgetPollCluster(t *testing.T) {
 	scheme := kubeMetricsScheme(t)
 

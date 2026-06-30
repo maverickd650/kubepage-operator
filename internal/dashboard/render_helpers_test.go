@@ -25,6 +25,31 @@ func TestPercentBarStyle(t *testing.T) {
 	}
 }
 
+func TestIsHTTPURL(t *testing.T) {
+	tests := map[string]struct {
+		in   string
+		want bool
+	}{
+		"https":               {in: "https://example.com/search?q=", want: true},
+		"http":                {in: "http://example.com/search?q=", want: true},
+		"javascript scheme":   {in: "javascript:alert(1)", want: false},
+		"data scheme":         {in: "data:text/html,<script>alert(1)</script>", want: false},
+		"file scheme":         {in: "file:///etc/passwd", want: false},
+		"scheme-relative":     {in: "//example.com/search?q=", want: false},
+		"empty string":        {in: "", want: false},
+		"http in middle":      {in: "javascript:void(0)//http://example.com", want: false},
+		"uppercase scheme":    {in: "HTTPS://example.com", want: false},
+		"whitespace prefixed": {in: " http://example.com", want: false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := isHTTPURL(tc.in); got != tc.want {
+				t.Errorf("isHTTPURL(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCardTarget(t *testing.T) {
 	tests := map[string]struct {
 		card       Card

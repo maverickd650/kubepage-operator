@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -66,13 +67,8 @@ func TestHTTPRouteForInstance(t *testing.T) {
 	}
 
 	wantHostnames := []gatewayv1.Hostname{testDashboardHost, "dash.example.com"}
-	if len(route.Spec.Hostnames) != len(wantHostnames) {
-		t.Fatalf("route.Spec.Hostnames = %v, want %v", route.Spec.Hostnames, wantHostnames)
-	}
-	for i, h := range wantHostnames {
-		if route.Spec.Hostnames[i] != h {
-			t.Errorf("route.Spec.Hostnames[%d] = %q, want %q", i, route.Spec.Hostnames[i], h)
-		}
+	if !slices.Equal(route.Spec.Hostnames, wantHostnames) {
+		t.Errorf("route.Spec.Hostnames = %v, want %v", route.Spec.Hostnames, wantHostnames)
 	}
 
 	if len(route.Spec.ParentRefs) != 1 {

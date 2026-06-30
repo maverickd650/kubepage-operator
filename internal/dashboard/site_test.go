@@ -2,10 +2,13 @@ package dashboard
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -27,6 +30,44 @@ func TestLoadSiteDefaults(t *testing.T) {
 	}
 	if len(site.BookmarkGroups) != 0 {
 		t.Errorf("BookmarkGroups = %+v, want empty", site.BookmarkGroups)
+	}
+}
+
+func TestLoadSiteListError(t *testing.T) {
+	tests := map[string]struct {
+		failList func(list client.ObjectList) bool
+		wantErr  string
+	}{
+		"Configurations list fails": {
+			failList: func(list client.ObjectList) bool { _, ok := list.(*pagev1alpha1.ConfigurationList); return ok },
+			wantErr:  "listing Configurations",
+		},
+		"Bookmarks list fails": {
+			failList: func(list client.ObjectList) bool { _, ok := list.(*pagev1alpha1.BookmarkList); return ok },
+			wantErr:  "listing Bookmarks",
+		},
+		"InfoWidgets list fails": {
+			failList: func(list client.ObjectList) bool { _, ok := list.(*pagev1alpha1.InfoWidgetList); return ok },
+			wantErr:  "listing InfoWidgets",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			scheme := testScheme(t)
+			cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reader := errInjectingReader{Reader: cl, failList: tc.failList}
+
+			_, err := LoadSite(context.Background(), reader, testNamespace, testInstanceName)
+			if err == nil {
+				t.Fatal("LoadSite() error = nil, want non-nil")
+			}
+			if !errors.Is(err, errBoom) {
+				t.Errorf("LoadSite() error = %v, want wrapping errBoom", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("LoadSite() error = %q, want it to contain %q", err.Error(), tc.wantErr)
+			}
+		})
 	}
 }
 
@@ -294,6 +335,88 @@ func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
 	g := site.Layout[0].Groups[0]
 	if g.Header == nil || *g.Header || g.InitiallyCollapsed == nil || !*g.InitiallyCollapsed || g.UseEqualHeights == nil || !*g.UseEqualHeights {
 		t.Errorf("Layout[0].Groups[0] overrides = %+v, want Header=false InitiallyCollapsed=true UseEqualHeights=true", g)
+	}
+}
+
+// TestGroupBookmarksGroupOrderImprovesFromALaterEntry covers groupBookmarks'
+// branch where a group's effective Order is set by its first-seen bookmark
+// but then improves because a later bookmark in the same group has a lower
+// Order — every other groupBookmarks test only ever has one bookmark per
+// group, so that update path (the `else if compareOrder(...) < 0` branch in
+// site.go) was never actually exercised.
+func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
+	order5 := int32(5)
+	order1 := int32(1)
+	abbr := "GH"
+	desc := "Code hosting"
+	items := []pagev1alpha1.Bookmark{
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testBookmarkGroup, Name: "Z", Href: "https://example.invalid/z", Order: &order5,
+			},
+		},
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testBookmarkGroup, Name: "A", Href: "https://example.invalid/a", Order: &order1,
+				Abbr: &abbr, Description: &desc,
+			},
+		},
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testOtherGroup, Name: "Only", Href: "https://example.invalid/only",
+			},
+		},
+	}
+
+	groups := groupBookmarks(items, testInstanceName)
+
+	if len(groups) != 2 || groups[0].Name != testBookmarkGroup {
+		t.Fatalf("groupBookmarks() groups = %+v, want %s first (lower effective Order after the second entry improves it)", groups, testBookmarkGroup)
+	}
+	bms := groups[0].Bookmarks
+	if len(bms) != 2 || bms[0].Name != "A" || bms[1].Name != "Z" {
+		t.Fatalf("groupBookmarks() Reading bookmarks = %+v, want A then Z (sorted by per-bookmark Order)", bms)
+	}
+	if bms[0].Abbr != abbr || bms[0].Description != desc {
+		t.Errorf("groupBookmarks() first bookmark = %+v, want Abbr=%q Description=%q", bms[0], abbr, desc)
+	}
+}
+
+func TestScalarOptions(t *testing.T) {
+	tests := map[string]struct {
+		raw  *apiextensionsv1.JSON
+		want map[string]string
+	}{
+		"nil raw":   {raw: nil, want: map[string]string{}},
+		"empty raw": {raw: &apiextensionsv1.JSON{}, want: map[string]string{}},
+		"scalar types": {
+			raw:  &apiextensionsv1.JSON{Raw: []byte(`{"text":"hi","enabled":true,"count":3}`)},
+			want: map[string]string{"text": "hi", "enabled": "true", "count": "3"},
+		},
+		"non-scalar values are skipped": {
+			raw:  &apiextensionsv1.JSON{Raw: []byte(`{"text":"hi","nested":{"a":1},"list":[1,2],"empty":null}`)},
+			want: map[string]string{"text": "hi"},
+		},
+		"malformed JSON yields empty map": {
+			raw:  &apiextensionsv1.JSON{Raw: []byte(`{not valid json`)},
+			want: map[string]string{},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := scalarOptions(tc.raw)
+			if len(got) != len(tc.want) {
+				t.Fatalf("scalarOptions() = %+v, want %+v", got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Errorf("scalarOptions()[%q] = %q, want %q", k, got[k], v)
+				}
+			}
+		})
 	}
 }
 
