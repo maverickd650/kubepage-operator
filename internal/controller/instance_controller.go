@@ -597,7 +597,7 @@ func mergeOverride[T any](base T, override *T) *T {
 	if override != nil {
 		rv := reflect.ValueOf(&result).Elem()
 		ov := reflect.ValueOf(*override)
-		for i := 0; i < rv.NumField(); i++ {
+		for i := range rv.NumField() {
 			f := ov.Field(i)
 			switch f.Kind() { //nolint:exhaustive // only pointer/slice/map fields are ever overridden
 			case reflect.Pointer, reflect.Slice, reflect.Map:

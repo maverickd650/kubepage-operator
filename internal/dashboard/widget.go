@@ -6,6 +6,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"slices"
 
@@ -99,10 +100,5 @@ func Lookup(widgetType string) (Widget, bool) {
 // why this drift can't otherwise be caught short of a real apiserver
 // rejecting a previously-valid type.
 func RegisteredTypes() []string {
-	types := make([]string, 0, len(registry))
-	for t := range registry {
-		types = append(types, t)
-	}
-	slices.Sort(types)
-	return types
+	return slices.Sorted(maps.Keys(registry))
 }

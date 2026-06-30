@@ -49,15 +49,11 @@ func mergeManagedAnnotations(existing, desired map[string]string) map[string]str
 	}
 	maps.Copy(merged, desired)
 
-	keys := make([]string, 0, len(desired))
-	for k := range desired {
-		keys = append(keys, k)
-	}
-	if len(keys) == 0 {
+	if len(desired) == 0 {
 		delete(merged, managedAnnotationsKey)
 		return merged
 	}
-	slices.Sort(keys)
+	keys := slices.Sorted(maps.Keys(desired))
 	merged[managedAnnotationsKey] = strings.Join(keys, ",")
 	return merged
 }
