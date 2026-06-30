@@ -59,7 +59,7 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 	desc := "My services"
 	favicon := "https://example.invalid/favicon.ico"
 	cardBlur := "md"
-	target := "_self"
+	target := testTargetSelf
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -99,7 +99,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 		},
 	}
 	clock := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "clock", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Type:        headerTypeDatetime,

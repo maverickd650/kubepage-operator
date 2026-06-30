@@ -27,6 +27,10 @@ var pollerLog = ctrl.Log.WithName("dashboard-poller")
 // service list sequentially.
 const maxConcurrentPolls = 8
 
+// statusStyleDot is the default ServiceEntry.Spec.StatusStyle, rendered by
+// cards.templ as a colored dot rather than a text pill.
+const statusStyleDot = "dot"
+
 // Poller periodically lists the ServiceEntries bound to one Instance,
 // resolves each widget's secrets and config, polls every widget whose type
 // is registered, and writes the results into Store. Polling runs on its own
@@ -162,7 +166,7 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (
 		return "", "", ""
 	}
 
-	style := "dot"
+	style := statusStyleDot
 	if entry.Spec.StatusStyle != nil {
 		style = *entry.Spec.StatusStyle
 	}

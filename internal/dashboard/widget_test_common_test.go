@@ -22,6 +22,17 @@ const (
 	testSvcName       = "svc"
 	testHeaderWeather = "weather"
 	testStatusBasic   = "basic"
+
+	// Shared literals across poller/server/site fixtures.
+	testSecretName     = "creds"
+	testSvcDisplayName = "Svc"
+	testPodSvcName     = "podsvc"
+	testAppLabelKey    = "app"
+	testAppLabelValue  = "demo"
+	testOpenMeteoType  = "openmeteo"
+	testClockName      = "clock"
+	testTargetSelf     = "_self"
+	testInfraGroup     = "Infra"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.

@@ -61,7 +61,7 @@ func TestPollerPollOnce(t *testing.T) {
 	defer srv.Close()
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "creds", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testSecretName, Namespace: testNamespace},
 		Data:       map[string][]byte{testSecretField: []byte("s3cr3t")},
 	}
 
@@ -80,7 +80,7 @@ func TestPollerPollOnce(t *testing.T) {
 					URL:  &url,
 					Secrets: map[string]pagev1alpha1.SecretValueSource{
 						testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "creds"},
+							LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName},
 							Key:                  testSecretField,
 						}},
 					},
@@ -222,7 +222,7 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Group:       "G",
-			Name:        "Svc",
+			Name:        testSvcDisplayName,
 			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
 		},
 	}
@@ -345,7 +345,7 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
-	if style != "dot" {
+	if style != statusStyleDot {
 		t.Errorf("monitor(Ping) style = %q, want default dot", style)
 	}
 	if latency == "" {
@@ -355,10 +355,10 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 
 func TestPollerPodStatusInvalidSelector(t *testing.T) {
 	entry := pagev1alpha1.ServiceEntry{
-		ObjectMeta: metav1.ObjectMeta{Name: "podsvc", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			PodSelector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "app", Operator: "bogus", Values: []string{"x"}}},
+				MatchExpressions: []metav1.LabelSelectorRequirement{{Key: testAppLabelKey, Operator: testBogusWhen, Values: []string{"x"}}},
 			},
 		},
 	}
@@ -378,9 +378,9 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 
 func TestPollerPodStatusListPodsError(t *testing.T) {
 	entry := pagev1alpha1.ServiceEntry{
-		ObjectMeta: metav1.ObjectMeta{Name: "podsvc", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
-			PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "demo"}},
+			PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
 		},
 	}
 
@@ -411,7 +411,7 @@ func TestPollerPodSelector(t *testing.T) {
 			status = corev1.ConditionTrue
 		}
 		return &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: map[string]string{"app": "demo"}},
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: map[string]string{testAppLabelKey: testAppLabelValue}},
 			Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: status}}},
 		}
 	}
@@ -420,7 +420,7 @@ func TestPollerPodSelector(t *testing.T) {
 	// podReady's final "no Ready condition found" return false.
 	noReadyConditionPod := func(name string) *corev1.Pod {
 		return &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: map[string]string{"app": "demo"}},
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, Labels: map[string]string{testAppLabelKey: testAppLabelValue}},
 			Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionTrue}}},
 		}
 	}
@@ -439,10 +439,10 @@ func TestPollerPodSelector(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "demo"}}
+			selector := &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}}
 			style := testStatusBasic
 			entry := &pagev1alpha1.ServiceEntry{
-				ObjectMeta: metav1.ObjectMeta{Name: "podsvc", Namespace: testNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
 				Spec: pagev1alpha1.ServiceEntrySpec{
 					InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 					Group:       "G",
@@ -533,14 +533,14 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        "openmeteo",
+			Type:        testOpenMeteoType,
 			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
 		},
 	}
 	// A datetime InfoWidget carries no registered widget, so it must NOT
 	// produce a polled card.
 	dt := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "clock", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Type:        headerTypeDatetime,
@@ -653,7 +653,7 @@ func TestPollerMissingSecret(t *testing.T) {
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Group:       "G",
-			Name:        "Svc",
+			Name:        testSvcDisplayName,
 			Widgets: []pagev1alpha1.ServiceWidget{{
 				Type: testWidgetType,
 				URL:  &url,
@@ -696,7 +696,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	url := srv.URL
 	description := "a description"
-	target := "_self"
+	target := testTargetSelf
 	entry := pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
@@ -760,7 +760,7 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        "openmeteo",
+			Type:        testOpenMeteoType,
 			Secrets: map[string]pagev1alpha1.SecretValueSource{
 				testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "missing"},
@@ -859,7 +859,7 @@ func TestResolveSecretNeitherValueNorRefSet(t *testing.T) {
 
 func TestResolveSecretKeyMissing(t *testing.T) {
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "creds", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testSecretName, Namespace: testNamespace},
 		Data:       map[string][]byte{"other": []byte("x")},
 	}
 	scheme := testScheme(t)
@@ -867,7 +867,7 @@ func TestResolveSecretKeyMissing(t *testing.T) {
 	p := &Poller{SecretReader: cl}
 
 	_, err := p.resolveSecret(context.Background(), testNamespace, pagev1alpha1.SecretValueSource{
-		SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "creds"}, Key: testSecretField},
+		SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName}, Key: testSecretField},
 	})
 	if err == nil {
 		t.Fatal("resolveSecret(missing key) = nil error, want non-nil")
@@ -884,7 +884,7 @@ func TestResolveSecretGetError(t *testing.T) {
 	p := &Poller{SecretReader: failing}
 
 	_, err := p.resolveSecret(context.Background(), testNamespace, pagev1alpha1.SecretValueSource{
-		SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "creds"}, Key: testSecretField},
+		SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName}, Key: testSecretField},
 	})
 	if err == nil {
 		t.Fatal("resolveSecret(Get error) = nil error, want non-nil")

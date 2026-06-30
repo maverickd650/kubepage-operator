@@ -10,6 +10,8 @@ import (
 const (
 	testFieldQueued = "queued"
 	testFieldStatus = "status"
+	testNotANumber  = "n/a"
+	testBogusWhen   = "bogus"
 )
 
 func TestFilterFields(t *testing.T) {
@@ -29,7 +31,7 @@ func TestFilterFields(t *testing.T) {
 func TestApplyHighlightsFirstMatchWins(t *testing.T) {
 	rules := map[string]pagev1alpha1.FieldHighlight{
 		testFieldQueued: {Rules: []pagev1alpha1.HighlightRuleSpec{
-			{Level: "danger", When: whenGTE, Value: "20"},
+			{Level: HighlightDanger, When: whenGTE, Value: "20"},
 			{Level: "warn", When: whenGTE, Value: "5"},
 			{Level: "good", When: whenEQ, Value: "0"},
 		}},
@@ -55,7 +57,7 @@ func TestApplyHighlightsFirstMatchWins(t *testing.T) {
 
 func TestApplyHighlightsDoesNotOverrideWidgetSet(t *testing.T) {
 	rules := map[string]pagev1alpha1.FieldHighlight{
-		"cpu": {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: "danger", When: whenGTE, Value: "0"}}},
+		"cpu": {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: HighlightDanger, When: whenGTE, Value: "0"}}},
 	}
 	fields := []Field{{Label: "cpu", Value: "90", Highlight: HighlightWarn}}
 	got := applyHighlights(fields, rules)
@@ -81,7 +83,7 @@ func TestEvaluateNumericRules(t *testing.T) {
 		{"between outside bound", pagev1alpha1.HighlightRuleSpec{When: whenBetween, Value: "10", Value2: value2("20")}, "25", false},
 		{"outside match", pagev1alpha1.HighlightRuleSpec{When: whenOutside, Value: "10", Value2: value2("20")}, "25", true},
 		{"tolerates formatted value", pagev1alpha1.HighlightRuleSpec{When: whenGTE, Value: "20"}, "45%", true},
-		{"unparseable value", pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "5"}, "n/a", false},
+		{"unparseable value", pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "5"}, testNotANumber, false},
 		{"negated", pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "5", Negate: new(true)}, "10", false},
 	}
 	for _, tc := range cases {
@@ -95,7 +97,7 @@ func TestEvaluateNumericRules(t *testing.T) {
 
 func TestApplyHighlightsFieldNotInRules(t *testing.T) {
 	rules := map[string]pagev1alpha1.FieldHighlight{
-		testFieldStatus: {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: "danger", When: whenEquals, Value: "down"}}},
+		testFieldStatus: {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: HighlightDanger, When: whenEquals, Value: "down"}}},
 	}
 	fields := []Field{{Label: testFieldQueued, Value: "5"}}
 	got := applyHighlights(fields, rules)
@@ -112,7 +114,7 @@ func TestNumericValueOverflowIsUnparseable(t *testing.T) {
 }
 
 func TestEvaluateNumericRuleUnparseableBound(t *testing.T) {
-	r := pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "n/a"}
+	r := pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: testNotANumber}
 	if evaluateNumericRule(r, "10") {
 		t.Errorf("evaluateNumericRule() = true, want false for an unparseable rule bound")
 	}
@@ -136,7 +138,7 @@ func TestEvaluateNumericRuleBetweenMissingValue2(t *testing.T) {
 }
 
 func TestEvaluateNumericRuleBetweenUnparseableValue2(t *testing.T) {
-	bad := "n/a"
+	bad := testNotANumber
 	r := pagev1alpha1.HighlightRuleSpec{When: whenBetween, Value: "10", Value2: &bad}
 	if evaluateNumericRule(r, "15") {
 		t.Errorf("evaluateNumericRule(between) = true, want false for an unparseable Value2")
@@ -156,14 +158,14 @@ func TestEvaluateNumericRuleBetweenReversedBounds(t *testing.T) {
 func TestEvaluateNumericRuleUnknownOperator(t *testing.T) {
 	// evaluateRule only ever dispatches the documented operators into
 	// evaluateNumericRule; call it directly to exercise its defensive default.
-	r := pagev1alpha1.HighlightRuleSpec{When: "bogus", Value: "5"}
+	r := pagev1alpha1.HighlightRuleSpec{When: testBogusWhen, Value: "5"}
 	if evaluateNumericRule(r, "10") {
 		t.Errorf("evaluateNumericRule(unknown When) = true, want false")
 	}
 }
 
 func TestEvaluateStringRuleUnknownOperator(t *testing.T) {
-	r := pagev1alpha1.HighlightRuleSpec{When: "bogus", Value: "x"}
+	r := pagev1alpha1.HighlightRuleSpec{When: testBogusWhen, Value: "x"}
 	if evaluateStringRule(r, "x") {
 		t.Errorf("evaluateStringRule(unknown When) = true, want false")
 	}

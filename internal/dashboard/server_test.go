@@ -355,8 +355,8 @@ func TestServerIndexAppliesLookFields(t *testing.T) {
 func TestServerFragmentRendersMonitorAndTarget(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/svc/0", Group: testGroup, ServiceName: "Svc",
-		Href: "https://svc.invalid", Target: "_self",
+		Key: "ns/svc/0", Group: testGroup, ServiceName: testSvcDisplayName,
+		Href: "https://svc.invalid", Target: testTargetSelf,
 		Status: "Up", StatusStyle: testStatusBasic, Latency: "5ms",
 		ShowStats: true,
 	})
@@ -393,7 +393,7 @@ func TestServerHeaderRendersWidgets(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        "openmeteo",
+			Type:        testOpenMeteoType,
 		},
 	}
 	srv := newTestServer(t, store, greeting, weather)
@@ -603,7 +603,7 @@ func TestLayoutTabsAppliesGroupOverridePointers(t *testing.T) {
 
 func TestServerFragmentRendersTabs(t *testing.T) {
 	store := NewStore()
-	store.Set(Card{Key: testCardKeyA, Group: "Infra", ServiceName: testSvcAName})
+	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
 	store.Set(Card{Key: "ns/b/0", Group: "Apps", ServiceName: "Svc B"})
 
 	cols := int32(2)
@@ -612,7 +612,7 @@ func TestServerFragmentRendersTabs(t *testing.T) {
 		Spec: pagev1alpha1.ConfigurationSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
-				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Infra", Columns: &cols}}},
+				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testInfraGroup, Columns: &cols}}},
 			},
 		},
 	}
@@ -634,7 +634,7 @@ func TestServerFragmentRendersStatusDotAndUsageBar(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
 		Key: "ns/dot/0", Group: testGroup, ServiceName: "Dotted", IconURL: "https://icon.invalid/dot.png",
-		Status: "Up", StatusStyle: "dot",
+		Status: "Up", StatusStyle: statusStyleDot,
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy, Percent: &pct}},
 	})
 	srv := newTestServer(t, store)
@@ -672,7 +672,7 @@ func TestServerFragmentRendersStatusPillAndHrefLessCard(t *testing.T) {
 
 func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
 	store := NewStore()
-	store.Set(Card{Key: testCardKeyA, Group: "Infra", ServiceName: testSvcAName})
+	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
 
 	header := false
 	cfg := &pagev1alpha1.Configuration{
@@ -680,7 +680,7 @@ func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
 		Spec: pagev1alpha1.ConfigurationSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
-				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Infra", Header: &header}}},
+				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testInfraGroup, Header: &header}}},
 			},
 		},
 	}
@@ -742,7 +742,7 @@ func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 	})
 
 	clock := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "clock", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Type:        headerTypeDatetime,
@@ -753,7 +753,7 @@ func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        "openmeteo",
+			Type:        testOpenMeteoType,
 		},
 	}
 	srv := newTestServer(t, store, clock, weather)
