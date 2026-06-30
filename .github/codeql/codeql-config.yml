@@ -4,5 +4,16 @@ name: "CodeQL config"
 # "useless assignment" patterns (ctx = templ.InitializeContext(ctx), the
 # templ_*_VarN buffer variables) are inherent to templ's code generator, not
 # something we hand-edit, and would otherwise re-flag on every PR.
+#
+# NOTE: for Go (a built/compiled language analyzed with build-mode:
+# autobuild), this paths-ignore only controls what's reported by tools that
+# honor the config-derived path filters during extraction-only analysis — it
+# does NOT strip results once the file has been compiled into the build, so
+# *_templ.go findings still show up in the raw SARIF. The actual suppression
+# for Go happens downstream, as a SARIF post-processing step in
+# .github/workflows/codeql.yaml that strips *_templ.go results before
+# upload. This paths-ignore entry is kept anyway: it's correct and
+# sufficient for any future interpreted-language analyzers added to this
+# config, and documents the intent the workflow step implements.
 paths-ignore:
   - "**/*_templ.go"
