@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -18,7 +17,7 @@ func TestLoadSiteDefaults(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -57,7 +56,7 @@ func TestLoadSiteListError(t *testing.T) {
 			cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 			reader := errInjectingReader{Reader: cl, failList: tc.failList}
 
-			_, err := LoadSite(context.Background(), reader, testNamespace, testInstanceName)
+			_, err := LoadSite(t.Context(), reader, testNamespace, testInstanceName)
 			if err == nil {
 				t.Fatal("LoadSite() error = nil, want non-nil")
 			}
@@ -85,7 +84,7 @@ func TestLoadSitePicksLexicographicallyFirstConfiguration(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfgB, cfgA).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -114,7 +113,7 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -156,7 +155,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(greeting, clock, other).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -192,7 +191,7 @@ func TestLoadSiteAppliesLayout(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -236,7 +235,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bm1, bm2, other).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -261,7 +260,7 @@ func TestLoadSiteThemeFixedAndColorFixed(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -297,7 +296,7 @@ func TestLoadSiteAppliesNewLookFields(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -328,7 +327,7 @@ func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(context.Background(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}

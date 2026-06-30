@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -38,7 +37,7 @@ func TestHomeassistantWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (homeassistantWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (homeassistantWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Secrets: map[string]string{testSecretField: "haTok"},
 			})
@@ -56,13 +55,13 @@ func TestHomeassistantWidgetPoll(t *testing.T) {
 }
 
 func TestHomeassistantWidgetPollMissingURL(t *testing.T) {
-	if _, err := (homeassistantWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (homeassistantWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestHomeassistantWidgetPollUnreachable(t *testing.T) {
-	got, err := (homeassistantWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (homeassistantWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

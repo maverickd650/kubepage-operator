@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -40,7 +39,7 @@ func TestPaperlessngxWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (paperlessngxWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (paperlessngxWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Secrets: map[string]string{testSecretField: "ptok"},
 			})
@@ -58,13 +57,13 @@ func TestPaperlessngxWidgetPoll(t *testing.T) {
 }
 
 func TestPaperlessngxWidgetPollMissingURL(t *testing.T) {
-	if _, err := (paperlessngxWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (paperlessngxWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestPaperlessngxWidgetPollUnreachable(t *testing.T) {
-	got, err := (paperlessngxWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (paperlessngxWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

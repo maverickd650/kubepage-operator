@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -48,7 +47,7 @@ func TestPlexWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (plexWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (plexWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
 				Secrets: map[string]string{testSecretField: "plextok"},
 			})
@@ -66,13 +65,13 @@ func TestPlexWidgetPoll(t *testing.T) {
 }
 
 func TestPlexWidgetPollMissingURL(t *testing.T) {
-	if _, err := (plexWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (plexWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }
 
 func TestPlexWidgetPollUnreachable(t *testing.T) {
-	got, err := (plexWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (plexWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}

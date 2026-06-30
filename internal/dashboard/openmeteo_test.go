@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -53,7 +52,7 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (openMeteoWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+			got, err := (openMeteoWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:    srv.URL,
 				Config: []byte(tc.config),
 			})
@@ -74,7 +73,7 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 }
 
 func TestOpenMeteoWidgetPollUnreachable(t *testing.T) {
-	got, err := (openMeteoWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{
+	got, err := (openMeteoWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		URL:    testUnreachableAddr,
 		Config: []byte(`{"latitude":1,"longitude":1}`),
 	})

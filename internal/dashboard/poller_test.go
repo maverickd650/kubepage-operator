@@ -113,7 +113,7 @@ func TestPollerPollOnce(t *testing.T) {
 		Store:        store,
 	}
 
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -207,7 +207,7 @@ func TestPollerPollOnceListEntriesErrorLeavesStoreUntouched(t *testing.T) {
 		Reader: failing, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Key != "stale" {
@@ -244,7 +244,7 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 		Reader: failing, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Key != "ns/svc/0" {
@@ -273,7 +273,7 @@ func TestPollerUnsupportedWidgetType(t *testing.T) {
 		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -306,7 +306,7 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -341,7 +341,7 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(context.Background(), entry)
+	status, style, latency := p.monitor(t.Context(), entry)
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
@@ -370,7 +370,7 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
-	status, text := p.podStatus(context.Background(), entry)
+	status, text := p.podStatus(t.Context(), entry)
 	if status != statusDown || text != "" {
 		t.Errorf("podStatus(invalid selector) = (%q, %q), want (%q, \"\")", status, text, statusDown)
 	}
@@ -398,7 +398,7 @@ func TestPollerPodStatusListPodsError(t *testing.T) {
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
-	status, text := p.podStatus(context.Background(), entry)
+	status, text := p.podStatus(t.Context(), entry)
 	if status != statusDown || text != "" {
 		t.Errorf("podStatus(List error) = (%q, %q), want (%q, \"\")", status, text, statusDown)
 	}
@@ -460,7 +460,7 @@ func TestPollerPodSelector(t *testing.T) {
 				Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 				Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 			}
-			p.pollOnce(context.Background())
+			p.pollOnce(t.Context())
 
 			cards := store.Snapshot()
 			if len(cards) != 1 {
@@ -506,7 +506,7 @@ func TestPollerShowStatsAndHideErrors(t *testing.T) {
 		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -554,7 +554,7 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -620,7 +620,7 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 	}
 
 	start := time.Now()
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 	elapsed := time.Since(start)
 
 	cards := store.Snapshot()
@@ -675,7 +675,7 @@ func TestPollerMissingSecret(t *testing.T) {
 		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
-	p.pollOnce(context.Background())
+	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -714,7 +714,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollWidget(context.Background(), testCardKeyA, entry, widget, "", "", "")
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "")
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -772,7 +772,7 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{SecretReader: cl, Store: store}
-	p.pollInfoWidget(context.Background(), "header/weather", iw)
+	p.pollInfoWidget(t.Context(), "header/weather", iw)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -803,7 +803,7 @@ func TestPollerInfoWidgetClusterWidgetUsesKubeReader(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{KubeReader: kubeCl, Store: store}
-	p.pollInfoWidget(context.Background(), "header/cluster", iw)
+	p.pollInfoWidget(t.Context(), "header/cluster", iw)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -832,7 +832,7 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollInfoWidget(context.Background(), "header/metric", iw)
+	p.pollInfoWidget(t.Context(), "header/metric", iw)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -843,7 +843,7 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 func TestResolveSecretLiteralValue(t *testing.T) {
 	p := &Poller{}
 	value := "literal"
-	got, err := p.resolveSecret(context.Background(), testNamespace, pagev1alpha1.SecretValueSource{Value: &value})
+	got, err := p.resolveSecret(t.Context(), testNamespace, pagev1alpha1.SecretValueSource{Value: &value})
 	if err != nil || got != value {
 		t.Fatalf("resolveSecret(literal) = (%q, %v), want (%q, nil)", got, err, value)
 	}
@@ -851,7 +851,7 @@ func TestResolveSecretLiteralValue(t *testing.T) {
 
 func TestResolveSecretNeitherValueNorRefSet(t *testing.T) {
 	p := &Poller{}
-	_, err := p.resolveSecret(context.Background(), testNamespace, pagev1alpha1.SecretValueSource{})
+	_, err := p.resolveSecret(t.Context(), testNamespace, pagev1alpha1.SecretValueSource{})
 	if err == nil {
 		t.Fatal("resolveSecret(neither set) = nil error, want non-nil")
 	}
@@ -866,7 +866,7 @@ func TestResolveSecretKeyMissing(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 	p := &Poller{SecretReader: cl}
 
-	_, err := p.resolveSecret(context.Background(), testNamespace, pagev1alpha1.SecretValueSource{
+	_, err := p.resolveSecret(t.Context(), testNamespace, pagev1alpha1.SecretValueSource{
 		SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName}, Key: testSecretField},
 	})
 	if err == nil {
@@ -883,7 +883,7 @@ func TestResolveSecretGetError(t *testing.T) {
 	}
 	p := &Poller{SecretReader: failing}
 
-	_, err := p.resolveSecret(context.Background(), testNamespace, pagev1alpha1.SecretValueSource{
+	_, err := p.resolveSecret(t.Context(), testNamespace, pagev1alpha1.SecretValueSource{
 		SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName}, Key: testSecretField},
 	})
 	if err == nil {

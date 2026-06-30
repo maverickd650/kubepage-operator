@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -60,7 +59,7 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (prometheusWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{URL: srv.URL})
+			got, err := (prometheusWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{URL: srv.URL})
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("Poll() error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -72,7 +71,7 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 }
 
 func TestPrometheusWidgetPollUnreachable(t *testing.T) {
-	got, err := (prometheusWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
+	got, err := (prometheusWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
 	}
@@ -83,7 +82,7 @@ func TestPrometheusWidgetPollUnreachable(t *testing.T) {
 }
 
 func TestPrometheusWidgetPollMissingURL(t *testing.T) {
-	if _, err := (prometheusWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{}); err == nil {
+	if _, err := (prometheusWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
 	}
 }

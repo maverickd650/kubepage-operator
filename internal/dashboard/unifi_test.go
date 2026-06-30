@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -49,7 +48,7 @@ func TestUnifiWidgetPollUDM(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := (unifiWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+	got, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
 		Secrets: unifiTestCreds(),
 	})
@@ -99,7 +98,7 @@ func TestUnifiWidgetPollClassicFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := (unifiWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+	got, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
 		Secrets: unifiTestCreds(),
 	})
@@ -138,7 +137,7 @@ func TestUnifiWidgetPollDegradedSubsystem(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := (unifiWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+	got, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
 		Secrets: unifiTestCreds(),
 	})
@@ -160,7 +159,7 @@ func TestUnifiWidgetPollInvalidCredentials(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := (unifiWidget{}).Poll(context.Background(), srv.Client(), WidgetConfig{
+	got, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
 		Secrets: map[string]string{"username": testUnifiUsername, "password": "wrong"},
 	})
@@ -202,14 +201,14 @@ func TestUnifiWidgetPollSessionReuseAndReloginOn401(t *testing.T) {
 		Secrets: unifiTestCreds(),
 	}
 
-	if _, err := (unifiWidget{}).Poll(context.Background(), srv.Client(), cfg); err != nil {
+	if _, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), cfg); err != nil {
 		t.Fatalf("first Poll() unexpected error: %v", err)
 	}
 	if atomic.LoadInt32(&loginHits) != 1 {
 		t.Fatalf("after first Poll: login hits = %d, want 1 (session should be cached)", loginHits)
 	}
 
-	got, err := (unifiWidget{}).Poll(context.Background(), srv.Client(), cfg)
+	got, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), cfg)
 	if err != nil {
 		t.Fatalf("second Poll() unexpected error: %v", err)
 	}
@@ -247,7 +246,7 @@ func TestUnifiWidgetPollInsecureTLS(t *testing.T) {
 	// client rather than depending on the shared one already trusting it.
 	plainClient := &http.Client{}
 
-	got, err := (unifiWidget{}).Poll(context.Background(), plainClient, WidgetConfig{
+	got, err := (unifiWidget{}).Poll(t.Context(), plainClient, WidgetConfig{
 		URL:     srv.URL,
 		Secrets: unifiTestCreds(),
 		Config:  []byte(`{"insecureTLS":true}`),
@@ -272,7 +271,7 @@ func TestUnifiWidgetPollTLSVerificationFailsWithoutOptIn(t *testing.T) {
 
 	plainClient := &http.Client{}
 
-	got, err := (unifiWidget{}).Poll(context.Background(), plainClient, WidgetConfig{
+	got, err := (unifiWidget{}).Poll(t.Context(), plainClient, WidgetConfig{
 		URL:     srv.URL,
 		Secrets: unifiTestCreds(),
 	})
@@ -286,7 +285,7 @@ func TestUnifiWidgetPollTLSVerificationFailsWithoutOptIn(t *testing.T) {
 }
 
 func TestUnifiWidgetPollMissingURL(t *testing.T) {
-	if _, err := (unifiWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{
+	if _, err := (unifiWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		Secrets: unifiTestCreds(),
 	}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
@@ -294,7 +293,7 @@ func TestUnifiWidgetPollMissingURL(t *testing.T) {
 }
 
 func TestUnifiWidgetPollMissingCredentials(t *testing.T) {
-	if _, err := (unifiWidget{}).Poll(context.Background(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr}); err == nil {
+	if _, err := (unifiWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr}); err == nil {
 		t.Fatal("Poll() expected error for missing credentials, got nil")
 	}
 }

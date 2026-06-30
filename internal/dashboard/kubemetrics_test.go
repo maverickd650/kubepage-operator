@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -56,7 +55,7 @@ func nodeMetrics(name, usageCPU, usageMem string) *metricsv1beta1.NodeMetrics {
 // doc comment), so a regression that makes Poll panic instead of returning
 // its documented error would only ever surface if that invariant broke.
 func TestKubeMetricsWidgetPollNeverCalledInProduction(t *testing.T) {
-	fields, err := (kubeMetricsWidget{}).Poll(context.Background(), nil, WidgetConfig{})
+	fields, err := (kubeMetricsWidget{}).Poll(t.Context(), nil, WidgetConfig{})
 	if fields != nil {
 		t.Errorf("Poll() fields = %+v, want nil", fields)
 	}
@@ -120,7 +119,7 @@ func TestKubeMetricsWidgetPollCluster(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.objs...).Build()
-			got, err := (kubeMetricsWidget{}).PollCluster(context.Background(), c, WidgetConfig{
+			got, err := (kubeMetricsWidget{}).PollCluster(t.Context(), c, WidgetConfig{
 				Config: []byte(tc.config),
 			})
 			if err != nil {
