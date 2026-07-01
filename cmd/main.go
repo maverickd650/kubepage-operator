@@ -349,8 +349,9 @@ func runDashboard(args []string) {
 	fs.StringVar(&namespace, "namespace", "", "Namespace of the Instance to serve a dashboard for.")
 	fs.StringVar(&instanceName, "instance-name", "", "Name of the Instance to serve a dashboard for.")
 	fs.StringVar(&addr, "addr", ":8080", "The address the dashboard HTTP server binds to.")
-	fs.StringVar(&metricsAddr, "metrics-addr", ":9090", "The address the /metrics endpoint binds to, kept separate from --addr "+
-		"so Prometheus metrics aren't reachable through the Instance's public Ingress/Gateway.")
+	metricsAddrUsage := "The address the /metrics endpoint binds to, kept separate from --addr " +
+		"so Prometheus metrics aren't reachable through the Instance's public Ingress/Gateway."
+	fs.StringVar(&metricsAddr, "metrics-addr", ":9090", metricsAddrUsage)
 	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(fs)
