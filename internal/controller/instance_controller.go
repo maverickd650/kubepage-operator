@@ -612,7 +612,7 @@ func (r *InstanceReconciler) deploymentForInstance(instance *pagev1alpha1.Instan
 					Annotations: instance.Spec.Annotations,
 				},
 				Spec: corev1.PodSpec{
-					HostUsers:          instance.Spec.HostUsers,
+					HostUsers:          hostUsersBool(instance.Spec.HostUsers),
 					ServiceAccountName: instance.Name,
 					SecurityContext: mergeOverride(corev1.PodSecurityContext{
 						RunAsNonRoot: ptr.To(true),
@@ -667,6 +667,16 @@ func (r *InstanceReconciler) deploymentForInstance(instance *pagev1alpha1.Instan
 		return nil, err
 	}
 	return dep, nil
+}
+
+// hostUsersBool converts InstanceSpec.HostUsers's Enabled/Disabled enum into
+// the *bool corev1.PodSpec.HostUsers expects.
+func hostUsersBool(s *string) *bool {
+	if s == nil {
+		return nil
+	}
+	b := *s == pagev1alpha1.Enabled
+	return &b
 }
 
 // mergeOverride layers override onto a copy of base, field by field: any

@@ -41,7 +41,7 @@ func TestHTTPRouteForInstance(t *testing.T) {
 		Spec: pagev1alpha1.InstanceSpec{
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
-				Enabled:   true,
+				Enabled:   pagev1alpha1.Enabled,
 				Hostnames: []string{testDashboardHost, "dash.example.com"},
 				ParentRef: pagev1alpha1.GatewayParentRef{
 					Name:        "eg",
@@ -107,7 +107,7 @@ func TestHTTPRouteForInstanceNoParentNamespaceOrSection(t *testing.T) {
 		Spec: pagev1alpha1.InstanceSpec{
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
-				Enabled:   true,
+				Enabled:   pagev1alpha1.Enabled,
 				Hostnames: []string{testDashboardHost},
 				ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 			},
@@ -439,7 +439,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 		Spec: pagev1alpha1.InstanceSpec{
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
-				Enabled:   true,
+				Enabled:   pagev1alpha1.Enabled,
 				Hostnames: []string{testDashboardHost},
 				ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 			},
@@ -488,7 +488,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 
 	t.Run("deletes the HTTPRoute once spec.gateway is disabled", func(t *testing.T) {
 		disabled := instance.DeepCopy()
-		disabled.Spec.Gateway.Enabled = false
+		disabled.Spec.Gateway.Enabled = pagev1alpha1.Disabled
 
 		if err := r.reconcileHTTPRoute(ctx, disabled); err != nil {
 			t.Fatalf("reconcileHTTPRoute() unexpected error: %v", err)
@@ -501,7 +501,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 
 	t.Run("is a no-op when disabled and already absent", func(t *testing.T) {
 		disabled := instance.DeepCopy()
-		disabled.Spec.Gateway.Enabled = false
+		disabled.Spec.Gateway.Enabled = pagev1alpha1.Disabled
 
 		if err := r.reconcileHTTPRoute(ctx, disabled); err != nil {
 			t.Errorf("reconcileHTTPRoute() unexpected error: %v", err)

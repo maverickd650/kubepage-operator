@@ -9,58 +9,84 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// Enum values for HighlightRuleSpec.Negate/CaseSensitive,
+// FieldHighlight.ValueOnly, and ServiceEntrySpec.ShowStats/HideErrors.
+const (
+	NegateMatch  = "Match"
+	NegateNegate = "Negate"
+
+	CaseSensitiveOn  = "CaseSensitive"
+	CaseSensitiveOff = "CaseInsensitive"
+
+	HighlightWholeField = "WholeField"
+	HighlightValueOnly  = "ValueOnly"
+
+	StatsShow = "Show"
+	StatsHide = "Hide"
+)
+
 // HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules
 // are evaluated in order; the first match sets the field's highlight level.
 // Mirrors homepage's per-field highlight rule, see
 // https://gethomepage.dev/configs/services/#block-highlighting.
 type HighlightRuleSpec struct {
-	// Level this rule sets when it matches.
+	// level this rule sets when it matches.
 	// +kubebuilder:validation:Enum=good;warn;danger
 	// +required
 	Level string `json:"level"`
 
-	// When is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
+	// when is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
 	// ne/between/outside (Value/Value2 parsed as numbers); string fields use
 	// equals/includes/startsWith/endsWith/regex (Value compared as text).
 	// +kubebuilder:validation:Enum=gt;gte;lt;lte;eq;ne;between;outside;equals;includes;startsWith;endsWith;regex
 	// +required
 	When string `json:"when"`
 
-	// Value is the rule's comparison value: a number for a numeric
+	// value is the rule's comparison value: a number for a numeric
 	// operator, text for a string operator. For "between"/"outside" this is
 	// the lower bound.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +required
 	Value string `json:"value"`
 
-	// Value2 is the upper bound for the "between"/"outside" operators;
+	// value2 is the upper bound for the "between"/"outside" operators;
 	// ignored by every other operator.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +optional
 	Value2 *string `json:"value2,omitempty"`
 
-	// Negate inverts the rule's match.
+	// negate inverts the rule's match ("Negate") instead of the default
+	// ("Match").
+	// +kubebuilder:validation:Enum=Match;Negate
 	// +optional
-	Negate *bool `json:"negate,omitempty"`
+	Negate *string `json:"negate,omitempty"`
 
-	// CaseSensitive makes a string operator's comparison case-sensitive.
-	// Defaults to false (case-insensitive); ignored by numeric operators.
+	// caseSensitive makes a string operator's comparison case-sensitive.
+	// Defaults to "CaseInsensitive"; ignored by numeric operators.
+	// +kubebuilder:validation:Enum=CaseSensitive;CaseInsensitive
 	// +optional
-	CaseSensitive *bool `json:"caseSensitive,omitempty"`
+	CaseSensitive *string `json:"caseSensitive,omitempty"`
 }
 
 // FieldHighlight configures highlight rules for one widget field, keyed by
 // the field's label in ServiceWidget.Highlight.
 type FieldHighlight struct {
-	// Rules are evaluated in order; the first match sets the field's
+	// rules are evaluated in order; the first match sets the field's
 	// highlight level. No match leaves the field unhighlighted.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=atomic
 	// +required
 	Rules []HighlightRuleSpec `json:"rules"`
 
-	// ValueOnly highlights only the field's value rather than its whole
-	// stat chip (label included) when a rule matches.
+	// valueOnly highlights only the field's value ("ValueOnly") rather than
+	// its whole stat chip (label included, the default "WholeField") when a
+	// rule matches.
+	// +kubebuilder:validation:Enum=WholeField;ValueOnly
 	// +optional
-	ValueOnly *bool `json:"valueOnly,omitempty"`
+	ValueOnly *string `json:"valueOnly,omitempty"`
 }
 
 // ServiceWidget configures one of the native dashboard's pollable widgets
@@ -71,37 +97,47 @@ type FieldHighlight struct {
 // directly in-process at poll time, so the plaintext value never appears in
 // pod env, a ConfigMap, or a projected file.
 type ServiceWidget struct {
-	// Widget type, e.g. "plex", "grafana", "unifi". See internal/dashboard
-	// for the registered set.
+	// type is the widget type, e.g. "plex", "grafana", "unifi". See
+	// internal/dashboard for the registered set.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
 	// +required
 	Type string `json:"type"`
 
-	// Base URL the widget talks to.
+	// url is the base URL the widget talks to.
 	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	URL *string `json:"url,omitempty"`
 
-	// Secret-bearing widget fields (commonly "token", sometimes "username"/
-	// "password" depending on widget type), resolved directly by the
-	// dashboard backend rather than stored inline.
+	// secrets are secret-bearing widget fields (commonly "token", sometimes
+	// "username"/"password" depending on widget type), resolved directly by
+	// the dashboard backend rather than stored inline.
+	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
-	// Remaining widget-type-specific options (e.g. PrometheusMetric's
-	// "query", Cloudflared's "accountId"/"tunnelId").
+	// config holds the remaining widget-type-specific options (e.g.
+	// PrometheusMetric's "query", Cloudflared's "accountId"/"tunnelId").
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Config *apiextensionsv1.JSON `json:"config,omitempty"`
 
-	// Fields restricts which of the widget's returned fields are rendered,
+	// fields restricts which of the widget's returned fields are rendered,
 	// by label (e.g. "queued", "wanted"). Unset (the default) renders every
 	// field the widget returns.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=64
+	// +listType=set
 	// +optional
 	Fields []string `json:"fields,omitempty"`
 
-	// Highlight tints a field's stat chip by severity (good/warn/danger),
+	// highlight tints a field's stat chip by severity (good/warn/danger),
 	// keyed by the field's label. See FieldHighlight.
+	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	Highlight map[string]FieldHighlight `json:"highlight,omitempty"`
 }
@@ -112,70 +148,87 @@ type ServiceWidget struct {
 // Nested groups (a group inside another group) are not supported in this
 // version of the operator; Group always names a top-level group.
 type ServiceEntrySpec struct {
-	// InstanceRef names the Instance this ServiceEntry belongs to.
+	// instanceRef names the Instance this ServiceEntry belongs to.
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Group is the name of the (top-level) group this entry belongs to.
+	// group is the name of the (top-level) group this entry belongs to.
 	// Entries sharing a Group are rendered together.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +required
 	Group string `json:"group"`
 
-	// Name is the service's display name (the card title).
+	// name is the service's display name (the card title).
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +required
 	Name string `json:"name"`
 
-	// Order controls rendering position: groups and entries are sorted by
+	// order controls rendering position: groups and entries are sorted by
 	// Order (nil sorts last), ties broken by Name, since CRDs have no
 	// inherent ordering but the dashboard's groups/entries are displayed in a
 	// fixed order.
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
-	// Href makes the card's title a link to the service.
+	// href makes the card's title a link to the service.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	Href *string `json:"href,omitempty"`
 
-	// Target overrides the Configuration's default link target for this
+	// target overrides the Configuration's default link target for this
 	// card's Href ("_blank" opens a new tab, "_self" the same tab).
 	// +kubebuilder:validation:Enum=_blank;_self
 	// +optional
 	Target *string `json:"target,omitempty"`
 
+	// icon resolves as a dashboard-icons slug, or passes through as-is if
+	// it's already a full URL.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +optional
 	Icon *string `json:"icon,omitempty"`
 
+	// description overrides the default description shown on the card.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	Description *string `json:"description,omitempty"`
 
-	// ShowStats controls whether the polled widget fields are displayed on
-	// the card. Defaults to true; set false to show only the title/icon/
+	// showStats controls whether the polled widget fields are displayed on
+	// the card. Defaults to "Show"; set "Hide" to show only the title/icon/
 	// description (and any monitor status).
+	// +kubebuilder:validation:Enum=Show;Hide
 	// +optional
-	ShowStats *bool `json:"showStats,omitempty"`
+	ShowStats *string `json:"showStats,omitempty"`
 
-	// HideErrors suppresses a widget's error text on the card (e.g. for a
+	// hideErrors suppresses a widget's error text on the card (e.g. for a
 	// service that is expected to be intermittently unreachable). Defaults
-	// to false.
+	// to "Show".
+	// +kubebuilder:validation:Enum=Show;Hide
 	// +optional
-	HideErrors *bool `json:"hideErrors,omitempty"`
+	HideErrors *string `json:"hideErrors,omitempty"`
 
-	// Ping is a URL probed over HTTP for reachability and latency, shown as
+	// ping is a URL probed over HTTP for reachability and latency, shown as
 	// an up/down status on the card. (Raw ICMP is not used, so a pod needs
 	// no elevated capabilities.)
 	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	Ping *string `json:"ping,omitempty"`
 
-	// SiteMonitor is a URL probed over HTTP, shown as an up/down status with
+	// siteMonitor is a URL probed over HTTP, shown as an up/down status with
 	// response latency on the card.
 	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	SiteMonitor *string `json:"siteMonitor,omitempty"`
 
-	// PodSelector selects pods in this ServiceEntry's namespace whose
+	// podSelector selects pods in this ServiceEntry's namespace whose
 	// readiness determines this service's up/down status — a
 	// Kubernetes-native alternative to Ping/SiteMonitor for services that
 	// run as pods in this cluster, needing no externally reachable URL.
@@ -186,27 +239,33 @@ type ServiceEntrySpec struct {
 	// +optional
 	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
 
-	// StatusStyle controls how the Ping/SiteMonitor/PodSelector status
+	// statusStyle controls how the Ping/SiteMonitor/PodSelector status
 	// renders: "dot" a colored status dot, "basic" up/down text. Ignored
 	// unless one of Ping, SiteMonitor, or PodSelector is set.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`
 
-	// Widgets attached to this service. Zero, one, or many are allowed; the
+	// widgets attached to this service. Zero, one, or many are allowed; the
 	// dashboard polls each one independently and shows its fields on the
 	// card.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +listType=atomic
 	// +optional
 	Widgets []ServiceWidget `json:"widgets,omitempty"`
 }
 
 // ServiceEntryStatus defines the observed state of ServiceEntry.
+// +kubebuilder:validation:MinProperties=1
 type ServiceEntryStatus struct {
 	// conditions represent the current state of the ServiceEntry resource.
+	// +patchStrategy=merge
+	// +patchMergeKey=type
 	// +listType=map
 	// +listMapKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true

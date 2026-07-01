@@ -55,42 +55,59 @@ spec:
             description: spec defines the desired state of ServiceEntry
             properties:
               description:
+                description: description overrides the default description shown on
+                  the card.
+                maxLength: 1024
+                minLength: 1
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) group this entry belongs to.
+                  group is the name of the (top-level) group this entry belongs to.
                   Entries sharing a Group are rendered together.
+                maxLength: 256
                 minLength: 1
                 type: string
               hideErrors:
                 description: |-
-                  HideErrors suppresses a widget's error text on the card (e.g. for a
+                  hideErrors suppresses a widget's error text on the card (e.g. for a
                   service that is expected to be intermittently unreachable). Defaults
-                  to false.
-                type: boolean
+                  to "Show".
+                enum:
+                - Show
+                - Hide
+                type: string
               href:
-                description: Href makes the card's title a link to the service.
+                description: href makes the card's title a link to the service.
+                maxLength: 2048
+                minLength: 1
                 type: string
               icon:
+                description: |-
+                  icon resolves as a dashboard-icons slug, or passes through as-is if
+                  it's already a full URL.
+                maxLength: 256
+                minLength: 1
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this ServiceEntry belongs
+                description: instanceRef names the Instance this ServiceEntry belongs
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               name:
-                description: Name is the service's display name (the card title).
+                description: name is the service's display name (the card title).
+                maxLength: 256
                 minLength: 1
                 type: string
               order:
                 description: |-
-                  Order controls rendering position: groups and entries are sorted by
+                  order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
                   inherent ordering but the dashboard's groups/entries are displayed in a
                   fixed order.
@@ -98,14 +115,16 @@ spec:
                 type: integer
               ping:
                 description: |-
-                  Ping is a URL probed over HTTP for reachability and latency, shown as
+                  ping is a URL probed over HTTP for reachability and latency, shown as
                   an up/down status on the card. (Raw ICMP is not used, so a pod needs
                   no elevated capabilities.)
+                maxLength: 2048
+                minLength: 1
                 pattern: ^https?://
                 type: string
               podSelector:
                 description: |-
-                  PodSelector selects pods in this ServiceEntry's namespace whose
+                  podSelector selects pods in this ServiceEntry's namespace whose
                   readiness determines this service's up/down status — a
                   Kubernetes-native alternative to Ping/SiteMonitor for services that
                   run as pods in this cluster, needing no externally reachable URL.
@@ -159,19 +178,24 @@ spec:
                 x-kubernetes-map-type: atomic
               showStats:
                 description: |-
-                  ShowStats controls whether the polled widget fields are displayed on
-                  the card. Defaults to true; set false to show only the title/icon/
+                  showStats controls whether the polled widget fields are displayed on
+                  the card. Defaults to "Show"; set "Hide" to show only the title/icon/
                   description (and any monitor status).
-                type: boolean
+                enum:
+                - Show
+                - Hide
+                type: string
               siteMonitor:
                 description: |-
-                  SiteMonitor is a URL probed over HTTP, shown as an up/down status with
+                  siteMonitor is a URL probed over HTTP, shown as an up/down status with
                   response latency on the card.
+                maxLength: 2048
+                minLength: 1
                 pattern: ^https?://
                 type: string
               statusStyle:
                 description: |-
-                  StatusStyle controls how the Ping/SiteMonitor/PodSelector status
+                  statusStyle controls how the Ping/SiteMonitor/PodSelector status
                   renders: "dot" a colored status dot, "basic" up/down text. Ignored
                   unless one of Ping, SiteMonitor, or PodSelector is set.
                 enum:
@@ -180,7 +204,7 @@ spec:
                 type: string
               target:
                 description: |-
-                  Target overrides the Configuration's default link target for this
+                  target overrides the Configuration's default link target for this
                   card's Href ("_blank" opens a new tab, "_self" the same tab).
                 enum:
                 - _blank
@@ -188,7 +212,7 @@ spec:
                 type: string
               widgets:
                 description: |-
-                  Widgets attached to this service. Zero, one, or many are allowed; the
+                  widgets attached to this service. Zero, one, or many are allowed; the
                   dashboard polls each one independently and shows its fields on the
                   card.
                 items:
@@ -203,17 +227,22 @@ spec:
                   properties:
                     config:
                       description: |-
-                        Remaining widget-type-specific options (e.g. PrometheusMetric's
-                        "query", Cloudflared's "accountId"/"tunnelId").
+                        config holds the remaining widget-type-specific options (e.g.
+                        PrometheusMetric's "query", Cloudflared's "accountId"/"tunnelId").
                       x-kubernetes-preserve-unknown-fields: true
                     fields:
                       description: |-
-                        Fields restricts which of the widget's returned fields are rendered,
+                        fields restricts which of the widget's returned fields are rendered,
                         by label (e.g. "queued", "wanted"). Unset (the default) renders every
                         field the widget returns.
                       items:
+                        maxLength: 64
+                        minLength: 1
                         type: string
+                      maxItems: 32
+                      minItems: 1
                       type: array
+                      x-kubernetes-list-type: set
                     highlight:
                       additionalProperties:
                         description: |-
@@ -222,7 +251,7 @@ spec:
                         properties:
                           rules:
                             description: |-
-                              Rules are evaluated in order; the first match sets the field's
+                              rules are evaluated in order; the first match sets the field's
                               highlight level. No match leaves the field unhighlighted.
                             items:
                               description: |-
@@ -233,34 +262,45 @@ spec:
                               properties:
                                 caseSensitive:
                                   description: |-
-                                    CaseSensitive makes a string operator's comparison case-sensitive.
-                                    Defaults to false (case-insensitive); ignored by numeric operators.
-                                  type: boolean
+                                    caseSensitive makes a string operator's comparison case-sensitive.
+                                    Defaults to "CaseInsensitive"; ignored by numeric operators.
+                                  enum:
+                                  - CaseSensitive
+                                  - CaseInsensitive
+                                  type: string
                                 level:
-                                  description: Level this rule sets when it matches.
+                                  description: level this rule sets when it matches.
                                   enum:
                                   - good
                                   - warn
                                   - danger
                                   type: string
                                 negate:
-                                  description: Negate inverts the rule's match.
-                                  type: boolean
+                                  description: |-
+                                    negate inverts the rule's match ("Negate") instead of the default
+                                    ("Match").
+                                  enum:
+                                  - Match
+                                  - Negate
+                                  type: string
                                 value:
                                   description: |-
-                                    Value is the rule's comparison value: a number for a numeric
+                                    value is the rule's comparison value: a number for a numeric
                                     operator, text for a string operator. For "between"/"outside" this is
                                     the lower bound.
+                                  maxLength: 256
                                   minLength: 1
                                   type: string
                                 value2:
                                   description: |-
-                                    Value2 is the upper bound for the "between"/"outside" operators;
+                                    value2 is the upper bound for the "between"/"outside" operators;
                                     ignored by every other operator.
+                                  maxLength: 256
+                                  minLength: 1
                                   type: string
                                 when:
                                   description: |-
-                                    When is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
+                                    when is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
                                     ne/between/outside (Value/Value2 parsed as numbers); string fields use
                                     equals/includes/startsWith/endsWith/regex (Value compared as text).
                                   enum:
@@ -283,19 +323,26 @@ spec:
                               - value
                               - when
                               type: object
+                            maxItems: 32
                             minItems: 1
                             type: array
+                            x-kubernetes-list-type: atomic
                           valueOnly:
                             description: |-
-                              ValueOnly highlights only the field's value rather than its whole
-                              stat chip (label included) when a rule matches.
-                            type: boolean
+                              valueOnly highlights only the field's value ("ValueOnly") rather than
+                              its whole stat chip (label included, the default "WholeField") when a
+                              rule matches.
+                            enum:
+                            - WholeField
+                            - ValueOnly
+                            type: string
                         required:
                         - rules
                         type: object
                       description: |-
-                        Highlight tints a field's stat chip by severity (good/warn/danger),
+                        highlight tints a field's stat chip by severity (good/warn/danger),
                         keyed by the field's label. See FieldHighlight.
+                      minProperties: 1
                       type: object
                     secrets:
                       additionalProperties:
@@ -308,7 +355,7 @@ spec:
                           resolves whichever is set in-process at poll time.
                         properties:
                           secretKeyRef:
-                            description: SecretKeyRef selects a key of a Secret in
+                            description: secretKeyRef selects a key of a Secret in
                               the same namespace.
                             properties:
                               key:
@@ -334,29 +381,38 @@ spec:
                             x-kubernetes-map-type: atomic
                           value:
                             description: |-
-                              Value is a literal value. Avoid this for real credentials; prefer
+                              value is a literal value. Avoid this for real credentials; prefer
                               SecretKeyRef so the value isn't stored in the CR.
+                            maxLength: 4096
+                            minLength: 1
                             type: string
                         type: object
                       description: |-
-                        Secret-bearing widget fields (commonly "token", sometimes "username"/
-                        "password" depending on widget type), resolved directly by the
-                        dashboard backend rather than stored inline.
+                        secrets are secret-bearing widget fields (commonly "token", sometimes
+                        "username"/"password" depending on widget type), resolved directly by
+                        the dashboard backend rather than stored inline.
+                      minProperties: 1
                       type: object
                     type:
                       description: |-
-                        Widget type, e.g. "plex", "grafana", "unifi". See internal/dashboard
-                        for the registered set.
+                        type is the widget type, e.g. "plex", "grafana", "unifi". See
+                        internal/dashboard for the registered set.
+                      maxLength: 64
                       minLength: 1
                       type: string
                     url:
-                      description: Base URL the widget talks to.
+                      description: url is the base URL the widget talks to.
+                      maxLength: 2048
+                      minLength: 1
                       pattern: ^https?://
                       type: string
                   required:
                   - type
                   type: object
+                maxItems: 16
+                minItems: 1
                 type: array
+                x-kubernetes-list-type: atomic
             required:
             - group
             - instanceRef
@@ -364,6 +420,7 @@ spec:
             type: object
           status:
             description: status defines the observed state of ServiceEntry
+            minProperties: 1
             properties:
               conditions:
                 description: conditions represent the current state of the ServiceEntry

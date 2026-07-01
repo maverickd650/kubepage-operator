@@ -52,50 +52,64 @@ spec:
             description: spec defines the desired state of Configuration
             properties:
               background:
-                description: Background image and filters, used instead of the solid
+                description: background image and filters, used instead of the solid
                   theme color.
+                minProperties: 1
                 properties:
                   blur:
-                    description: Backdrop blur, a Tailwind backdrop-blur size keyword
-                      (e.g. "sm", "md", "xl", "").
+                    description: |-
+                      blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.
+                      "sm", "md", "xl", ""). An explicit "" is equivalent to leaving it
+                      unset (the default 8px blur).
+                    maxLength: 8
+                    minLength: 0
                     type: string
                   brightness:
-                    description: Backdrop brightness percentage (Tailwind backdrop-brightness
-                      scale, e.g. 0, 50, 75).
+                    description: |-
+                      brightness is a backdrop brightness percentage (Tailwind
+                      backdrop-brightness scale, e.g. 0, 50, 75).
                     format: int32
                     type: integer
                   image:
-                    description: Full URL or path (relative to /app/public) to the
+                    description: |-
+                      image is the full URL or path (relative to /app/public) to the
                       background image.
+                    maxLength: 2048
+                    minLength: 1
                     type: string
                   opacity:
-                    description: Opacity to blend the background image with the background
+                    description: opacity blends the background image with the background
                       color, 0-100.
                     format: int32
                     maximum: 100
                     minimum: 0
                     type: integer
                   saturate:
-                    description: Backdrop saturate percentage (Tailwind backdrop-saturate
+                    description: |-
+                      saturate is a backdrop saturate percentage (Tailwind backdrop-saturate
                       scale, e.g. 0, 50, 100).
                     format: int32
                     type: integer
                 type: object
               bookmarksStyle:
                 description: |-
-                  BookmarksStyle renders every bookmark card icon-only (no name or
+                  bookmarksStyle renders every bookmark card icon-only (no name or
                   description), matching homepage's `bookmarksStyle: icons`.
                 enum:
                 - icons
                 type: string
               cardBlur:
                 description: |-
-                  CardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
-                  size keyword (e.g. "sm", "md", "xl"). Most visible over a background
-                  image.
+                  cardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
+                  size keyword (e.g. "sm", "md", "xl", ""). An explicit "" is equivalent
+                  to leaving it unset (the default 8px blur). Most visible over a
+                  background image.
+                maxLength: 8
+                minLength: 0
                 type: string
               color:
-                description: Fixed color palette, disabling the palette switcher.
+                description: color is the fixed color palette, disabling the palette
+                  switcher.
                 enum:
                 - slate
                 - gray
@@ -122,42 +136,60 @@ spec:
                 type: string
               customCSS:
                 description: |-
-                  CustomCSS is raw CSS injected into the dashboard's page in a second
+                  customCSS is raw CSS injected into the dashboard's page in a second
                   <style> block appended after the built-in stylesheet, so its rules
                   can override it. Trusted, operator-supplied content — the same trust
                   level as every other Configuration field (e.g. Background.Image).
                 maxLength: 10000
+                minLength: 1
                 type: string
               description:
                 description: |-
-                  Description is shown as a header subtitle and the page's meta
+                  description is shown as a header subtitle and the page's meta
                   description.
+                maxLength: 1024
+                minLength: 1
                 type: string
               disableCollapse:
                 description: |-
-                  DisableCollapse disables the collapsible expand/collapse control on
+                  disableCollapse disables the collapsible expand/collapse control on
                   service and bookmark group headers. Collapsing is enabled by default.
-                type: boolean
+                enum:
+                - Enabled
+                - Disabled
+                type: string
               disableIndexing:
                 description: |-
-                  DisableIndexing asks search engines not to index the dashboard:
+                  disableIndexing asks search engines not to index the dashboard:
                   disallows all crawlers in robots.txt and adds a noindex meta tag.
-                type: boolean
+                enum:
+                - Indexed
+                - NoIndex
+                type: string
               favicon:
-                description: Favicon is a URL to the dashboard's favicon.
+                description: favicon is a URL to the dashboard's favicon.
+                maxLength: 2048
+                minLength: 1
                 type: string
               fullWidth:
-                description: Use the entire window width instead of a centered, constrained
-                  layout.
-                type: boolean
+                description: |-
+                  fullWidth uses the entire window width instead of a centered,
+                  constrained layout.
+                enum:
+                - Full
+                - Contained
+                type: string
               groupsInitiallyCollapsed:
                 description: |-
-                  GroupsInitiallyCollapsed collapses every group by default on first
+                  groupsInitiallyCollapsed collapses every group by default on first
                   load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
                   group. Ignored when DisableCollapse is set.
-                type: boolean
+                enum:
+                - Collapsed
+                - Expanded
+                type: string
               headerStyle:
-                description: Header style for service/bookmark group headers.
+                description: headerStyle for service/bookmark group headers.
                 enum:
                 - underlined
                 - boxed
@@ -165,22 +197,25 @@ spec:
                 - boxedWidgets
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this Configuration applies
+                description: instanceRef names the Instance this Configuration applies
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               language:
-                description: UI language, e.g. "en", "fr", "de".
+                description: language is the UI language, e.g. "en", "fr", "de".
+                maxLength: 16
+                minLength: 1
                 type: string
               layout:
                 description: |-
-                  Layout arranges ServiceEntry Groups into tabs, mirroring homepage's
+                  layout arranges ServiceEntry Groups into tabs, mirroring homepage's
                   settings.yaml `layout:` map (group -> style) with tabs added on top.
                   Omitted/empty renders every group flat with no tab UI, as before.
                 items:
@@ -191,7 +226,7 @@ spec:
                     under the first tab that lists it.
                   properties:
                     groups:
-                      description: Groups lists, in display order, the Groups shown
+                      description: groups lists, in display order, the Groups shown
                         under this tab.
                       items:
                         description: |-
@@ -202,7 +237,7 @@ spec:
                         properties:
                           columns:
                             description: |-
-                              Columns is the number of card columns to render this group in,
+                              columns is the number of card columns to render this group in,
                               overriding the dashboard's default auto-fill grid.
                             format: int32
                             maximum: 6
@@ -210,29 +245,38 @@ spec:
                             type: integer
                           header:
                             description: |-
-                              Header renders this group's header (name + icon) when true (the
-                              default). Set false to hide it while still rendering the group's
+                              header renders this group's header (name + icon) when "Shown" (the
+                              default). Set "Hidden" to hide it while still rendering the group's
                               cards.
-                            type: boolean
+                            enum:
+                            - Shown
+                            - Hidden
+                            type: string
                           icon:
                             description: |-
-                              Icon overrides the group header's icon. Same resolution rules as
+                              icon overrides the group header's icon. Same resolution rules as
                               ServiceEntry/Bookmark Icon: a full URL passes through, anything else
                               is resolved as a dashboard-icons slug.
+                            maxLength: 256
+                            minLength: 1
                             type: string
                           initiallyCollapsed:
                             description: |-
-                              InitiallyCollapsed collapses this group by default on first load,
+                              initiallyCollapsed collapses this group by default on first load,
                               overriding the Configuration's GroupsInitiallyCollapsed. Ignored when
                               DisableCollapse is set.
-                            type: boolean
+                            enum:
+                            - Collapsed
+                            - Expanded
+                            type: string
                           name:
-                            description: Name is the ServiceEntry Group this entry
+                            description: name is the ServiceEntry Group this entry
                               places and styles.
+                            maxLength: 256
                             minLength: 1
                             type: string
                           style:
-                            description: Style lays the group's cards out in a single
+                            description: style lays the group's cards out in a single
                               row instead of a grid.
                             enum:
                             - row
@@ -240,39 +284,52 @@ spec:
                             type: string
                           useEqualHeights:
                             description: |-
-                              UseEqualHeights makes every card in this group the same height,
+                              useEqualHeights makes every card in this group the same height,
                               overriding the Configuration's UseEqualHeights.
-                            type: boolean
+                            enum:
+                            - Equal
+                            - Auto
+                            type: string
                         required:
                         - name
                         type: object
+                      maxItems: 64
                       minItems: 1
                       type: array
+                      x-kubernetes-list-type: atomic
                     name:
-                      description: Name is the tab's label.
+                      description: name is the tab's label.
+                      maxLength: 256
                       minLength: 1
                       type: string
                   required:
                   - groups
                   - name
                   type: object
+                maxItems: 32
+                minItems: 1
                 type: array
+                x-kubernetes-list-type: atomic
               search:
                 description: |-
-                  Search configures the native dashboard's header search box (card
+                  search configures the native dashboard's header search box (card
                   filtering + web-search fallthrough).
+                minProperties: 1
                 properties:
                   filterCards:
-                    default: true
+                    default: Enabled
                     description: |-
-                      FilterCards enables as-you-type filtering of service and bookmark
+                      filterCards enables as-you-type filtering of service and bookmark
                       cards by name/description, independent of the Enter-to-search
                       fallthrough.
-                    type: boolean
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   provider:
                     default: duckduckgo
                     description: |-
-                      Provider is the web search engine Enter submits the query to.
+                      provider is the web search engine Enter submits the query to.
                       "custom" requires URL.
                     enum:
                     - duckduckgo
@@ -283,7 +340,7 @@ spec:
                   target:
                     default: _blank
                     description: |-
-                      Target controls whether the search results page opens in the same tab
+                      target controls whether the search results page opens in the same tab
                       or a new one.
                     enum:
                     - _blank
@@ -291,31 +348,36 @@ spec:
                     type: string
                   url:
                     description: |-
-                      URL is the search endpoint used when Provider is "custom". The query
+                      url is the search endpoint used when Provider is "custom". The query
                       is appended as a URL-encoded "q" parameter. Must be an http(s) URL —
                       the dashboard passes this straight into a client-side window.open()/
                       href, so a non-http(s) scheme (e.g. "javascript:") would be a stored
                       script-injection vector rather than a search endpoint.
+                    maxLength: 2048
+                    minLength: 1
                     pattern: ^https?://
                     type: string
                 type: object
               startUrl:
                 description: |-
-                  StartURL is the PWA manifest's start_url, used when the dashboard is
+                  startUrl is the PWA manifest's start_url, used when the dashboard is
                   installed as an app. Defaults to "/".
+                maxLength: 2048
+                minLength: 1
                 pattern: ^(https?://|/)
                 type: string
               target:
                 default: _blank
                 description: |-
-                  Target is the default link target for service and bookmark cards.
+                  target is the default link target for service and bookmark cards.
                   Individual ServiceEntries may override it via their own target.
                 enum:
                 - _blank
                 - _self
                 type: string
               theme:
-                description: Fixed theme, disabling the theme switcher. One of "light"
+                description: |-
+                  theme is the fixed theme, disabling the theme switcher. One of "light"
                   or "dark".
                 enum:
                 - light
@@ -323,19 +385,25 @@ spec:
                 type: string
               title:
                 description: |-
-                  Title is the dashboard's browser tab title and header heading.
+                  title is the dashboard's browser tab title and header heading.
                   Defaults to "kubepage" when unset.
+                maxLength: 256
+                minLength: 1
                 type: string
               useEqualHeights:
                 description: |-
-                  UseEqualHeights makes every card in a group the same height. A
+                  useEqualHeights makes every card in a group the same height. A
                   LayoutGroupSpec's own UseEqualHeights overrides this per group.
-                type: boolean
+                enum:
+                - Equal
+                - Auto
+                type: string
             required:
             - instanceRef
             type: object
           status:
             description: status defines the observed state of Configuration
+            minProperties: 1
             properties:
               conditions:
                 description: |-
