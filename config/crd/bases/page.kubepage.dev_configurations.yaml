@@ -170,6 +170,7 @@ spec:
                 description: favicon is a URL to the dashboard's favicon.
                 maxLength: 2048
                 minLength: 1
+                pattern: ^https?://
                 type: string
               fullWidth:
                 description: |-

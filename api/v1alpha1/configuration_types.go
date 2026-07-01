@@ -199,6 +199,7 @@ type ConfigurationSpec struct {
 	Description *string `json:"description,omitempty"`
 
 	// favicon is a URL to the dashboard's favicon.
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +optional

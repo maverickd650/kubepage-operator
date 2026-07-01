@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"slices"
 
@@ -87,6 +88,18 @@ var dashboardPodsRule = rbacv1.PolicyRule{
 // actually uses, not every Secret in the namespace. When nothing references
 // a Secret the rule is omitted entirely, since an empty resourceNames would
 // instead mean "all Secrets" — the opposite of the intent.
+//
+// Trust model note: this scoping protects against the dashboard pod itself
+// being compromised (e.g. a malicious upstream response), not against a
+// malicious ServiceEntry/InfoWidget author. Whoever can create a
+// ServiceEntry/InfoWidget in this namespace can name *any* Secret in it via
+// secretKeyRef (referencedSecretNames below has no allowlist) and point the
+// widget's own url at a server they control, which the resolved plaintext is
+// then sent to (as e.g. a Bearer header) — an effective read of that
+// Secret's contents without ever needing "get secrets" RBAC directly.
+// Anyone who can create these CRDs in a namespace should therefore be
+// treated as trusted with every Secret in it, the same as anyone who can
+// create a Pod mounting arbitrary Secret volumes.
 func dashboardRoles(secretNames []string) []rbacv1.PolicyRule {
 	rules := []rbacv1.PolicyRule{dashboardConfigRule, dashboardPodsRule}
 	if len(secretNames) > 0 {
@@ -106,6 +119,11 @@ func dashboardRoles(secretNames []string) []rbacv1.PolicyRule {
 // dashboardRoles); the InstanceReconciler already re-reconciles on
 // ServiceEntry/InfoWidget changes (SetupWithManager Watches), so the Role's
 // scoped list stays in sync as widgets add or drop credential refs.
+//
+// Deliberately unfiltered: any Secret name a bound ServiceEntry/InfoWidget
+// references is included, with no allowlist of which Secrets a widget "may"
+// use — see dashboardRoles' trust-model note for what that implies about who
+// should be allowed to create these CRDs.
 func (r *InstanceReconciler) referencedSecretNames(ctx context.Context, instance *pagev1alpha1.Instance) ([]string, error) {
 	names := map[string]struct{}{}
 
@@ -268,6 +286,12 @@ func policyRulesEqual(a, b []rbacv1.PolicyRule) bool {
 	return true
 }
 
+// clusterRBACNameMaxLength is the Kubernetes object name limit ClusterRole/
+// ClusterRoleBinding validate against (a DNS-1123 subdomain: up to 253
+// characters total, with no per-label cap when — as here — the name
+// contains no dots).
+const clusterRBACNameMaxLength = 253
+
 // clusterRBACName is the name of the ClusterRole and ClusterRoleBinding for
 // instance's cluster metrics access. ClusterRole/ClusterRoleBinding are
 // cluster-scoped, so the name must be unique across namespaces — hence the
@@ -281,8 +305,22 @@ func policyRulesEqual(a, b []rbacv1.PolicyRule) bool {
 // name "c"). Prefixing the namespace with its own length makes the encoding
 // unambiguous: a decoder reads the length, then knows exactly how many
 // characters of namespace follow before the separator and name.
+//
+// Namespace names are capped at 63 characters, but Instance names (like
+// most Kubernetes object names) may be up to 253 — long enough that the
+// encoding above can itself exceed clusterRBACNameMaxLength. When it does,
+// the name is truncated and a short hash of the untruncated (namespace,
+// name) pair is appended, so two different long Instances that happen to
+// truncate to the same prefix still get distinct names.
 func clusterRBACName(instance *pagev1alpha1.Instance) string {
-	return fmt.Sprintf("kubepage-%d-%s-%s", len(instance.Namespace), instance.Namespace, instance.Name)
+	full := fmt.Sprintf("kubepage-%d-%s-%s", len(instance.Namespace), instance.Namespace, instance.Name)
+	if len(full) <= clusterRBACNameMaxLength {
+		return full
+	}
+
+	sum := sha256.Sum256([]byte(instance.Namespace + "/" + instance.Name))
+	suffix := fmt.Sprintf("-%x", sum[:8])
+	return full[:clusterRBACNameMaxLength-len(suffix)] + suffix
 }
 
 // reconcileClusterMetricsRBAC ensures the cluster-scoped RBAC for a

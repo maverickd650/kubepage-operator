@@ -77,6 +77,7 @@ spec:
                 description: href is the bookmark's link target.
                 maxLength: 2048
                 minLength: 1
+                pattern: ^https?://
                 type: string
               icon:
                 description: |-
