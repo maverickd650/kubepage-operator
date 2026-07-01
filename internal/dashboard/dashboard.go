@@ -87,7 +87,7 @@ func Run(ctx context.Context, opts Options) error {
 		Namespace:    opts.Namespace,
 		InstanceName: opts.InstanceName,
 		Interval:     opts.PollInterval,
-		HTTPClient:   &http.Client{Timeout: 10 * time.Second},
+		HTTPClient:   newGuardedHTTPClient(10 * time.Second),
 		Store:        store,
 	}
 	go poller.Run(ctx)
