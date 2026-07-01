@@ -4,27 +4,27 @@ templ Header(data headerData) {
 	for _, w := range data.Widgets {
 		<div class={ "header-widget", "header-widget-" + w.Type }>
 			switch w.Type {
-			case headerTypeGreeting:
-				<span class="greeting">{ w.Greeting }</span>
-			case headerTypeDatetime:
-				<span class="clock" data-clock data-format={ w.Format }></span>
-			default:
-				@icon(w.IconURL)
-				if w.Err != "" {
-					<span class="err">{ w.Err }</span>
-				} else {
-					for _, f := range w.Fields {
-						<span
-							class={ "header-field",
+				case headerTypeGreeting:
+					<span class="greeting">{ w.Greeting }</span>
+				case headerTypeDatetime:
+					<span class="clock" data-clock data-format={ w.Format }></span>
+				default:
+					@icon(w.IconURL)
+					if w.Err != "" {
+						<span class="err">{ w.Err }</span>
+					} else {
+						for _, f := range w.Fields {
+							<span
+								class={ "header-field",
 								templ.KV("hl-good", f.Highlight == HighlightGood),
 								templ.KV("hl-warn", f.Highlight == HighlightWarn),
 								templ.KV("hl-danger", f.Highlight == HighlightDanger) }
-						>
-							<span class="header-field-row"><span class="value">{ f.Value }</span><span class="label">{ f.Label }</span></span>
-							@usageBar(f.Percent)
-						</span>
+							>
+								<span class="header-field-row"><span class="value">{ f.Value }</span><span class="label">{ f.Label }</span></span>
+								@usageBar(f.Percent)
+							</span>
+						}
 					}
-				}
 			}
 		</div>
 	}

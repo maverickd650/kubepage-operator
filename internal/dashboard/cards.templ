@@ -31,11 +31,11 @@ templ serviceCardView(c Card, siteTarget string) {
 			}
 			if c.Status != "" {
 				switch c.StatusStyle {
-				case "dot":
-					<span class={ "status-dot", "status-" + c.Status } title={ statusWithLatency(c.Status, c.Latency) }></span>
-				case "basic":
-				default:
-					<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
+					case "dot":
+						<span class={ "status-dot", "status-" + c.Status } title={ statusWithLatency(c.Status, c.Latency) }></span>
+					case "basic":
+					default:
+						<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
 				}
 			}
 		</h3>
@@ -66,7 +66,10 @@ templ serviceCardView(c Card, siteTarget string) {
 templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
 	<a
 		class={ "card", "bookmark", templ.KV("bookmark-icons-only", iconsOnly) }
-		href={ b.Href } target={ siteTarget } data-name={ b.Name } data-description={ b.Description }
+		href={ b.Href }
+		target={ siteTarget }
+		data-name={ b.Name }
+		data-description={ b.Description }
 		title={ b.Name }
 	>
 		if b.IconURL != "" {

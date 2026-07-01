@@ -125,6 +125,127 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 	}
 }
 
+func TestLoadSiteAppliesColorHeaderLanguageFullWidth(t *testing.T) {
+	scheme := testScheme(t)
+	color := testColor
+	headerStyle := "boxed"
+	language := "fr"
+	fullWidth := pagev1alpha1.FullWidthFull
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Color:       &color,
+			HeaderStyle: &headerStyle,
+			Language:    &language,
+			FullWidth:   &fullWidth,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Color != color || !site.ColorFixed {
+		t.Errorf("Color = %q, ColorFixed = %v, want %q, true", site.Color, site.ColorFixed, color)
+	}
+	if site.HeaderStyle != headerStyle {
+		t.Errorf("HeaderStyle = %q, want %q", site.HeaderStyle, headerStyle)
+	}
+	if site.Language != language {
+		t.Errorf("Language = %q, want %q", site.Language, language)
+	}
+	if !site.FullWidth {
+		t.Error("FullWidth = false, want true when Configuration.FullWidth is \"Full\"")
+	}
+}
+
+func TestLoadSiteAppliesBackground(t *testing.T) {
+	scheme := testScheme(t)
+	image := "https://example.invalid/bg.png"
+	blur := "xl"
+	saturate := int32(50)
+	brightness := int32(75)
+	opacity := int32(80)
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Background: &pagev1alpha1.BackgroundSpec{
+				Image:      &image,
+				Blur:       &blur,
+				Saturate:   &saturate,
+				Brightness: &brightness,
+				Opacity:    &opacity,
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Background == nil {
+		t.Fatal("Background = nil, want non-nil")
+	}
+	if site.Background.Image != image || site.Background.Blur != blur ||
+		*site.Background.Saturate != saturate || *site.Background.Brightness != brightness || *site.Background.Opacity != opacity {
+		t.Errorf("Background = %+v", site.Background)
+	}
+}
+
+func TestLoadSiteAppliesSearch(t *testing.T) {
+	scheme := testScheme(t)
+	provider := "custom"
+	url := "https://search.invalid/q"
+	target := "_self"
+	filterCards := pagev1alpha1.Disabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Search: &pagev1alpha1.SearchSpec{
+				Provider:    &provider,
+				URL:         &url,
+				Target:      &target,
+				FilterCards: &filterCards,
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Search.Provider != provider || site.Search.URL != url || site.Search.Target != target || site.Search.FilterCards {
+		t.Errorf("Search = %+v", site.Search)
+	}
+}
+
+func TestLoadSiteRejectsNonHTTPSearchURL(t *testing.T) {
+	scheme := testScheme(t)
+	badURL := "javascript:alert(1)"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Search:      &pagev1alpha1.SearchSpec{URL: &badURL},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Search.URL != "" {
+		t.Errorf("Search.URL = %q, want empty (non-http(s) scheme rejected)", site.Search.URL)
+	}
+}
+
 func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	scheme := testScheme(t)
 	order1 := int32(1)
