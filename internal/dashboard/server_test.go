@@ -1002,3 +1002,51 @@ func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
 		}
 	}
 }
+
+func TestServerFragmentRendersServiceCardDescription(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/desc/0", Group: testGroup, ServiceName: "Described", Description: "A very fine service.",
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	want := `<div class="desc">A very fine service.</div>`
+	if body := rec.Body.String(); !strings.Contains(body, want) {
+		t.Errorf("fragment body missing %q, want a service card's Description rendered as visible text:\n%s", want, body)
+	}
+}
+
+func TestServerFragmentRendersBookmarkIconTakesPrecedenceOverAbbr(t *testing.T) {
+	icon := "https://example.invalid/wiki.png"
+	abbr := "WK"
+	desc := "Internal knowledge base."
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "wiki", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Group:       testBookmarkGroup,
+			Name:        "Wiki Three",
+			Href:        "https://example.invalid/wiki3",
+			Icon:        &icon,
+			Abbr:        &abbr,
+			Description: &desc,
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmark)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`<img class="icon" src="` + icon + `"`, `<div class="desc">` + desc + `</div>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `class="abbr"`) {
+		t.Errorf("fragment body has an abbr span, want Icon to take precedence over Abbr when both are set:\n%s", body)
+	}
+}
