@@ -59,42 +59,56 @@ spec:
             properties:
               abbr:
                 description: |-
-                  Abbr is a two-letter abbreviation shown when Icon is not set. If both
+                  abbr is a two-letter abbreviation shown when Icon is not set. If both
                   are set, Icon takes precedence.
+                maxLength: 8
+                minLength: 1
                 type: string
               description:
-                description: Description overrides the default hostname-derived description.
+                description: description overrides the default hostname-derived description.
+                maxLength: 1024
+                minLength: 1
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) bookmarks.yaml group this entry
+                  group is the name of the (top-level) bookmarks.yaml group this entry
                   belongs to. Entries sharing a Group are rendered together.
+                maxLength: 256
                 minLength: 1
                 type: string
               href:
-                description: Href is the bookmark's link target.
+                description: href is the bookmark's link target.
+                maxLength: 2048
                 minLength: 1
+                pattern: ^https?://
                 type: string
               icon:
+                description: |-
+                  icon overrides the group header's icon, resolved as a dashboard-icons
+                  slug (or passed through as-is if it's already a full URL).
+                maxLength: 256
+                minLength: 1
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this Bookmark belongs
+                description: instanceRef names the Instance this Bookmark belongs
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               name:
-                description: Name is the bookmark's display name.
+                description: name is the bookmark's display name.
+                maxLength: 256
                 minLength: 1
                 type: string
               order:
                 description: |-
-                  Order controls rendering position: groups and entries are sorted by
+                  order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
                   inherent ordering but bookmarks.yaml's groups/entries are an ordered
                   list. Purely an operator-side rendering concern; not a homepage field.
@@ -108,6 +122,7 @@ spec:
             type: object
           status:
             description: status defines the observed state of Bookmark
+            minProperties: 1
             properties:
               conditions:
                 description: conditions represent the current state of the Bookmark
@@ -178,5 +193,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}
