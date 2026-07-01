@@ -358,7 +358,7 @@ func TestServerFragmentRendersMonitorAndTarget(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
 		Key: "ns/svc/0", Group: testGroup, ServiceName: testSvcDisplayName,
-		Href: "https://svc.invalid", Target: testTargetSelf,
+		Href: "https://svc.invalid", Target: targetSelf,
 		Status: "Up", StatusStyle: testStatusBasic, Latency: "5ms",
 		ShowStats: true,
 	})
@@ -385,11 +385,11 @@ func TestServerFragmentNewTabLinksCarryNoopenerNoreferrer(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
 		Key: "ns/blank/0", Group: testGroup, ServiceName: "BlankCard",
-		Href: "https://blank.invalid", Target: "_blank", ShowStats: true,
+		Href: "https://blank.invalid", Target: defaultTarget, ShowStats: true,
 	})
 	store.Set(Card{
 		Key: "ns/self/0", Group: testGroup, ServiceName: "SelfCard",
-		Href: "https://self.invalid", Target: testTargetSelf, ShowStats: true,
+		Href: "https://self.invalid", Target: targetSelf, ShowStats: true,
 	})
 
 	bookmark := &pagev1alpha1.Bookmark{
@@ -397,7 +397,7 @@ func TestServerFragmentNewTabLinksCarryNoopenerNoreferrer(t *testing.T) {
 		Spec: pagev1alpha1.BookmarkSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Group:       testBookmarkGroup,
-			Name:        "Docs",
+			Name:        "Handbook",
 			Href:        "https://docs.invalid",
 		},
 	}

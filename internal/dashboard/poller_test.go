@@ -696,7 +696,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	url := srv.URL
 	description := "a description"
-	target := testTargetSelf
+	target := targetSelf
 	entry := pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{

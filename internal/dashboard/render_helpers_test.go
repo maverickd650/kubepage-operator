@@ -30,9 +30,9 @@ func TestIsNewTabTarget(t *testing.T) {
 		target string
 		want   bool
 	}{
-		"blank opens a new tab":         {target: "_blank", want: true},
+		"blank opens a new tab":         {target: defaultTarget, want: true},
 		"empty stays in place":          {target: "", want: false},
-		"self stays in place":           {target: "_self", want: false},
+		"self stays in place":           {target: targetSelf, want: false},
 		"parent stays in place":         {target: "_parent", want: false},
 		"top stays in place":            {target: targetTop, want: false},
 		"named frame opens new context": {target: "sidebar", want: true},
