@@ -40,6 +40,7 @@ const (
 	testDiscoveredAppName = "App"
 	testCustomName        = "Custom"
 	testNameOther         = "other"
+	testValueAlpha        = "alpha"
 
 	// testDiscoveryEnabledAnnotation is the full annotation key an Ingress
 	// carries to opt into discovery.go's discovery, built from the same

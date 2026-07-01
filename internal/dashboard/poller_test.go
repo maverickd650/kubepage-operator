@@ -928,6 +928,24 @@ func TestPollerSiteDefaultsNoConfiguration(t *testing.T) {
 	}
 }
 
+func TestPollerSiteDefaultsListError(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	failing := errInjectingReader{
+		Reader: cl,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*pagev1alpha1.ConfigurationList)
+			return ok
+		},
+	}
+	p := &Poller{Reader: failing, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	statusStyle, hideErrors := p.siteDefaults(t.Context())
+	if statusStyle != statusStyleDot || hideErrors {
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, false) on a Configuration list error", statusStyle, hideErrors, statusStyleDot)
+	}
+}
+
 func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	defer srv.Close()

@@ -5,6 +5,7 @@ import (
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -21,6 +22,7 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 				"kubepage.io/name":             "My App",
 				"kubepage.io/group":            testDiscoveryGroup,
 				"kubepage.io/description":      "An app",
+				"kubepage.io/icon":             "grafana",
 			},
 		},
 		Spec: networkingv1.IngressSpec{
@@ -67,6 +69,9 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 	}
 	if app.Name != "My App" || app.Group != testDiscoveryGroup || app.Description != "An app" || app.Href != "https://app.example.invalid/" {
 		t.Errorf("app service = %+v, want name/group/description/https href derived from TLS", app)
+	}
+	if app.IconURL != IconURL(strPtr("grafana")) {
+		t.Errorf("app.IconURL = %q, want the resolved icon annotation", app.IconURL)
 	}
 
 	bare, ok := byKey["discovery/"+testNamespace+"/bare"]
@@ -134,5 +139,22 @@ func TestIngressHrefNoRules(t *testing.T) {
 	ing := &networkingv1.Ingress{}
 	if got := ingressHref(ing); got != "" {
 		t.Errorf("ingressHref(no rules) = %q, want empty", got)
+	}
+}
+
+func TestDiscoverServicesListError(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	failing := errInjectingReader{
+		Reader: cl,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*networkingv1.IngressList)
+			return ok
+		},
+	}
+
+	_, err := discoverServices(t.Context(), failing, testNamespace, pagev1alpha1.DiscoverySpec{})
+	if err == nil {
+		t.Fatal("discoverServices() error = nil, want non-nil when listing Ingresses fails")
 	}
 }

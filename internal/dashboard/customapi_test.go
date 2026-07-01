@@ -25,7 +25,7 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 			config:     `{"mappings":[{"label":"First","jsonpath":"items.0.name"}]}`,
 			response:   `{"items":[{"name":"alpha"},{"name":"beta"}]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: testLabelFirst, Value: "alpha"}},
+			want:       []Field{{Label: testLabelFirst, Value: testValueAlpha}},
 		},
 		"missing path yields unknown": {
 			config:     `{"mappings":[{"label":"Missing","jsonpath":"nope.nope"}]}`,
@@ -47,6 +47,18 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 		"missing mappings": {
 			config:  `{}`,
 			wantErr: true,
+		},
+		"bool and object values": {
+			config:     `{"mappings":[{"label":"Ready","jsonpath":"ready"},{"label":"Extra","jsonpath":"nested"}]}`,
+			response:   `{"ready":true,"nested":{"a":1}}`,
+			statusCode: http.StatusOK,
+			want:       []Field{{Label: "Ready", Value: "true"}, {Label: "Extra", Value: `{"a":1}`}},
+		},
+		"null value formats as empty string": {
+			config:     `{"mappings":[{"label":"Missing","jsonpath":"missing"}]}`,
+			response:   `{"missing":null}`,
+			statusCode: http.StatusOK,
+			want:       []Field{{Label: "Missing", Value: ""}},
 		},
 	}
 
@@ -81,6 +93,21 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 func TestCustomAPIWidgetPollMissingURL(t *testing.T) {
 	if _, err := (customAPIWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{Config: []byte(`{"mappings":[]}`)}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
+	}
+}
+
+func TestCustomAPIWidgetPollMissingConfig(t *testing.T) {
+	if _, err := (customAPIWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: "http://example.invalid"}); err == nil {
+		t.Fatal("Poll() expected error for empty Config, got nil")
+	}
+}
+
+func TestCustomAPIWidgetPollMalformedConfig(t *testing.T) {
+	_, err := (customAPIWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
+		URL: "http://example.invalid", Config: []byte(`{not valid json`),
+	})
+	if err == nil {
+		t.Fatal("Poll() expected error for malformed Config JSON, got nil")
 	}
 }
 
@@ -124,7 +151,7 @@ func TestJSONPathLookup(t *testing.T) {
 	body := map[string]any{
 		"status":      "ok",
 		testLabelDisk: map[string]any{"used": 42.5},
-		"items":       []any{map[string]any{"name": "alpha"}},
+		"items":       []any{map[string]any{"name": testValueAlpha}},
 	}
 
 	tests := map[string]struct {
@@ -132,13 +159,14 @@ func TestJSONPathLookup(t *testing.T) {
 		want   any
 		wantOK bool
 	}{
-		"top-level":      {"status", "ok", true},
-		"nested":         {"disk.used", 42.5, true},
-		"array index":    {"items.0.name", "alpha", true},
-		"missing key":    {"nope", nil, false},
-		"index oob":      {"items.5", nil, false},
-		"index not int":  {"items.x", nil, false},
-		"through scalar": {"status.nope", nil, false},
+		"top-level":             {"status", "ok", true},
+		"nested":                {"disk.used", 42.5, true},
+		"array index":           {"items.0.name", testValueAlpha, true},
+		"missing key":           {"nope", nil, false},
+		"index oob":             {"items.5", nil, false},
+		"index not int":         {"items.x", nil, false},
+		"through scalar":        {"status.nope", nil, false},
+		"leading empty segment": {".status", "ok", true},
 	}
 
 	for name, tc := range tests {

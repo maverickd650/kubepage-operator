@@ -1187,6 +1187,29 @@ func TestServerHeaderRendersLogoWidget(t *testing.T) {
 	}
 }
 
+func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
+	logo := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        headerTypeLogo,
+			Icon:        strPtr("https://example.invalid/logo.png"),
+		},
+	}
+	srv := newTestServer(t, NewStore(), logo)
+	req := httptest.NewRequest(http.MethodGet, "/header", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `src="https://example.invalid/logo.png"`) {
+		t.Errorf("header body missing logo image:\n%s", body)
+	}
+	if strings.Contains(body, "<a href=") {
+		t.Errorf("header body has a link wrapper with no href option configured:\n%s", body)
+	}
+}
+
 func strPtr(s string) *string { return &s }
 
 // TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders guards 1.6's
