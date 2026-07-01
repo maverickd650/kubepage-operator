@@ -290,6 +290,16 @@ func boundConfigurationSpec(ctx context.Context, reader client.Reader, namespace
 }
 
 func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
+	applyLookFields(site, spec)
+	applySearch(site, spec.Search)
+	applyLayout(site, spec.Layout)
+	applyBehaviorFields(site, spec)
+}
+
+// applyLookFields applies the Configuration fields governing the page's
+// visual identity: title/description/favicon/card look, theme/color/header
+// style, language, layout width, and background image.
+func applyLookFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.Title != nil {
 		site.Title = *spec.Title
 	}
@@ -332,45 +342,60 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 		}
 		site.Background = bg
 	}
-	if s := spec.Search; s != nil {
-		if s.Provider != nil {
-			site.Search.Provider = *s.Provider
-		}
-		if s.URL != nil && isHTTPURL(*s.URL) {
-			// The CRD schema's Pattern marker already rejects non-http(s)
-			// URLs at apply time, but re-check here defensively: this value
-			// is passed straight into a client-side window.open()/href, so a
-			// non-http(s) scheme (e.g. "javascript:") would be a stored
-			// script-injection vector, and existing CRs predate the schema
-			// change.
-			site.Search.URL = *s.URL
-		}
-		if s.Target != nil {
-			site.Search.Target = *s.Target
-		}
-		if s.FilterCards != nil {
-			site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
-		}
+}
+
+// applySearch applies the Configuration's header search box settings, if set.
+func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
+	if s == nil {
+		return
 	}
-	if spec.Layout != nil {
-		tabs := make([]LayoutTab, 0, len(spec.Layout))
-		for _, t := range spec.Layout {
-			groups := make([]LayoutGroup, 0, len(t.Groups))
-			for _, g := range t.Groups {
-				groups = append(groups, LayoutGroup{
-					Name:               g.Name,
-					Columns:            g.Columns,
-					Style:              stringOrEmpty(g.Style),
-					IconURL:            IconURL(g.Icon),
-					Header:             boolFromEnum(g.Header, pagev1alpha1.HeaderShown),
-					InitiallyCollapsed: boolFromEnum(g.InitiallyCollapsed, pagev1alpha1.CollapseCollapsed),
-					UseEqualHeights:    boolFromEnum(g.UseEqualHeights, pagev1alpha1.HeightsEqual),
-				})
-			}
-			tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
-		}
-		site.Layout = tabs
+	if s.Provider != nil {
+		site.Search.Provider = *s.Provider
 	}
+	if s.URL != nil && isHTTPURL(*s.URL) {
+		// The CRD schema's Pattern marker already rejects non-http(s) URLs at
+		// apply time, but re-check here defensively: this value is passed
+		// straight into a client-side window.open()/href, so a non-http(s)
+		// scheme (e.g. "javascript:") would be a stored script-injection
+		// vector, and existing CRs predate the schema change.
+		site.Search.URL = *s.URL
+	}
+	if s.Target != nil {
+		site.Search.Target = *s.Target
+	}
+	if s.FilterCards != nil {
+		site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
+	}
+}
+
+// applyLayout resolves the Configuration's Layout tabs/groups, if set.
+func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
+	if layout == nil {
+		return
+	}
+	tabs := make([]LayoutTab, 0, len(layout))
+	for _, t := range layout {
+		groups := make([]LayoutGroup, 0, len(t.Groups))
+		for _, g := range t.Groups {
+			groups = append(groups, LayoutGroup{
+				Name:               g.Name,
+				Columns:            g.Columns,
+				Style:              stringOrEmpty(g.Style),
+				IconURL:            IconURL(g.Icon),
+				Header:             boolFromEnum(g.Header, pagev1alpha1.HeaderShown),
+				InitiallyCollapsed: boolFromEnum(g.InitiallyCollapsed, pagev1alpha1.CollapseCollapsed),
+				UseEqualHeights:    boolFromEnum(g.UseEqualHeights, pagev1alpha1.HeightsEqual),
+			})
+		}
+		tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
+	}
+	site.Layout = tabs
+}
+
+// applyBehaviorFields applies the Configuration fields governing dashboard
+// behavior rather than look: collapsibility, bookmark/indexing/PWA
+// settings, injected CSS/JS, and the site-wide status/error/version defaults.
+func applyBehaviorFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.DisableCollapse != nil {
 		site.DisableCollapse = *spec.DisableCollapse == pagev1alpha1.Disabled
 	}

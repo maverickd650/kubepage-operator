@@ -344,7 +344,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "bm2", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup, Name: "First", Href: "https://example.invalid/1", Order: &order1,
+			Group:       testBookmarkGroup, Name: testLabelFirst, Href: "https://example.invalid/1", Order: &order1,
 		},
 	}
 	other := &pagev1alpha1.Bookmark{
@@ -364,7 +364,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 		t.Fatalf("BookmarkGroups = %+v", site.BookmarkGroups)
 	}
 	bms := site.BookmarkGroups[0].Bookmarks
-	if len(bms) != 2 || bms[0].Name != "First" || bms[1].Name != "Second" {
+	if len(bms) != 2 || bms[0].Name != testLabelFirst || bms[1].Name != "Second" {
 		t.Errorf("Bookmarks = %+v, want First then Second (ordered by Order)", bms)
 	}
 }

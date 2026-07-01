@@ -85,7 +85,7 @@ func (customAPIWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 // a non-negative integer as an array index. Returns ok=false for any missing
 // key, out-of-range index, or a path that indexes through a scalar.
 func jsonPathLookup(value any, path string) (any, bool) {
-	for _, segment := range strings.Split(path, ".") {
+	for segment := range strings.SplitSeq(path, ".") {
 		if segment == "" {
 			continue
 		}

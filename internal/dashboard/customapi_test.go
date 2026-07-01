@@ -25,7 +25,7 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 			config:     `{"mappings":[{"label":"First","jsonpath":"items.0.name"}]}`,
 			response:   `{"items":[{"name":"alpha"},{"name":"beta"}]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "First", Value: "alpha"}},
+			want:       []Field{{Label: testLabelFirst, Value: "alpha"}},
 		},
 		"missing path yields unknown": {
 			config:     `{"mappings":[{"label":"Missing","jsonpath":"nope.nope"}]}`,
@@ -122,9 +122,9 @@ func TestCustomAPIWidgetPollBearerToken(t *testing.T) {
 
 func TestJSONPathLookup(t *testing.T) {
 	body := map[string]any{
-		"status": "ok",
-		"disk":   map[string]any{"used": 42.5},
-		"items":  []any{map[string]any{"name": "alpha"}},
+		"status":      "ok",
+		testLabelDisk: map[string]any{"used": 42.5},
+		"items":       []any{map[string]any{"name": "alpha"}},
 	}
 
 	tests := map[string]struct {

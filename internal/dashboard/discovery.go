@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -37,6 +36,11 @@ const (
 // defaultDiscoveryGroup is the Group a discovered card renders under when
 // its Ingress sets no group annotation.
 const defaultDiscoveryGroup = "Discovered"
+
+// annotationValueTrue is the boolean-flag value Ingress annotations use for
+// "enabled"/"ping" (e.g. "kubepage.io/enabled: \"true\""), matching
+// homepage's own annotation convention.
+const annotationValueTrue = "true"
 
 // discoveredService is a service card synthesized from an annotated Ingress,
 // good for exactly what an Ingress annotation can safely carry: title/icon/
@@ -99,10 +103,10 @@ func discoverServices(ctx context.Context, reader client.Reader, namespace strin
 			IconURL:     iconURL,
 			Description: ann[discoveryAnnDescription],
 			Href:        href,
-			Ping:        ann[discoveryAnnPing] == "true",
+			Ping:        ann[discoveryAnnPing] == annotationValueTrue,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	slices.SortFunc(out, func(a, b discoveredService) int { return strings.Compare(a.Key, b.Key) })
 	return out, nil
 }
 
@@ -114,10 +118,10 @@ func discoverServices(ctx context.Context, reader client.Reader, namespace strin
 // field, so a partially-relabeled Ingress can't end up with fields from both
 // conventions.
 func discoveryAnnotations(annotations map[string]string, prefix string, homepageCompat bool) (map[string]string, bool) {
-	if annotations[prefix+discoveryAnnEnabled] == "true" {
+	if annotations[prefix+discoveryAnnEnabled] == annotationValueTrue {
 		return stripAnnotationPrefix(annotations, prefix), true
 	}
-	if homepageCompat && annotations[homepageDiscoveryPrefix+discoveryAnnEnabled] == "true" {
+	if homepageCompat && annotations[homepageDiscoveryPrefix+discoveryAnnEnabled] == annotationValueTrue {
 		return stripAnnotationPrefix(annotations, homepageDiscoveryPrefix), true
 	}
 	return nil, false

@@ -671,7 +671,7 @@ func TestLayoutTabsAppliesGroupOverridePointers(t *testing.T) {
 func TestServerFragmentRendersTabs(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
-	store.Set(Card{Key: "ns/b/0", Group: "Apps", ServiceName: "Svc B"})
+	store.Set(Card{Key: "ns/b/0", Group: testDiscoveryGroup, ServiceName: "Svc B"})
 
 	cols := int32(2)
 	cfg := &pagev1alpha1.Configuration{
@@ -994,7 +994,7 @@ func TestServerFragmentRendersHighlightedStatClasses(t *testing.T) {
 		Fields: []Field{
 			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
-			{Label: "disk", Value: "3", Highlight: HighlightDanger},
+			{Label: testLabelDisk, Value: "3", Highlight: HighlightDanger},
 		},
 	})
 	srv := newTestServer(t, store)
@@ -1017,7 +1017,7 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 		Fields: []Field{
 			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
-			{Label: "disk", Value: "3", Highlight: HighlightDanger},
+			{Label: testLabelDisk, Value: "3", Highlight: HighlightDanger},
 		},
 	})
 	weather := &pagev1alpha1.InfoWidget{

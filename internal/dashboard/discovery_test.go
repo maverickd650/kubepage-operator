@@ -17,10 +17,10 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "app", Namespace: testNamespace,
 			Annotations: map[string]string{
-				"kubepage.io/enabled":     "true",
-				"kubepage.io/name":        "My App",
-				"kubepage.io/group":       "Apps",
-				"kubepage.io/description": "An app",
+				testDiscoveryEnabledAnnotation: annotationValueTrue,
+				"kubepage.io/name":             "My App",
+				"kubepage.io/group":            testDiscoveryGroup,
+				"kubepage.io/description":      "An app",
 			},
 		},
 		Spec: networkingv1.IngressSpec{
@@ -31,7 +31,7 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 	noDefaultName := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "bare", Namespace: testNamespace,
-			Annotations: map[string]string{"kubepage.io/enabled": "true"},
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue},
 		},
 		Spec: networkingv1.IngressSpec{Rules: []networkingv1.IngressRule{{Host: "bare.example.invalid"}}},
 	}
@@ -41,8 +41,8 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 	}
 	otherNamespace := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "other-ns", Namespace: "other",
-			Annotations: map[string]string{"kubepage.io/enabled": "true"},
+			Name: "other-ns", Namespace: testNameOther,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue},
 		},
 	}
 
@@ -65,7 +65,7 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 	if !ok {
 		t.Fatalf("discoverServices() missing app entry: %+v", services)
 	}
-	if app.Name != "My App" || app.Group != "Apps" || app.Description != "An app" || app.Href != "https://app.example.invalid/" {
+	if app.Name != "My App" || app.Group != testDiscoveryGroup || app.Description != "An app" || app.Href != "https://app.example.invalid/" {
 		t.Errorf("app service = %+v, want name/group/description/https href derived from TLS", app)
 	}
 
@@ -84,7 +84,7 @@ func TestDiscoverServicesHomepageCompat(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "legacy", Namespace: testNamespace,
 			Annotations: map[string]string{
-				"gethomepage.dev/enabled": "true",
+				"gethomepage.dev/enabled": annotationValueTrue,
 				"gethomepage.dev/name":    "Legacy App",
 			},
 		},
@@ -115,7 +115,7 @@ func TestDiscoverServicesCustomAnnotationPrefix(t *testing.T) {
 	ing := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "custom", Namespace: testNamespace,
-			Annotations: map[string]string{"acme.io/enabled": "true", "acme.io/name": "Custom"},
+			Annotations: map[string]string{"acme.io/enabled": annotationValueTrue, "acme.io/name": testCustomName},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ing).Build()
@@ -125,7 +125,7 @@ func TestDiscoverServicesCustomAnnotationPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoverServices() error = %v", err)
 	}
-	if len(services) != 1 || services[0].Name != "Custom" {
+	if len(services) != 1 || services[0].Name != testCustomName {
 		t.Fatalf("discoverServices() with custom prefix = %+v, want one Custom entry", services)
 	}
 }

@@ -32,6 +32,19 @@ const (
 	testOpenMeteoType  = "openmeteo"
 	testClockName      = "clock"
 	testInfraGroup     = "Infra"
+
+	// Shared literals across customapi/discovery fixtures.
+	testLabelFirst        = "First"
+	testLabelDisk         = "disk"
+	testDiscoveryGroup    = "Apps"
+	testDiscoveredAppName = "App"
+	testCustomName        = "Custom"
+	testNameOther         = "other"
+
+	// testDiscoveryEnabledAnnotation is the full annotation key an Ingress
+	// carries to opt into discovery.go's discovery, built from the same
+	// constants the production code uses so it can't drift from them.
+	testDiscoveryEnabledAnnotation = defaultDiscoveryPrefix + discoveryAnnEnabled
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.

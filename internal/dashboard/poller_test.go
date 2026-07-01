@@ -729,7 +729,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 	if card.Target != target {
 		t.Errorf("card.Target = %q, want %q", card.Target, target)
 	}
-	if len(card.Fields) != 1 || card.Fields[0].Label != "Custom" {
+	if len(card.Fields) != 1 || card.Fields[0].Label != testCustomName {
 		t.Errorf("card.Fields = %+v, want a single Custom-labeled field (proves widget.Config.Raw reached the widget)", card.Fields)
 	}
 }
@@ -997,13 +997,13 @@ func TestPollerDiscoverySpecMissingInstance(t *testing.T) {
 }
 
 func TestPollerPollDiscoveredServiceStoresCard(t *testing.T) {
-	svc := discoveredService{Key: "discovery/ns/app", Group: "Apps", Name: "App", Href: "https://app.invalid"}
+	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: "https://app.invalid"}
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
 	p.pollDiscoveredService(t.Context(), svc, func(string) {})
 
 	cards := store.Snapshot()
-	if len(cards) != 1 || cards[0].ServiceName != "App" || cards[0].Group != "Apps" || cards[0].Status != "" {
+	if len(cards) != 1 || cards[0].ServiceName != testDiscoveredAppName || cards[0].Group != testDiscoveryGroup || cards[0].Status != "" {
 		t.Fatalf("Snapshot() = %+v, want an unmonitored App card (Ping unset)", cards)
 	}
 }
@@ -1012,7 +1012,7 @@ func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	defer srv.Close()
 
-	svc := discoveredService{Key: "discovery/ns/app", Group: "Apps", Name: "App", Href: srv.URL, Ping: true}
+	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: srv.URL, Ping: true}
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
 
@@ -1039,7 +1039,7 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	ing := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "app", Namespace: testNamespace,
-			Annotations: map[string]string{"kubepage.io/enabled": "true", "kubepage.io/name": "Discovered App"},
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, "kubepage.io/name": "Discovered App"},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, ing).Build()
