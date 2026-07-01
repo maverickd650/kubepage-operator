@@ -114,6 +114,15 @@ type ServiceWidget struct {
 	// secrets are secret-bearing widget fields (commonly "token", sometimes
 	// "username"/"password" depending on widget type), resolved directly by
 	// the dashboard backend rather than stored inline.
+	//
+	// RBAC note: creating a ServiceEntry that references a secretKeyRef
+	// grants no RBAC to the creator, but it does let the dashboard pod read
+	// that Secret and send its plaintext value to this widget's own url —
+	// so anyone who can create a ServiceEntry in this namespace can read any
+	// Secret in it by pointing url at a server they control, without ever
+	// needing "get secrets" themselves. Only grant ServiceEntry create
+	// access to principals you'd also trust with every Secret in the
+	// namespace.
 	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
@@ -173,6 +182,7 @@ type ServiceEntrySpec struct {
 	Order *int32 `json:"order,omitempty"`
 
 	// href makes the card's title a link to the service.
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +optional

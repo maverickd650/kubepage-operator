@@ -341,7 +341,7 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(t.Context(), entry)
+	status, style, latency := p.monitor(t.Context(), entry, func(string) {})
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
@@ -696,7 +696,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	url := srv.URL
 	description := "a description"
-	target := testTargetSelf
+	target := targetSelf
 	entry := pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 func init() {
@@ -52,7 +53,18 @@ type unifiSession struct {
 	cookies   []*http.Cookie
 	csrfToken string
 	isUDM     bool
+
+	// lastUsed drives unifiSessionCache's TTL eviction (see
+	// pruneUnifiSessions): unlike Store, this package-level cache has no
+	// per-poll-cycle Prune to remove an entry whose ServiceEntry was
+	// deleted or had its URL/username edited, so it would otherwise grow
+	// forever.
+	lastUsed time.Time
 }
+
+// unifiSessionTTL bounds how long a cached session survives without being
+// reused. See unifiSession.lastUsed.
+const unifiSessionTTL = 30 * time.Minute
 
 // unifiSessionCache keeps one session per (URL, username) so a stateful
 // login only happens once per target, not on every poll interval — UniFi
@@ -65,6 +77,41 @@ var unifiSessionCache = struct {
 
 func unifiSessionKey(url, username string) string {
 	return url + "|" + username
+}
+
+// pruneUnifiSessions evicts any cached session unused for longer than
+// unifiSessionTTL, called once per Poll so a ServiceEntry that's deleted or
+// changes URL/username doesn't leave its old session cached indefinitely.
+func pruneUnifiSessions(now time.Time) {
+	unifiSessionCache.mu.Lock()
+	defer unifiSessionCache.mu.Unlock()
+	for k, s := range unifiSessionCache.sessions {
+		if now.Sub(s.lastUsed) > unifiSessionTTL {
+			delete(unifiSessionCache.sessions, k)
+		}
+	}
+}
+
+// storeUnifiSession caches session under key, stamped with the current time
+// so pruneUnifiSessions won't immediately evict it.
+func storeUnifiSession(key string, session *unifiSession) {
+	session.lastUsed = time.Now()
+	unifiSessionCache.mu.Lock()
+	unifiSessionCache.sessions[key] = session
+	unifiSessionCache.mu.Unlock()
+}
+
+// loadUnifiSession returns the cached session for key, if any, touching its
+// lastUsed time so an actively-polled target's session survives
+// pruneUnifiSessions regardless of unifiSessionTTL.
+func loadUnifiSession(key string) *unifiSession {
+	unifiSessionCache.mu.Lock()
+	defer unifiSessionCache.mu.Unlock()
+	session := unifiSessionCache.sessions[key]
+	if session != nil {
+		session.lastUsed = time.Now()
+	}
+	return session
 }
 
 type unifiHealthResponse struct {
@@ -96,13 +143,12 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		site = "default"
 	}
 
-	client := unifiHTTPClient(httpClient, unifiCfg.InsecureTLS)
 	baseURL := strings.TrimRight(cfg.URL, "/")
+	client := unifiHTTPClient(httpClient, baseURL, unifiCfg.InsecureTLS)
 	key := unifiSessionKey(baseURL, username)
 
-	unifiSessionCache.mu.Lock()
-	session := unifiSessionCache.sessions[key]
-	unifiSessionCache.mu.Unlock()
+	pruneUnifiSessions(time.Now())
+	session := loadUnifiSession(key)
 
 	if session == nil {
 		var err error
@@ -110,9 +156,7 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		if err != nil {
 			return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 		}
-		unifiSessionCache.mu.Lock()
-		unifiSessionCache.sessions[key] = session
-		unifiSessionCache.mu.Unlock()
+		storeUnifiSession(key, session)
 	}
 
 	resp, err := unifiFetchHealth(ctx, client, baseURL, site, session)
@@ -127,9 +171,7 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		if err != nil {
 			return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 		}
-		unifiSessionCache.mu.Lock()
-		unifiSessionCache.sessions[key] = session
-		unifiSessionCache.mu.Unlock()
+		storeUnifiSession(key, session)
 
 		resp, err = unifiFetchHealth(ctx, client, baseURL, site, session)
 		if err != nil {
@@ -165,18 +207,40 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 	}, nil
 }
 
+// unifiInsecureClientCache holds one *http.Client per baseURL for
+// insecureTLS controllers, so unifiHTTPClient builds (and keeps open
+// connections in) a fresh *http.Transport once per target rather than on
+// every poll — an insecureTLS controller was otherwise paying full TLS
+// handshake cost each cycle instead of reusing keep-alive connections like
+// every other widget.
+var unifiInsecureClientCache = struct {
+	mu      sync.Mutex
+	clients map[string]*http.Client
+}{clients: map[string]*http.Client{}}
+
 // unifiHTTPClient returns client unchanged unless insecureTLS is set, in
-// which case it returns a separate client with certificate verification
-// disabled — built fresh rather than mutating client, since client is the
-// single *http.Client shared by every widget poll and must stay safe for
-// the controllers that don't need this opt-out.
-func unifiHTTPClient(client *http.Client, insecureTLS bool) *http.Client {
+// which case it returns a cached (or newly built and cached) client for
+// baseURL with certificate verification disabled — separate from client
+// since that's the single *http.Client shared by every widget poll and must
+// stay safe for the controllers that don't need this opt-out. The returned
+// client still goes through newGuardedTransport's link-local dial guard,
+// same as client itself.
+func unifiHTTPClient(client *http.Client, baseURL string, insecureTLS bool) *http.Client {
 	if !insecureTLS {
 		return client
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	return &http.Client{Timeout: client.Timeout, Transport: transport}
+
+	unifiInsecureClientCache.mu.Lock()
+	defer unifiInsecureClientCache.mu.Unlock()
+	if c, ok := unifiInsecureClientCache.clients[baseURL]; ok {
+		return c
+	}
+
+	transport := newGuardedTransport(nil)
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit per-widget opt-in, see unifiConfig.InsecureTLS
+	c := &http.Client{Timeout: client.Timeout, Transport: transport}
+	unifiInsecureClientCache.clients[baseURL] = c
+	return c
 }
 
 // unifiLogin authenticates against baseURL, trying the UniFi OS (UDM/UDM-Pro

@@ -31,7 +31,6 @@ const (
 	testAppLabelValue  = "demo"
 	testOpenMeteoType  = "openmeteo"
 	testClockName      = "clock"
-	testTargetSelf     = "_self"
 	testInfraGroup     = "Infra"
 )
 

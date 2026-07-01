@@ -250,6 +250,8 @@ var _ = Describe("Instance controller", func() {
 				"--namespace="+namespace.Name,
 				"--instance-name="+InstanceName,
 				"--addr=:8080",
+				"--metrics-addr=:9090",
+				"--poll-interval=15s",
 			))
 			Expect(dep.Spec.Template.Spec.Containers[0].Image).To(Equal(testDashboardImage))
 

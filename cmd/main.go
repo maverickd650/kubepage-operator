@@ -344,11 +344,14 @@ func gatewayAPIAvailable(cfg *rest.Config) (bool, error) {
 // as its first argument instead of the manager's reconcile loop.
 func runDashboard(args []string) {
 	fs := flag.NewFlagSet("dashboard", flag.ExitOnError)
-	var namespace, instanceName, addr string
+	var namespace, instanceName, addr, metricsAddr string
 	var pollInterval time.Duration
 	fs.StringVar(&namespace, "namespace", "", "Namespace of the Instance to serve a dashboard for.")
 	fs.StringVar(&instanceName, "instance-name", "", "Name of the Instance to serve a dashboard for.")
 	fs.StringVar(&addr, "addr", ":8080", "The address the dashboard HTTP server binds to.")
+	metricsAddrUsage := "The address the /metrics endpoint binds to, kept separate from --addr " +
+		"so Prometheus metrics aren't reachable through the Instance's public Ingress/Gateway."
+	fs.StringVar(&metricsAddr, "metrics-addr", ":9090", metricsAddrUsage)
 	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(fs)
@@ -370,6 +373,7 @@ func runDashboard(args []string) {
 		Namespace:    namespace,
 		InstanceName: instanceName,
 		Addr:         addr,
+		MetricsAddr:  metricsAddr,
 		PollInterval: pollInterval,
 	}); err != nil {
 		setupLog.Error(err, "Failed to run dashboard")

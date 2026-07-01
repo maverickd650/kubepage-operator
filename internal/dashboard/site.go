@@ -166,7 +166,7 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Title:       defaultTitle,
 		Target:      defaultTarget,
 		StartURL:    "/",
-		Search:      Search{Provider: "duckduckgo", Target: "_blank", FilterCards: true},
+		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true},
 	}
 
 	var configs pagev1alpha1.ConfigurationList

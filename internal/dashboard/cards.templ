@@ -25,7 +25,13 @@ templ serviceCardView(c Card, siteTarget string) {
 		<h3>
 			@icon(c.IconURL)
 			if c.Href != "" {
-				<a href={ c.Href } target={ cardTarget(c, siteTarget) }>{ c.ServiceName }</a>
+				<a
+					href={ c.Href }
+					target={ cardTarget(c, siteTarget) }
+					if isNewTabTarget(cardTarget(c, siteTarget)) {
+						rel="noopener noreferrer"
+					}
+				>{ c.ServiceName }</a>
 			} else {
 				{ c.ServiceName }
 			}
@@ -68,6 +74,9 @@ templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
 		class={ "card", "bookmark", templ.KV("bookmark-icons-only", iconsOnly) }
 		href={ b.Href }
 		target={ siteTarget }
+		if isNewTabTarget(siteTarget) {
+			rel="noopener noreferrer"
+		}
 		data-name={ b.Name }
 		data-description={ b.Description }
 		title={ b.Name }

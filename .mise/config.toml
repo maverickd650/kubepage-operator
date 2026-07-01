@@ -169,6 +169,70 @@ mkdir -p dist
 kustomize build config/default > dist/install.yaml
 '''
 
+[tasks.helm-chart-refresh]
+description = "Regenerate dist/chart/ from config/ via kubebuilder's helm/v2-alpha plugin, preserving hand-tuned templates"
+depends = ["build-installer"]
+run = '''
+set -euo pipefail
+
+# The helm/v2-alpha plugin always shells out to `make manifests`, `make
+# generate`, and `make build-installer`, but this project has no Makefile —
+# mise tasks are the only source of truth (see CLAUDE.md). Shim one in for
+# the duration of this task that just delegates back to mise.
+cat > Makefile <<'MAKEFILE'
+manifests:
+	mise run manifests
+generate:
+	mise run generate
+build-installer:
+	mise run build-installer
+MAKEFILE
+
+# config/admission's ValidatingAdmissionPolicy/Binding pairs (secret-source,
+# widget-type, serviceentry-monitor-source) are a custom addition on top of
+# the stock kubebuilder scaffold, hand-translated into Helm templates gated
+# on .Values.admissionPolicies.enabled. Confirmed empirically (not just from
+# --help text): the plugin does NOT leave these alone — it emits its own
+# Binding-only, ungated templates under templates/extras/, each with an
+# invalid `namespace:` field on a cluster-scoped kind, duplicating (and
+# conflicting with) the hand-authored Policy+Binding pairs here. Back up and
+# restore the real ones, then delete whatever the plugin dropped in
+# templates/extras/ outright — it's never something to keep. If
+# config/admission gains a new policy, add its chart template by hand
+# (mirroring an existing one in dist/chart/templates/admission/) — this task
+# can't create it for you.
+preserved="dist/chart/templates/admission/secret-source-policy.yaml dist/chart/templates/admission/widget-type-policy.yaml dist/chart/templates/admission/serviceentry-monitor-source-policy.yaml"
+backup_dir="$(mktemp -d)"
+trap 'rm -f Makefile; rm -rf "$backup_dir"' EXIT
+for f in $preserved; do
+  mkdir -p "$backup_dir/$(dirname "$f")"
+  cp "$f" "$backup_dir/$f"
+done
+
+kubebuilder edit --plugins=helm/v2-alpha
+
+echo "--- upstream drift in preserved templates (discarded below; review if kubebuilder/the plugin was upgraded) ---"
+for f in $preserved; do
+  diff -u "$backup_dir/$f" "$f" || true
+  cp "$backup_dir/$f" "$f"
+done
+
+# See the comment above: these duplicate the admission Policy+Binding pairs
+# with an invalid namespace field and no admissionPolicies.enabled gate.
+rm -rf dist/chart/templates/extras
+
+# The plugin also scaffolds a Test-Chart workflow assuming this project's
+# stock kubebuilder Makefile targets (make docker-build, make install-helm,
+# make helm-deploy, ...), none of which exist here — mise tasks are the only
+# source of truth (see CLAUDE.md) — and chart linting/deploy is already
+# covered by test-e2e.yml's own `helm lint dist/chart` step. Never keep it.
+rm -f .github/workflows/test-chart.yml
+
+helm lint dist/chart
+echo "--- dist/chart diff ---"
+git diff --stat -- dist/chart dist/install.yaml .github/workflows
+'''
+
 ##@ Deployment
 
 [tasks.install]

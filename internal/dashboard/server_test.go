@@ -113,17 +113,19 @@ func TestServerFragmentRendersStatsRow(t *testing.T) {
 	}
 }
 
-func TestServerMetricsRoute(t *testing.T) {
+// TestServerMetricsRouteNotExposed asserts /metrics is not reachable on the
+// Server's own router: it's served on a separate listener (dashboard.go's
+// Run, on Options.MetricsAddr) specifically so it can't be exposed through
+// the same Ingress/HTTPRoute as the dashboard's main port. See
+// dashboardMetricsPort's doc comment in internal/controller.
+func TestServerMetricsRouteNotExposed(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "go_goroutines") {
-		t.Errorf("/metrics body missing expected Prometheus Go-runtime metric:\n%s", rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (metrics should not be served on the main router)", rec.Code)
 	}
 }
 
@@ -356,7 +358,7 @@ func TestServerFragmentRendersMonitorAndTarget(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
 		Key: "ns/svc/0", Group: testGroup, ServiceName: testSvcDisplayName,
-		Href: "https://svc.invalid", Target: testTargetSelf,
+		Href: "https://svc.invalid", Target: targetSelf,
 		Status: "Up", StatusStyle: testStatusBasic, Latency: "5ms",
 		ShowStats: true,
 	})
@@ -372,6 +374,71 @@ func TestServerFragmentRendersMonitorAndTarget(t *testing.T) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
 	}
+}
+
+// TestServerFragmentNewTabLinksCarryNoopenerNoreferrer guards against
+// reverse-tabnabbing/Referer-leak regressions: a card or bookmark whose
+// link opens a new browsing context (target="_blank") must carry
+// rel="noopener noreferrer" (see isNewTabTarget), while one that stays in
+// the same tab (target="_self") must not.
+func TestServerFragmentNewTabLinksCarryNoopenerNoreferrer(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/blank/0", Group: testGroup, ServiceName: "BlankCard",
+		Href: "https://blank.invalid", Target: defaultTarget, ShowStats: true,
+	})
+	store.Set(Card{
+		Key: "ns/self/0", Group: testGroup, ServiceName: "SelfCard",
+		Href: "https://self.invalid", Target: targetSelf, ShowStats: true,
+	})
+
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Group:       testBookmarkGroup,
+			Name:        "Handbook",
+			Href:        "https://docs.invalid",
+		},
+	}
+
+	srv := newTestServer(t, store, bookmark)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if got := openingTag(t, body, `href="https://blank.invalid"`); !strings.Contains(got, `rel="noopener noreferrer"`) {
+		t.Errorf("card with target=_blank missing rel=noopener noreferrer, got tag:\n%s", got)
+	}
+	if got := openingTag(t, body, `href="https://self.invalid"`); strings.Contains(got, "rel=") {
+		t.Errorf("card with target=_self should not carry a rel attribute, got tag:\n%s", got)
+	}
+	// The bookmark's own target defaults to the site default ("_blank"),
+	// so its link should also carry rel="noopener noreferrer".
+	if got := openingTag(t, body, `href="https://docs.invalid"`); !strings.Contains(got, `rel="noopener noreferrer"`) {
+		t.Errorf("bookmark card missing rel=noopener noreferrer, got tag:\n%s", got)
+	}
+}
+
+// openingTag returns the `<a ...>` opening tag containing marker (e.g. a
+// specific href="..." attribute), for asserting on other attributes of that
+// same tag (like rel=) without depending on byte offsets into the whole body.
+func openingTag(t *testing.T, body, marker string) string {
+	t.Helper()
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("marker %q not found in body:\n%s", marker, body)
+	}
+	start := strings.LastIndex(body[:i], "<a ")
+	if start < 0 {
+		t.Fatalf("no preceding <a  for marker %q", marker)
+	}
+	end := strings.Index(body[start:], ">")
+	if end < 0 {
+		t.Fatalf("unterminated <a  tag for marker %q", marker)
+	}
+	return body[start : start+end+1]
 }
 
 func TestServerHeaderRendersWidgets(t *testing.T) {

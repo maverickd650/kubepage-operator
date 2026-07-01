@@ -34,6 +34,7 @@ type BookmarkSpec struct {
 	Name string `json:"name"`
 
 	// href is the bookmark's link target.
+	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +required

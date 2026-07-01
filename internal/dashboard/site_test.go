@@ -24,7 +24,7 @@ func TestLoadSiteDefaults(t *testing.T) {
 	if site.Theme != defaultTheme || site.Color != defaultColor || site.HeaderStyle != defaultHeaderStyle {
 		t.Errorf("defaults = %+v, want %s/%s/%s", site, defaultTheme, defaultColor, defaultHeaderStyle)
 	}
-	if site.Search.Provider != "duckduckgo" || site.Search.Target != "_blank" || !site.Search.FilterCards {
+	if site.Search.Provider != "duckduckgo" || site.Search.Target != defaultTarget || !site.Search.FilterCards {
 		t.Errorf("search defaults = %+v", site.Search)
 	}
 	if len(site.BookmarkGroups) != 0 {
@@ -99,7 +99,7 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 	desc := "My services"
 	favicon := "https://example.invalid/favicon.ico"
 	cardBlur := "md"
-	target := testTargetSelf
+	target := targetSelf
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -200,7 +200,7 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 	scheme := testScheme(t)
 	provider := "custom"
 	url := "https://search.invalid/q"
-	target := "_self"
+	target := targetSelf
 	filterCards := pagev1alpha1.Disabled
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},

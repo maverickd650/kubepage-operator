@@ -47,6 +47,12 @@ type InfoWidgetSpec struct {
 
 	// secrets are secret-bearing option fields. Merged into Options under the
 	// same field names once a renderer for this CRD exists.
+	//
+	// RBAC note: the same caveat as ServiceEntry's widgets.secrets applies
+	// here — see ServiceWidget.Secrets' doc comment. Anyone who can create
+	// an InfoWidget in this namespace can read any Secret in it by
+	// referencing it via secretKeyRef and pointing this widget's options at
+	// a server they control.
 	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`

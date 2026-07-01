@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
@@ -191,12 +192,36 @@ func evaluateStringRule(r pagev1alpha1.HighlightRuleSpec, value string) bool {
 	}
 }
 
+// compiledRegex caches a regexp.Compile result (success or failure) so a
+// repeated invalid pattern doesn't pay the compile cost on every poll either.
+type compiledRegex struct {
+	re  *regexp.Regexp
+	err error
+}
+
+// regexCache caches evaluateRegexRule's compiled patterns across polls,
+// keyed by the literal pattern string (including the "(?i)" prefix
+// evaluateRegexRule may add): the same HighlightRuleSpec is evaluated on
+// every poll cycle for as long as its ServiceEntry/InfoWidget exists, and
+// regexp.Compile was otherwise re-parsing the identical pattern every time.
+var regexCache sync.Map // pattern string -> compiledRegex
+
+func compileRegexCached(pattern string) (*regexp.Regexp, error) {
+	if v, ok := regexCache.Load(pattern); ok {
+		c := v.(compiledRegex) //nolint:forcetypeassert // regexCache only ever stores compiledRegex
+		return c.re, c.err
+	}
+	re, err := regexp.Compile(pattern)
+	regexCache.Store(pattern, compiledRegex{re: re, err: err})
+	return re, err
+}
+
 func evaluateRegexRule(r pagev1alpha1.HighlightRuleSpec, value string) bool {
 	pattern := r.Value
 	if r.CaseSensitive == nil || *r.CaseSensitive != pagev1alpha1.CaseSensitiveOn {
 		pattern = "(?i)" + pattern
 	}
-	re, err := regexp.Compile(pattern)
+	re, err := compileRegexCached(pattern)
 	if err != nil {
 		return false
 	}

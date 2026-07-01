@@ -68,11 +68,22 @@ func (r *InstanceReconciler) serviceForInstance(instance *pagev1alpha1.Instance)
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: selectorLabelsForInstance(),
-			Ports: []corev1.ServicePort{{
-				Name:       instanceContainerName,
-				Port:       instance.Spec.ContainerPort,
-				TargetPort: intstr.FromInt32(instance.Spec.ContainerPort),
-			}},
+			// The metrics port is exposed on the Service (so it can still be
+			// scraped in-cluster, e.g. by a PodMonitor) but, unlike the
+			// dashboard port, is never referenced by reconcileIngress/
+			// reconcileHTTPRoute — see dashboardMetricsPort's doc comment.
+			Ports: []corev1.ServicePort{
+				{
+					Name:       instanceContainerName,
+					Port:       instance.Spec.ContainerPort,
+					TargetPort: intstr.FromInt32(instance.Spec.ContainerPort),
+				},
+				{
+					Name:       dashboardMetricsPortName,
+					Port:       dashboardMetricsPort,
+					TargetPort: intstr.FromInt32(dashboardMetricsPort),
+				},
+			},
 		},
 	}
 	if err := ctrl.SetControllerReference(instance, svc, r.Scheme); err != nil {

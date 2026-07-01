@@ -92,7 +92,14 @@ func TestRunStopsAllGoroutinesOnContextCancel(t *testing.T) {
 	// a rest.Config's underlying transport). That's an intentional
 	// keep-alive/connection-reuse tradeoff, not a leak Run introduced — it
 	// would still be there with a correctly-implemented Run.
-	ignoreHTTP2ReadLoop := goleak.IgnoreTopFunction("golang.org/x/net/http2.(*clientConnReadLoop).run")
+	//
+	// IgnoreAnyFunction (not IgnoreTopFunction) is required here: a
+	// goroutine blocked reading from the connection reports a low-level
+	// runtime frame (internal/poll.runtime_pollWait) as its literal top
+	// frame, not clientConnReadLoop.run, so IgnoreTopFunction's exact-match
+	// on the outermost frame never matches this goroutine at all —
+	// IgnoreAnyFunction searches the whole stack instead.
+	ignoreHTTP2ReadLoop := goleak.IgnoreAnyFunction("golang.org/x/net/http2.(*clientConnReadLoop).run")
 
 	if err := goleak.Find(leakOpt, ignoreHTTP2ReadLoop); err != nil {
 		t.Errorf("goroutines leaked after Run() returned: %v", err)

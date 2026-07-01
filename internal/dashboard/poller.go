@@ -58,6 +58,15 @@ type Poller struct {
 	Interval     time.Duration
 	HTTPClient   *http.Client
 	Store        *Store
+
+	// monitorLabels is the set of ServiceEntry "namespace/name" labels
+	// monitorUp reported on the previous poll cycle. pollOnce diffs the
+	// current cycle's set against this to delete a label series for an
+	// entry that's since been deleted or had its monitor removed —
+	// monitorUp has no other pruning path, unlike Store's per-cycle Prune.
+	// Only ever read/written from pollOnce, which Run never calls
+	// concurrently with itself, so this needs no lock of its own.
+	monitorLabels map[string]bool
 }
 
 // Run polls once immediately, then on Interval until ctx is done.
@@ -77,7 +86,21 @@ func (p *Poller) Run(ctx context.Context) {
 }
 
 func (p *Poller) pollOnce(ctx context.Context) {
+	var keepMu sync.Mutex
 	keep := map[string]bool{}
+	markKeep := func(key string) {
+		keepMu.Lock()
+		keep[key] = true
+		keepMu.Unlock()
+	}
+
+	var monitorLabelsMu sync.Mutex
+	monitorLabels := map[string]bool{}
+	recordMonitorLabel := func(label string) {
+		monitorLabelsMu.Lock()
+		monitorLabels[label] = true
+		monitorLabelsMu.Unlock()
+	}
 
 	// run bounds how many of the closures it's given run concurrently
 	// (maxConcurrentPolls), and waits for all of them via wg.Wait below.
@@ -101,29 +124,34 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			continue
 		}
 
-		// Probe the entry's monitor (ping/siteMonitor) at most once,
-		// sequentially — it's a single cheap HTTP HEAD/GET — then attach the
-		// result to every card built for the entry. The potentially slow
-		// part, each widget's upstream API poll, runs concurrently below.
-		status, statusStyle, latency := p.monitor(ctx, entry)
+		// Each entry's monitor probe (if any) and its widget polls all run
+		// as part of the same bounded pool: probing the monitor first, then
+		// fanning its widgets out into their own run() slots, rather than
+		// probing every entry's monitor sequentially before any widget poll
+		// starts. Previously a single slow/unreachable monitor delayed every
+		// other card in the cycle by up to its full HTTP timeout.
+		run(func() {
+			status, statusStyle, latency := p.monitor(ctx, entry, recordMonitorLabel)
 
-		if len(entry.Spec.Widgets) == 0 {
-			// A service with a monitor but no widget still gets one card so
-			// its up/down status is visible.
-			if status != "" {
+			if len(entry.Spec.Widgets) == 0 {
+				// A service with a monitor but no widget still gets one card
+				// so its up/down status is visible.
+				if status == "" {
+					return
+				}
 				key := fmt.Sprintf("%s/%s/monitor", entry.Namespace, entry.Name)
-				keep[key] = true
-				run(func() { p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency) })
+				markKeep(key)
+				p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency)
+				return
 			}
-			continue
-		}
 
-		for i := range entry.Spec.Widgets {
-			key := fmt.Sprintf("%s/%s/%d", entry.Namespace, entry.Name, i)
-			keep[key] = true
-			widget := &entry.Spec.Widgets[i]
-			run(func() { p.pollWidget(ctx, key, entry, widget, status, statusStyle, latency) })
-		}
+			for i := range entry.Spec.Widgets {
+				key := fmt.Sprintf("%s/%s/%d", entry.Namespace, entry.Name, i)
+				markKeep(key)
+				widget := &entry.Spec.Widgets[i]
+				run(func() { p.pollWidget(ctx, key, entry, widget, status, statusStyle, latency) })
+			}
+		})
 	}
 
 	// Header widgets: poll InfoWidgets whose type is a registered (pollable)
@@ -141,20 +169,36 @@ func (p *Poller) pollOnce(ctx context.Context) {
 				continue
 			}
 			key := fmt.Sprintf("header/%s", iw.Name)
-			keep[key] = true
+			markKeep(key)
 			run(func() { p.pollInfoWidget(ctx, key, iw) })
 		}
 	}
 
 	wg.Wait()
 	p.Store.Prune(keep)
+	p.pruneMonitorMetrics(monitorLabels)
+}
+
+// pruneMonitorMetrics deletes any monitorUp label series from the previous
+// cycle that current (this cycle's labels) no longer reports, so a deleted
+// ServiceEntry — or one that's had its Ping/SiteMonitor/PodSelector removed —
+// doesn't leave a stale gauge value exported forever.
+func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
+	for label := range p.monitorLabels {
+		if !current[label] {
+			monitorUp.DeleteLabelValues(label)
+		}
+	}
+	p.monitorLabels = current
 }
 
 // monitor probes the entry's monitor source — Ping, SiteMonitor, or
 // PodSelector, mutually exclusive by admission policy (config/admission/
 // serviceentry_monitor_source_policy.yaml) — returning the resolved
-// status/style/latency, or empty strings when none is configured.
-func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (status, statusStyle, latency string) {
+// status/style/latency, or empty strings when none is configured. record is
+// called with the monitorUp label this probe reported under, so the caller
+// can track which labels are still live this cycle (see pruneMonitorMetrics).
+func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry, record func(label string)) (status, statusStyle, latency string) {
 	switch {
 	case entry.Spec.PodSelector != nil:
 		status, latency = p.podStatus(ctx, entry)
@@ -174,7 +218,9 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry) (
 	if status == "Up" {
 		up = 1
 	}
-	monitorUp.WithLabelValues(entry.Namespace + "/" + entry.Name).Set(up)
+	label := entry.Namespace + "/" + entry.Name
+	monitorUp.WithLabelValues(label).Set(up)
+	record(label)
 	return status, style, latency
 }
 

@@ -66,15 +66,19 @@ spec:
               annotations:
                 additionalProperties:
                   type: string
-                description: Additional annotations to add to the workload and pod
+                description: annotations are the additional annotations to add to
+                  the workload and pod
+                minProperties: 1
                 type: object
               containerPort:
                 description: containerPort defines the port the dashboard HTTP server
                   listens on
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               containerSecurityContext:
-                description: Container security context
+                description: containerSecurityContext is the container security context
                 properties:
                   allowPrivilegeEscalation:
                     description: |-
@@ -264,8 +268,8 @@ spec:
                 type: object
               env:
                 description: |-
-                  Additional environment variables to set
-                  Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)
+                  env is the additional environment variables to set. Uses k8s env var
+                  syntax (includes secretKeyRef, configMapKeyRef, etc.)
                 items:
                   description: EnvVar represents an environment variable present in
                     a Container.
@@ -420,10 +424,15 @@ spec:
                   required:
                   - name
                   type: object
+                maxItems: 64
+                minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               gateway:
                 description: |-
-                  Gateway optionally exposes the dashboard Service via a Gateway API
+                  gateway optionally exposes the dashboard Service via a Gateway API
                   HTTPRoute instead of (or alongside) Ingress. Off by default, and only
                   takes effect if the cluster has Gateway API CRDs installed — the
                   Instance controller checks this once at startup and surfaces a clear
@@ -433,37 +442,52 @@ spec:
                   annotations:
                     additionalProperties:
                       type: string
-                    description: Annotations to set on the generated HTTPRoute.
+                    description: annotations to set on the generated HTTPRoute.
+                    minProperties: 1
                     type: object
                   enabled:
-                    default: false
-                    description: Enabled creates and manages an HTTPRoute for this
-                      Instance when true.
-                    type: boolean
+                    default: Disabled
+                    description: |-
+                      enabled creates and manages an HTTPRoute for this Instance when
+                      "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   hostnames:
-                    description: Hostnames the HTTPRoute matches. At least one is
+                    description: hostnames the HTTPRoute matches. At least one is
                       required.
                     items:
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
+                    maxItems: 16
                     minItems: 1
                     type: array
+                    x-kubernetes-list-type: set
                   parentRef:
-                    description: ParentRef names the Gateway this HTTPRoute attaches
+                    description: parentRef names the Gateway this HTTPRoute attaches
                       to.
                     properties:
                       name:
-                        description: Name of the Gateway.
+                        description: name of the Gateway.
+                        maxLength: 253
                         minLength: 1
                         type: string
                       namespace:
                         description: |-
-                          Namespace of the Gateway. Defaults to the Instance's own namespace if
+                          namespace of the Gateway. Defaults to the Instance's own namespace if
                           unset.
+                        maxLength: 253
+                        minLength: 1
                         type: string
                       sectionName:
                         description: |-
-                          SectionName names a specific listener on the Gateway to attach to.
+                          sectionName names a specific listener on the Gateway to attach to.
                           Leave unset to attach to every listener that allows it.
+                        maxLength: 253
+                        minLength: 1
                         type: string
                     required:
                     - name
@@ -473,14 +497,17 @@ spec:
                 - parentRef
                 type: object
               hostUsers:
-                default: true
+                default: Enabled
                 description: |-
-                  HostUsers controls whether the container's user namespace is separate from the host
-                  Defaults to true
-                type: boolean
+                  hostUsers controls whether the container's user namespace is separate
+                  from the host. Defaults to "Enabled" (separate namespace).
+                enum:
+                - Enabled
+                - Disabled
+                type: string
               ingress:
                 description: |-
-                  Ingress optionally exposes the dashboard Service via an Ingress. Off by
+                  ingress optionally exposes the dashboard Service via an Ingress. Off by
                   default: most users reach the dashboard through a Service (port-forward,
                   LoadBalancer, existing Ingress/Gateway managed outside this operator,
                   etc.), so this operator shouldn't assume an IngressClass / external-DNS
@@ -490,30 +517,41 @@ spec:
                     additionalProperties:
                       type: string
                     description: |-
-                      Annotations to set on the generated Ingress (e.g. a cert-manager
+                      annotations to set on the generated Ingress (e.g. a cert-manager
                       issuer, nginx rewrite rules).
+                    minProperties: 1
                     type: object
                   enabled:
-                    default: false
-                    description: Enabled creates and manages an Ingress for this Instance
-                      when true.
-                    type: boolean
+                    default: Disabled
+                    description: |-
+                      enabled creates and manages an Ingress for this Instance when
+                      "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   host:
-                    description: Host is the hostname routed to the dashboard Service.
+                    description: host is the hostname routed to the dashboard Service.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                   ingressClassName:
                     description: |-
-                      IngressClassName selects the IngressClass that implements this
+                      ingressClassName selects the IngressClass that implements this
                       Ingress. Leave unset to use the cluster's default IngressClass.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   tls:
                     description: |-
-                      TLS terminates TLS for Host using the named Secret. Leave unset to
+                      tls terminates TLS for Host using the named Secret. Leave unset to
                       serve plain HTTP.
                     properties:
                       secretName:
-                        description: SecretName is the Secret holding the TLS certificate/key
+                        description: secretName is the Secret holding the TLS certificate/key
                           for Host.
+                        maxLength: 253
                         minLength: 1
                         type: string
                     required:
@@ -525,10 +563,12 @@ spec:
               labels:
                 additionalProperties:
                   type: string
-                description: Additional labels to add to the workload and pod
+                description: labels are the additional labels to add to the workload
+                  and pod
+                minProperties: 1
                 type: object
               livenessProbe:
-                description: Liveness probe configuration
+                description: livenessProbe is the liveness probe configuration
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -679,7 +719,7 @@ spec:
                     type: integer
                 type: object
               podSecurityContext:
-                description: Pod security context
+                description: podSecurityContext is the pod security context
                 properties:
                   appArmorProfile:
                     description: |-
@@ -910,8 +950,20 @@ spec:
                         type: string
                     type: object
                 type: object
+              pollIntervalSeconds:
+                default: 15
+                description: |-
+                  pollIntervalSeconds is how often the dashboard polls each widget's
+                  upstream and re-probes each ServiceEntry's monitor. Lowering it makes
+                  cards fresher at the cost of more load on upstream services; raising
+                  it is useful for slow/rate-limited upstreams (e.g. UniFi's login
+                  rate-limiting, see internal/dashboard/unifi.go).
+                format: int32
+                maximum: 3600
+                minimum: 5
+                type: integer
               readinessProbe:
-                description: Readiness probe configuration
+                description: readinessProbe is the readiness probe configuration
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -1062,7 +1114,8 @@ spec:
                     type: integer
                 type: object
               resources:
-                description: Resource requests and limits for the container
+                description: resources are the resource requests and limits for the
+                  container
                 properties:
                   claims:
                     description: |-
@@ -1122,7 +1175,19 @@ spec:
                 type: object
               size:
                 default: 1
-                description: size defines the number of Instance instances
+                description: |-
+                  size defines the number of Instance instances
+
+                  Each dashboard replica polls every bound ServiceEntry/InfoWidget
+                  independently (internal/dashboard's Poller keeps its own in-memory
+                  Store per process) and serves whichever replica an incoming request
+                  happens to land on. A size greater than 1 therefore multiplies the
+                  load placed on every polled upstream by that factor — noticeable for
+                  upstreams that rate-limit logins (e.g. UniFi, see
+                  internal/dashboard/unifi.go) — and can show a card flapping between
+                  replicas' independently-timed poll results if the Service has no
+                  session affinity. size: 1 is the intended mode unless you've verified
+                  your upstreams tolerate the extra load.
                 format: int32
                 minimum: 0
                 type: integer
@@ -1131,33 +1196,34 @@ spec:
             type: object
           status:
             description: status defines the observed state of Instance
+            minProperties: 1
             properties:
               boundBookmarks:
                 description: |-
-                  BoundBookmarks is the number of Bookmark objects currently bound to
+                  boundBookmarks is the number of Bookmark objects currently bound to
                   this Instance.
                 format: int32
                 type: integer
               boundConfigurations:
                 description: |-
-                  BoundConfigurations is the number of Configuration objects currently
+                  boundConfigurations is the number of Configuration objects currently
                   bound to (instanceRef-ing) this Instance.
                 format: int32
                 type: integer
               boundInfoWidgets:
                 description: |-
-                  BoundInfoWidgets is the number of InfoWidget objects currently bound to
+                  boundInfoWidgets is the number of InfoWidget objects currently bound to
                   this Instance.
                 format: int32
                 type: integer
               boundServiceEntries:
                 description: |-
-                  BoundServiceEntries is the number of ServiceEntry objects currently
+                  boundServiceEntries is the number of ServiceEntry objects currently
                   bound to this Instance.
                 format: int32
                 type: integer
               conditions:
-                description: Conditions represent the current status of the Instance
+                description: conditions represent the current status of the Instance
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -1217,7 +1283,7 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               observedGeneration:
-                description: ObservedGeneration is the most recent generation this
+                description: observedGeneration is the most recent generation this
                   status reflects.
                 format: int64
                 type: integer
@@ -1229,5 +1295,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

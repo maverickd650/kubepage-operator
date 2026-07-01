@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -15,6 +16,9 @@ import (
 )
 
 var setupLog = ctrl.Log.WithName("dashboard")
+
+// defaultMetricsAddr is used when Options.MetricsAddr is unset.
+const defaultMetricsAddr = ":9090"
 
 // Options configures a Run of the dashboard subcommand.
 type Options struct {
@@ -26,7 +30,16 @@ type Options struct {
 	Namespace    string
 	InstanceName string
 
-	Addr         string
+	Addr string
+	// MetricsAddr is the address /metrics is served on, deliberately a
+	// separate listener from Addr: the dashboard's main port is commonly
+	// exposed via the Instance's Ingress/HTTPRoute, and Prometheus metrics
+	// (per-widget-type poll counts/latencies, per-service up/down) shouldn't
+	// be reachable by anyone who can reach the dashboard's public URL.
+	// instance_controller.go's Deployment/Service expose this port
+	// separately from spec.ingress/spec.gateway, which only ever target
+	// Addr's port.
+	MetricsAddr  string
 	PollInterval time.Duration
 }
 
@@ -74,7 +87,7 @@ func Run(ctx context.Context, opts Options) error {
 		Namespace:    opts.Namespace,
 		InstanceName: opts.InstanceName,
 		Interval:     opts.PollInterval,
-		HTTPClient:   &http.Client{Timeout: 10 * time.Second},
+		HTTPClient:   newGuardedHTTPClient(10 * time.Second),
 		Store:        store,
 	}
 	go poller.Run(ctx)
@@ -100,6 +113,28 @@ func Run(ctx context.Context, opts Options) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shutdownCtx)
+	}()
+
+	metricsAddr := opts.MetricsAddr
+	if metricsAddr == "" {
+		metricsAddr = defaultMetricsAddr
+	}
+	metricsServer := &http.Server{
+		Addr:              metricsAddr,
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = metricsServer.Shutdown(shutdownCtx)
+	}()
+	go func() {
+		setupLog.Info("Starting metrics server", "addr", metricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			setupLog.Error(err, "Metrics server stopped")
+		}
 	}()
 
 	setupLog.Info("Starting dashboard", "addr", opts.Addr, "namespace", opts.Namespace, "instance", opts.InstanceName)

@@ -59,30 +59,33 @@ spec:
             properties:
               icon:
                 description: |-
-                  Icon shown to the left of this widget's value(s) in the header strip,
+                  icon shown to the left of this widget's value(s) in the header strip,
                   matching homepage's Resource component. Resolved the same way as
                   ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
                   anything else is treated as a dashboard-icons slug. Ignored by the
                   "greeting" and "datetime" widget types, which homepage renders without
                   an icon.
+                maxLength: 256
+                minLength: 1
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this InfoWidget belongs
+                description: instanceRef names the Instance this InfoWidget belongs
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               options:
-                description: Options holds every widget-type-specific field.
+                description: options holds every widget-type-specific field.
                 x-kubernetes-preserve-unknown-fields: true
               order:
                 description: |-
-                  Order controls rendering position: widgets are sorted by Order (nil
+                  order controls rendering position: widgets are sorted by Order (nil
                   sorts last), ties broken by the InfoWidget object's name, since CRDs
                   have no inherent ordering of their own.
                 format: int32
@@ -92,11 +95,13 @@ spec:
                   description: |-
                     SecretValueSource is an inline value or a reference to a key in a Secret,
                     used for any config field that may hold a credential (e.g. a widget API
-                    key). Exactly one of Value or SecretKeyRef should be set; SecretKeyRef
-                    takes precedence if both are set.
+                    key). Exactly one of Value or SecretKeyRef must be set; this is enforced at
+                    admission by a ValidatingAdmissionPolicy (config/admission), so neither a
+                    secret that sets both nor one that sets neither reaches the dashboard, which
+                    resolves whichever is set in-process at poll time.
                   properties:
                     secretKeyRef:
-                      description: SecretKeyRef selects a key of a Secret in the same
+                      description: secretKeyRef selects a key of a Secret in the same
                         namespace.
                       properties:
                         key:
@@ -122,17 +127,27 @@ spec:
                       x-kubernetes-map-type: atomic
                     value:
                       description: |-
-                        Value is a literal value. Avoid this for real credentials; prefer
+                        value is a literal value. Avoid this for real credentials; prefer
                         SecretKeyRef so the value isn't stored in the CR.
+                      maxLength: 4096
+                      minLength: 1
                       type: string
                   type: object
                 description: |-
-                  Secret-bearing option fields. Merged into Options under the same field
-                  names once a renderer for this CRD exists.
+                  secrets are secret-bearing option fields. Merged into Options under the
+                  same field names once a renderer for this CRD exists.
+
+                  RBAC note: the same caveat as ServiceEntry's widgets.secrets applies
+                  here — see ServiceWidget.Secrets' doc comment. Anyone who can create
+                  an InfoWidget in this namespace can read any Secret in it by
+                  referencing it via secretKeyRef and pointing this widget's options at
+                  a server they control.
+                minProperties: 1
                 type: object
               type:
-                description: Type is the widget type, e.g. "resources", "search",
+                description: type is the widget type, e.g. "resources", "search",
                   "datetime".
+                maxLength: 64
                 minLength: 1
                 type: string
             required:
@@ -141,6 +156,7 @@ spec:
             type: object
           status:
             description: status defines the observed state of InfoWidget
+            minProperties: 1
             properties:
               conditions:
                 description: conditions represent the current state of the InfoWidget
@@ -211,5 +227,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

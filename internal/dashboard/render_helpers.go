@@ -39,6 +39,30 @@ func cardTarget(c Card, siteTarget string) string {
 	return siteTarget
 }
 
+// targetSelf and targetTop are HTML link targets that stay in the current
+// browsing context (targetSelf) or navigate the topmost one (targetTop),
+// pulled out as constants since each is referenced from both
+// isNewTabTarget and its tests.
+const (
+	targetSelf = "_self"
+	targetTop  = "_top"
+)
+
+// isNewTabTarget reports whether target opens a new browsing context
+// ("_blank" or a named target other than "_self"/"_parent"/"_top"), in which
+// case the link should carry rel="noopener noreferrer": without it, the
+// opened page's window.opener can navigate this dashboard tab to an
+// arbitrary URL (reverse tabnabbing), and it also leaks the dashboard's own
+// URL to every linked service via the Referer header.
+func isNewTabTarget(target string) bool {
+	switch target {
+	case "", targetSelf, "_parent", targetTop:
+		return false
+	default:
+		return true
+	}
+}
+
 // statusWithLatency formats a monitor status for display, e.g. "Up · 12ms".
 func statusWithLatency(status, latency string) string {
 	if latency != "" {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -20,6 +21,38 @@ func TestClusterRBACNameNoCollision(t *testing.T) {
 
 	if clusterRBACName(a) == clusterRBACName(b) {
 		t.Fatalf("clusterRBACName collided for distinct Instances: %q", clusterRBACName(a))
+	}
+}
+
+// TestClusterRBACNameStaysWithinKubernetesLimit guards against a long
+// namespace/name pair producing a name Kubernetes rejects at Create time: a
+// namespace name may be up to 63 characters and an Instance name (an
+// ordinary Kubernetes object name) up to 253, so the length-prefixed
+// encoding alone could exceed clusterRBACNameMaxLength for the longest
+// legal inputs.
+func TestClusterRBACNameStaysWithinKubernetesLimit(t *testing.T) {
+	longNamespace := strings.Repeat("a", 63)
+	longName := strings.Repeat("b", 253)
+	instance := &pagev1alpha1.Instance{ObjectMeta: metav1.ObjectMeta{Namespace: longNamespace, Name: longName}}
+
+	name := clusterRBACName(instance)
+	if len(name) > clusterRBACNameMaxLength {
+		t.Fatalf("clusterRBACName(%q/%q) = %q (%d chars), want <= %d", longNamespace, longName, name, len(name), clusterRBACNameMaxLength)
+	}
+
+	// Two different long Instances that would truncate to the same prefix
+	// must still get distinct names.
+	otherName := strings.Repeat("c", 253)
+	other := &pagev1alpha1.Instance{ObjectMeta: metav1.ObjectMeta{Namespace: longNamespace, Name: otherName}}
+	if clusterRBACName(instance) == clusterRBACName(other) {
+		t.Fatalf("clusterRBACName collided for distinct long Instances: %q", clusterRBACName(instance))
+	}
+
+	// Re-deriving the name from the same Instance must be stable across
+	// reconciles (reconcileClusterRole/reconcileClusterRoleBinding Get by
+	// this name every time).
+	if clusterRBACName(instance) != name {
+		t.Fatalf("clusterRBACName is not deterministic: got %q and %q for the same Instance", name, clusterRBACName(instance))
 	}
 }
 
