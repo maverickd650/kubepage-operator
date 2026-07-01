@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -133,7 +134,7 @@ func TestReferencedSecretNamesIgnoresOtherInstancesAndCollectsKeyRefs(t *testing
 	otherInstanceEntry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "some-other-instance"},
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testOtherInstanceName},
 			Group:       "G", Name: "N",
 			Widgets: []pagev1alpha1.ServiceWidget{{
 				Type: testWidgetTypeGrafana,
@@ -149,21 +150,37 @@ func TestReferencedSecretNamesIgnoresOtherInstancesAndCollectsKeyRefs(t *testing
 	otherInstanceWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "some-other-instance"},
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testOtherInstanceName},
 			Type:        testWidgetTypeOpenMeteo,
+		},
+	}
+	wantWidgetSecret := "widget-creds"
+	matchingWidget := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: instance.Name},
+			Type:        testWidgetTypeOpenMeteo,
+			Secrets: map[string]pagev1alpha1.SecretValueSource{
+				secretField: {SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: wantWidgetSecret},
+					Key:                  secretField,
+				}},
+			},
 		},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(instance, matchingEntry, otherInstanceEntry, otherInstanceWidget).Build()
+		WithObjects(instance, matchingEntry, otherInstanceEntry, otherInstanceWidget, matchingWidget).Build()
 	r := &InstanceReconciler{Client: cl, Scheme: scheme}
 
 	got, err := r.referencedSecretNames(t.Context(), instance)
 	if err != nil {
 		t.Fatalf("referencedSecretNames() unexpected error: %v", err)
 	}
-	if len(got) != 1 || got[0] != wantSecret {
-		t.Errorf("referencedSecretNames() = %v, want [%s] (other instance's refs and inline values excluded)", got, wantSecret)
+	want := []string{wantSecret, wantWidgetSecret}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("referencedSecretNames() = %v, want %v (other instance's refs and inline values excluded)", got, want)
 	}
 }
 

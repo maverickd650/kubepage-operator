@@ -80,7 +80,7 @@ func TestHTTPRouteForInstance(t *testing.T) {
 	if pr.Namespace == nil || *pr.Namespace != "gateway-system" {
 		t.Errorf("ParentRefs[0].Namespace = %v, want %q", pr.Namespace, "gateway-system")
 	}
-	if pr.SectionName == nil || *pr.SectionName != "https" {
+	if pr.SectionName == nil || *pr.SectionName != testPortNameHTTPS {
 		t.Errorf("ParentRefs[0].SectionName = %v, want %q", pr.SectionName, "https")
 	}
 
@@ -175,6 +175,50 @@ func TestHTTPRouteSpecsEqual(t *testing.T) {
 	if httpRouteSpecsEqual(base, changedPort) {
 		t.Errorf("httpRouteSpecsEqual(base, changedPort) = true, want false (backend port differs)")
 	}
+
+	changedParentName := base
+	changedParentRef := base.ParentRefs[0]
+	changedParentRef.Name = "other-gw"
+	changedParentName.ParentRefs = []gatewayv1.ParentReference{changedParentRef}
+	if httpRouteSpecsEqual(base, changedParentName) {
+		t.Errorf("httpRouteSpecsEqual() = true, want false (parentRef name differs)")
+	}
+
+	changedParentNamespace := base
+	changedParentRefNS := base.ParentRefs[0]
+	changedParentRefNS.Namespace = ptr.To(gatewayv1.Namespace("gateway-system"))
+	changedParentNamespace.ParentRefs = []gatewayv1.ParentReference{changedParentRefNS}
+	if httpRouteSpecsEqual(base, changedParentNamespace) {
+		t.Errorf("httpRouteSpecsEqual() = true, want false (parentRef namespace differs)")
+	}
+
+	changedBackendName := base
+	changedRule2 := base.Rules[0]
+	changedBackend2 := base.Rules[0].BackendRefs[0]
+	changedBackend2.Name = "other-svc"
+	changedRule2.BackendRefs = []gatewayv1.HTTPBackendRef{changedBackend2}
+	changedBackendName.Rules = []gatewayv1.HTTPRouteRule{changedRule2}
+	if httpRouteSpecsEqual(base, changedBackendName) {
+		t.Errorf("httpRouteSpecsEqual() = true, want false (backend name differs)")
+	}
+
+	changedBackendRefCount := base
+	changedRuleCount := base.Rules[0]
+	changedRuleCount.BackendRefs = append(slices.Clone(base.Rules[0].BackendRefs), base.Rules[0].BackendRefs[0])
+	changedBackendRefCount.Rules = []gatewayv1.HTTPRouteRule{changedRuleCount}
+	if httpRouteSpecsEqual(base, changedBackendRefCount) {
+		t.Errorf("httpRouteSpecsEqual() = true, want false (backendRefs count differs)")
+	}
+
+	nilPort := base
+	nilPortRule := base.Rules[0]
+	nilPortBackend := base.Rules[0].BackendRefs[0]
+	nilPortBackend.Port = nil
+	nilPortRule.BackendRefs = []gatewayv1.HTTPBackendRef{nilPortBackend}
+	nilPort.Rules = []gatewayv1.HTTPRouteRule{nilPortRule}
+	if httpRouteSpecsEqual(base, nilPort) {
+		t.Errorf("httpRouteSpecsEqual() = true, want false (one backend port is nil)")
+	}
 }
 
 func TestEqualStringPtr(t *testing.T) {
@@ -244,7 +288,7 @@ func TestEqualGatewaySectionNamePtr(t *testing.T) {
 }
 
 func TestPortsEqualLengthMismatch(t *testing.T) {
-	a := []corev1.ServicePort{{Name: "http", Port: 80}}
+	a := []corev1.ServicePort{{Name: testPortNameHTTP, Port: 80}}
 	b := []corev1.ServicePort{{Name: "http", Port: 80}, {Name: "https", Port: 443}}
 	if portsEqual(a, b) {
 		t.Errorf("portsEqual() = true, want false (different lengths)")
@@ -315,6 +359,30 @@ func TestIngressSpecsEqual(t *testing.T) {
 		other.Rules = []networkingv1.IngressRule{otherRule}
 		if ingressSpecsEqual(base, other) {
 			t.Errorf("ingressSpecsEqual() = true, want false (HTTP is nil)")
+		}
+	})
+
+	t.Run("different path", func(t *testing.T) {
+		other := base
+		otherRule := base.Rules[0]
+		otherPath := otherRule.HTTP.Paths[0]
+		otherPath.Path = "/other"
+		otherRule.HTTP = &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{otherPath}}
+		other.Rules = []networkingv1.IngressRule{otherRule}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (path differs)")
+		}
+	})
+
+	t.Run("nil backend service", func(t *testing.T) {
+		other := base
+		otherRule := base.Rules[0]
+		otherPath := otherRule.HTTP.Paths[0]
+		otherPath.Backend.Service = nil
+		otherRule.HTTP = &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{otherPath}}
+		other.Rules = []networkingv1.IngressRule{otherRule}
+		if ingressSpecsEqual(base, other) {
+			t.Errorf("ingressSpecsEqual() = true, want false (backend service is nil)")
 		}
 	})
 
