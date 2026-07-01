@@ -947,6 +947,18 @@ spec:
                         type: string
                     type: object
                 type: object
+              pollIntervalSeconds:
+                default: 15
+                description: |-
+                  pollIntervalSeconds is how often the dashboard polls each widget's
+                  upstream and re-probes each ServiceEntry's monitor. Lowering it makes
+                  cards fresher at the cost of more load on upstream services; raising
+                  it is useful for slow/rate-limited upstreams (e.g. UniFi's login
+                  rate-limiting, see internal/dashboard/unifi.go).
+                format: int32
+                maximum: 3600
+                minimum: 5
+                type: integer
               readinessProbe:
                 description: readinessProbe is the readiness probe configuration
                 properties:
@@ -1160,7 +1172,19 @@ spec:
                 type: object
               size:
                 default: 1
-                description: size defines the number of Instance instances
+                description: |-
+                  size defines the number of Instance instances
+
+                  Each dashboard replica polls every bound ServiceEntry/InfoWidget
+                  independently (internal/dashboard's Poller keeps its own in-memory
+                  Store per process) and serves whichever replica an incoming request
+                  happens to land on. A size greater than 1 therefore multiplies the
+                  load placed on every polled upstream by that factor — noticeable for
+                  upstreams that rate-limit logins (e.g. UniFi, see
+                  internal/dashboard/unifi.go) — and can show a card flapping between
+                  replicas' independently-timed poll results if the Service has no
+                  session affinity. size: 1 is the intended mode unless you've verified
+                  your upstreams tolerate the extra load.
                 format: int32
                 minimum: 0
                 type: integer

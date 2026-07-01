@@ -17,6 +17,17 @@ type InstanceSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// size defines the number of Instance instances
+	//
+	// Each dashboard replica polls every bound ServiceEntry/InfoWidget
+	// independently (internal/dashboard's Poller keeps its own in-memory
+	// Store per process) and serves whichever replica an incoming request
+	// happens to land on. A size greater than 1 therefore multiplies the
+	// load placed on every polled upstream by that factor — noticeable for
+	// upstreams that rate-limit logins (e.g. UniFi, see
+	// internal/dashboard/unifi.go) — and can show a card flapping between
+	// replicas' independently-timed poll results if the Service has no
+	// session affinity. size: 1 is the intended mode unless you've verified
+	// your upstreams tolerate the extra load.
 	// +default=1
 	// +kubebuilder:validation:Minimum=0
 	// +optional
@@ -27,6 +38,17 @@ type InstanceSpec struct {
 	// +kubebuilder:validation:Maximum=65535
 	// +required
 	ContainerPort int32 `json:"containerPort"`
+
+	// pollIntervalSeconds is how often the dashboard polls each widget's
+	// upstream and re-probes each ServiceEntry's monitor. Lowering it makes
+	// cards fresher at the cost of more load on upstream services; raising
+	// it is useful for slow/rate-limited upstreams (e.g. UniFi's login
+	// rate-limiting, see internal/dashboard/unifi.go).
+	// +kubebuilder:validation:Minimum=5
+	// +kubebuilder:validation:Maximum=3600
+	// +default=15
+	// +optional
+	PollIntervalSeconds *int32 `json:"pollIntervalSeconds,omitempty"`
 
 	// env is the additional environment variables to set. Uses k8s env var
 	// syntax (includes secretKeyRef, configMapKeyRef, etc.)

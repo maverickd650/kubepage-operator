@@ -34,6 +34,18 @@ const instanceFinalizer = "page.kubepage.dev/finalizer"
 
 const instanceContainerName = "instance"
 
+// dashboardMetricsPort is the fixed port the dashboard's /metrics endpoint
+// listens on, deliberately separate from instance.Spec.ContainerPort: the
+// Service exposes both, but only ContainerPort is ever wired into an Ingress
+// or HTTPRoute (see instance_network.go), so Prometheus metrics stay
+// unreachable through whatever public URL the Instance's ingress/gateway
+// exposes. Fixed rather than a spec field since it's an implementation
+// detail of the dashboard binary, not something users need to tune per
+// Instance.
+const dashboardMetricsPort int32 = 9090
+
+const dashboardMetricsPortName = "metrics"
+
 // Definitions to manage status conditions
 const (
 	// typeAvailableInstance represents the status of the Deployment reconciliation
@@ -571,17 +583,32 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 	return ctrl.Result{Requeue: true}, true, nil
 }
 
+// defaultPollIntervalSeconds mirrors the dashboard subcommand's own
+// --poll-interval default (cmd/main.go), used when
+// instance.Spec.PollIntervalSeconds is unset. Kept as an explicit fallback
+// here (rather than always passing the flag with a Go-side default) so an
+// Instance created before this field existed keeps behaving exactly as
+// before.
+const defaultPollIntervalSeconds = 15
+
 // dashboardArgs returns the dashboard subcommand's CLI flags for instance:
 // which Instance to serve (namespace/name, so the dashboard's own
-// controller-runtime cache can be scoped to just that namespace) and which
+// controller-runtime cache can be scoped to just that namespace), which
 // address to listen on (instance.Spec.ContainerPort, the same port the
-// Service and Ingress target).
+// Service and Ingress target), and how often to poll (instance.Spec.
+// PollIntervalSeconds, or defaultPollIntervalSeconds if unset).
 func dashboardArgs(instance *pagev1alpha1.Instance) []string {
+	pollIntervalSeconds := int32(defaultPollIntervalSeconds)
+	if instance.Spec.PollIntervalSeconds != nil {
+		pollIntervalSeconds = *instance.Spec.PollIntervalSeconds
+	}
 	return []string{
 		"dashboard",
 		"--namespace=" + instance.Namespace,
 		"--instance-name=" + instance.Name,
 		fmt.Sprintf("--addr=:%d", instance.Spec.ContainerPort),
+		fmt.Sprintf("--metrics-addr=:%d", dashboardMetricsPort),
+		fmt.Sprintf("--poll-interval=%ds", pollIntervalSeconds),
 	}
 }
 
@@ -640,17 +667,24 @@ func (r *InstanceReconciler) deploymentForInstance(instance *pagev1alpha1.Instan
 							},
 						}, instance.Spec.ContainerSecurityContext),
 						Args: dashboardArgs(instance),
-						Ports: []corev1.ContainerPort{{
-							ContainerPort: instance.Spec.ContainerPort,
-							Name:          instanceContainerName,
-							// Protocol is set explicitly (rather than left to
-							// the API server's defaulting) so the drift check
-							// in reconcileDeployment, which compares the
-							// stored Deployment's Ports against this struct
-							// literal, isn't fooled into seeing permanent
-							// drift by a field the server fills in on its own.
-							Protocol: corev1.ProtocolTCP,
-						}},
+						Ports: []corev1.ContainerPort{
+							{
+								ContainerPort: instance.Spec.ContainerPort,
+								Name:          instanceContainerName,
+								// Protocol is set explicitly (rather than left to
+								// the API server's defaulting) so the drift check
+								// in reconcileDeployment, which compares the
+								// stored Deployment's Ports against this struct
+								// literal, isn't fooled into seeing permanent
+								// drift by a field the server fills in on its own.
+								Protocol: corev1.ProtocolTCP,
+							},
+							{
+								ContainerPort: dashboardMetricsPort,
+								Name:          dashboardMetricsPortName,
+								Protocol:      corev1.ProtocolTCP,
+							},
+						},
 						Env:            instance.Spec.Env,
 						ReadinessProbe: instance.Spec.ReadinessProbe,
 						LivenessProbe:  instance.Spec.LivenessProbe,

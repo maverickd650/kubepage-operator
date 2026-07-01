@@ -725,6 +725,11 @@ func (in *InstanceSpec) DeepCopyInto(out *InstanceSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.PollIntervalSeconds != nil {
+		in, out := &in.PollIntervalSeconds, &out.PollIntervalSeconds
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Env != nil {
 		in, out := &in.Env, &out.Env
 		*out = make([]corev1.EnvVar, len(*in))
