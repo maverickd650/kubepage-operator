@@ -16,6 +16,10 @@ const (
 	policyTestGroup              = "media"
 	testForeignAnnotationKey     = "foo.io/bar"
 	testForeignAnnotationValue   = "baz"
+	testWidgetTypeDatetime       = "datetime"
+	testOtherInstanceName        = "some-other-instance"
+	testPortNameHTTP             = "http"
+	testPortNameHTTPS            = "https"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.
