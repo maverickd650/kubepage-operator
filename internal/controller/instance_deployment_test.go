@@ -261,8 +261,8 @@ func TestReconcileDeploymentUpdateErrorStatusUpdateSucceeds(t *testing.T) {
 	if getErr := base.Get(t.Context(), client.ObjectKeyFromObject(instance), updated); getErr != nil {
 		t.Fatalf("getting Instance: %v", getErr)
 	}
-	if cond := meta.FindStatusCondition(updated.Status.Conditions, typeAvailableInstance); cond == nil || cond.Reason != "Resizing" {
-		t.Errorf("Instance status condition = %+v, want reason Resizing", cond)
+	if cond := meta.FindStatusCondition(updated.Status.Conditions, typeAvailableInstance); cond == nil || cond.Reason != reasonDeploymentUpdateFailed {
+		t.Errorf("Instance status condition = %+v, want reason %s", cond, reasonDeploymentUpdateFailed)
 	}
 }
 

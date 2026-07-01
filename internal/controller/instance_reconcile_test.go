@@ -5,12 +5,15 @@ import (
 	"errors"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -331,6 +334,76 @@ func TestInstanceReconcileBoundCountsError(t *testing.T) {
 				return wantErr
 			}
 			return c.List(ctx, list, opts...)
+		},
+	})
+	r := newInstanceReconciler(cl)
+
+	if _, err := reconcileInstance(t, r, testInstanceObjName); !errors.Is(err, wantErr) {
+		t.Errorf("Reconcile() error = %v, want %v", err, wantErr)
+	}
+}
+
+// TestInstanceReconcileDeploymentNotReady covers deploymentReady reporting
+// fewer ready replicas than desired (e.g. a crash-looping or unpullable
+// dashboard image): Available must go False with reasonDeploymentNotReady
+// rather than True just because the Deployment object itself matches spec,
+// and Reconcile must requeue rather than erroring, since this isn't a
+// reconcile failure - it's a pending state that a future Deployment status
+// update (or the fallback requeue) will re-check.
+func TestInstanceReconcileDeploymentNotReady(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newInstanceReconcileTestInstance()
+	instance.Spec.Size = ptr.To(int32(1))
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).WithStatusSubresource(instance).Build()
+	r := newInstanceReconciler(cl)
+	seedMatchingDeployment(t, r, instance)
+	// seedMatchingDeployment's Deployment has no status set, so ReadyReplicas
+	// defaults to 0 - fewer than the 1 replica instance.Spec.Size requests.
+
+	result, err := reconcileInstance(t, r, testInstanceObjName)
+	if err != nil {
+		t.Fatalf("Reconcile() unexpected error: %v", err)
+	}
+	if result.RequeueAfter != deploymentNotReadyRequeueInterval {
+		t.Errorf("Reconcile() RequeueAfter = %v, want %v", result.RequeueAfter, deploymentNotReadyRequeueInterval)
+	}
+
+	updated := &pagev1alpha1.Instance{}
+	if err := cl.Get(t.Context(), types.NamespacedName{Name: testInstanceObjName, Namespace: instanceReconcileTestNamespace}, updated); err != nil {
+		t.Fatalf("getting Instance: %v", err)
+	}
+	cond := meta.FindStatusCondition(updated.Status.Conditions, typeAvailableInstance)
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != reasonDeploymentNotReady {
+		t.Errorf("Instance Available condition = %+v, want False/%s", cond, reasonDeploymentNotReady)
+	}
+}
+
+// TestInstanceReconcileDeploymentReadyGetError covers deploymentReady's own
+// Get failing after every earlier reconcile step (RBAC, Deployment, Service,
+// Ingress, HTTPRoute, bound counts) already succeeded.
+func TestInstanceReconcileDeploymentReadyGetError(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newInstanceReconcileTestInstance()
+	instance.Spec.Size = ptr.To(int32(1))
+	wantErr := errors.New("get deployment boom")
+
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).WithStatusSubresource(instance).Build()
+	seedMatchingDeployment(t, newInstanceReconciler(base), instance)
+
+	var deploymentGets int
+	cl := interceptor.NewClient(base, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
+			if _, ok := o.(*appsv1.Deployment); ok {
+				deploymentGets++
+				// Let reconcileDeployment's own Get (the 1st) through so it
+				// reports no drift and falls through to the rest of
+				// Reconcile; only fail deploymentReady's Get (the 2nd).
+				if deploymentGets == 2 {
+					return wantErr
+				}
+			}
+			return c.Get(ctx, key, o, opts...)
 		},
 	})
 	r := newInstanceReconciler(cl)

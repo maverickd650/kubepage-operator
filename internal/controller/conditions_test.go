@@ -49,8 +49,8 @@ func TestBoundInstanceCondition(t *testing.T) {
 		if err != nil {
 			t.Fatalf("boundInstanceCondition() unexpected error: %v", err)
 		}
-		if cond.Status != metav1.ConditionTrue || cond.Reason != reasonReconciling {
-			t.Errorf("cond = %+v, want True/%s", cond, reasonReconciling)
+		if cond.Status != metav1.ConditionTrue || cond.Reason != reasonBound {
+			t.Errorf("cond = %+v, want True/%s", cond, reasonBound)
 		}
 	})
 
