@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -17,10 +16,12 @@ const (
 	headerTypeDatetime = "datetime"
 )
 
-// assetFS holds static assets served verbatim under /assets/ — currently the
-// self-hosted Manrope font, embedded so the single binary needs no CDN (D11).
+// assetFS holds static assets served verbatim under /assets/ — the
+// self-hosted Manrope font and a vendored htmx build, embedded so the single
+// binary needs no CDN (D11) and the dashboard keeps working air-gapped or if
+// a third-party CDN is unreachable/compromised.
 //
-//go:embed assets/*.woff2
+//go:embed assets/*.woff2 assets/*.js
 var assetFS embed.FS
 
 // cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
@@ -107,15 +108,48 @@ type headerData struct {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", s.handleIndex)
+	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /fragment", s.handleFragment)
 	mux.HandleFunc("GET /header", s.handleHeader)
 	mux.HandleFunc("GET /assets/{file}", handleAsset)
 	mux.HandleFunc("GET /manifest.json", s.handleManifest)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.Handle("GET /metrics", promhttp.Handler())
-	return mux
+	return securityHeaders(mux)
+}
+
+// contentSecurityPolicy locks the page down to same-origin scripts/styles/
+// connections (htmx and every inline <script>/<style> in index.templ are
+// first-party; the only cross-origin loads are icons/backgrounds, which
+// resolve to operator- or CRD-supplied URLs — see icon.go — so img-src alone
+// stays open to https:/data:). 'unsafe-inline' on script-src/style-src is
+// needed because the page shell has no nonce/hash plumbing yet; every value
+// interpolated into those inline blocks is either a fixed lookup table
+// (AccentHex/PaletteRamp), a plain integer, or escaped via cssStringEscape
+// (CustomCSS/Background.Image) rather than free-form script text.
+const contentSecurityPolicy = "default-src 'self'; " +
+	"img-src 'self' https: data:; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"script-src 'self' 'unsafe-inline'; " +
+	"connect-src 'self'; " +
+	"frame-ancestors 'none'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'"
+
+// securityHeaders sets response headers that don't vary per request, cheap
+// defense-in-depth against XSS/clickjacking/MIME-sniffing for a page that
+// intentionally renders CRD-supplied CSS/URLs (background image, custom CSS,
+// icons — see cssStringEscape's doc comment on why those are escaped but not
+// blocked outright).
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // pwaManifest is the GET /manifest.json response shape, letting the
@@ -183,8 +217,11 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if strings.HasSuffix(r.PathValue("file"), ".woff2") {
+	switch {
+	case strings.HasSuffix(r.PathValue("file"), ".woff2"):
 		w.Header().Set("Content-Type", "font/woff2")
+	case strings.HasSuffix(r.PathValue("file"), ".js"):
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	_, _ = w.Write(b)

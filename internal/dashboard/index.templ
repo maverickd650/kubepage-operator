@@ -238,7 +238,7 @@ templ Index(data indexData) {
 				</div>
 			</div>
 			@templ.JSONScript("search-config", data.Site.Search)
-			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+			<script src="/assets/htmx-2.0.4.min.js"></script>
 			<script>
 				const searchConfig = JSON.parse(document.getElementById("search-config").textContent);
 

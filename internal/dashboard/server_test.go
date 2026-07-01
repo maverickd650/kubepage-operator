@@ -113,17 +113,19 @@ func TestServerFragmentRendersStatsRow(t *testing.T) {
 	}
 }
 
-func TestServerMetricsRoute(t *testing.T) {
+// TestServerMetricsRouteNotExposed asserts /metrics is not reachable on the
+// Server's own router: it's served on a separate listener (dashboard.go's
+// Run, on Options.MetricsAddr) specifically so it can't be exposed through
+// the same Ingress/HTTPRoute as the dashboard's main port. See
+// dashboardMetricsPort's doc comment in internal/controller.
+func TestServerMetricsRouteNotExposed(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "go_goroutines") {
-		t.Errorf("/metrics body missing expected Prometheus Go-runtime metric:\n%s", rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (metrics should not be served on the main router)", rec.Code)
 	}
 }
 
