@@ -64,6 +64,26 @@ func TestKubeMetricsWidgetPollNeverCalledInProduction(t *testing.T) {
 	}
 }
 
+func TestUsageHighlight(t *testing.T) {
+	tests := map[string]struct {
+		pct  *int
+		want string
+	}{
+		"nil":      {pct: nil, want: ""},
+		"danger":   {pct: new(90), want: HighlightDanger},
+		"warn":     {pct: new(75), want: HighlightWarn},
+		"below 75": {pct: new(74), want: ""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := usageHighlight(tc.pct); got != tc.want {
+				t.Errorf("usageHighlight(%v) = %q, want %q", tc.pct, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestKubeMetricsWidgetPollCluster(t *testing.T) {
 	scheme := kubeMetricsScheme(t)
 
