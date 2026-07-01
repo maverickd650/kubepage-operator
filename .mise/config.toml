@@ -169,6 +169,56 @@ mkdir -p dist
 kustomize build config/default > dist/install.yaml
 '''
 
+[tasks.helm-chart-refresh]
+description = "Regenerate dist/chart/ from config/ via kubebuilder's helm/v2-alpha plugin, preserving hand-tuned templates"
+depends = ["build-installer"]
+run = '''
+set -euo pipefail
+
+# The helm/v2-alpha plugin always shells out to `make manifests`, `make
+# generate`, and `make build-installer`, but this project has no Makefile —
+# mise tasks are the only source of truth (see CLAUDE.md). Shim one in for
+# the duration of this task that just delegates back to mise.
+cat > Makefile <<'MAKEFILE'
+manifests:
+	mise run manifests
+generate:
+	mise run generate
+build-installer:
+	mise run build-installer
+MAKEFILE
+
+# config/admission's ValidatingAdmissionPolicy/Binding pairs (secret-source,
+# widget-type, serviceentry-monitor-source) are a custom addition on top of
+# the stock kubebuilder scaffold, hand-translated into Helm templates gated
+# on .Values.admissionPolicies.enabled — the plugin has no built-in concept
+# of ValidatingAdmissionPolicy and won't manage these at all, so back them
+# up and restore them verbatim rather than risk losing the hand-authored
+# templating if a future plugin version touches files it doesn't recognize
+# today. If config/admission gains a new policy, add its chart template by
+# hand (mirroring an existing one in dist/chart/templates/admission/) —
+# this task can't create it for you.
+preserved="dist/chart/templates/admission/secret-source-policy.yaml dist/chart/templates/admission/widget-type-policy.yaml dist/chart/templates/admission/serviceentry-monitor-source-policy.yaml"
+backup_dir="$(mktemp -d)"
+trap 'rm -f Makefile; rm -rf "$backup_dir"' EXIT
+for f in $preserved; do
+  mkdir -p "$backup_dir/$(dirname "$f")"
+  cp "$f" "$backup_dir/$f"
+done
+
+kubebuilder edit --plugins=helm/v2-alpha
+
+echo "--- upstream drift in preserved templates (discarded below; review if kubebuilder/the plugin was upgraded) ---"
+for f in $preserved; do
+  diff -u "$backup_dir/$f" "$f" || true
+  cp "$backup_dir/$f" "$f"
+done
+
+helm lint dist/chart
+echo "--- dist/chart diff ---"
+git diff --stat -- dist/chart dist/install.yaml
+'''
+
 ##@ Deployment
 
 [tasks.install]

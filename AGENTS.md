@@ -298,6 +298,16 @@ helm install my-release ./<output-dir>/chart/ --namespace <ns> --create-namespac
 2. Re-run: `kubebuilder edit --plugins=helm/v2-alpha --force` (use same `--output-dir` if customized)
 3. Manually restore your custom values from the backup
 
+For this project specifically, run `mise run helm-chart-refresh` instead of the
+raw `kubebuilder edit` command above: it automates exactly this
+backup/regenerate/restore cycle (without `--force`, so `values.yaml`/
+`_helpers.tpl`/etc. are left alone) and additionally preserves
+`dist/chart/templates/admission/*.yaml`, the hand-authored
+ValidatingAdmissionPolicy templates the plugin has no built-in concept of —
+see the task's comments in `.mise/config.toml` for what it does and does not
+cover (a brand-new `config/admission` policy still needs its chart template
+added by hand).
+
 ### Publish Container Image
 
 ```bash
