@@ -42,6 +42,56 @@ const (
 	typeDegradedInstance = "Degraded"
 )
 
+// Reason constants for the Available condition on Instance. Each reconcile
+// step that can fail gets its own reason so `kubectl describe` and any
+// alerting built on Reason (rather than the free-form Message) can tell a
+// failed RBAC provision apart from a failed Ingress reconcile without
+// string-matching the message.
+const (
+	// reasonReconcileSucceeded marks Available=True once every reconcile
+	// step (RBAC, Deployment, Service, Ingress, HTTPRoute, bound counts)
+	// completed without error.
+	reasonReconcileSucceeded = "ReconcileSucceeded"
+	// reasonRBACFailed marks Available=False when provisioning the
+	// per-Instance ServiceAccount/Role/RoleBinding, or the cluster-scoped
+	// kubemetrics RBAC, failed.
+	reasonRBACFailed = "RBACReconcileFailed"
+	// reasonDeploymentDefinitionFailed marks Available=False when building
+	// the desired Deployment object itself failed (e.g. SetControllerReference).
+	reasonDeploymentDefinitionFailed = "DeploymentDefinitionFailed"
+	// reasonDeploymentUpdateFailed marks Available=False when an existing
+	// Deployment was found to have drifted from the desired state but the
+	// Update call to correct it failed.
+	reasonDeploymentUpdateFailed = "DeploymentUpdateFailed"
+	// reasonServiceFailed marks Available=False when reconciling the
+	// dashboard Service failed.
+	reasonServiceFailed = "ServiceReconcileFailed"
+	// reasonIngressFailed marks Available=False when reconciling the
+	// optional Ingress failed.
+	reasonIngressFailed = "IngressReconcileFailed"
+	// reasonHTTPRouteFailed marks Available=False when reconciling the
+	// optional HTTPRoute failed.
+	reasonHTTPRouteFailed = "HTTPRouteReconcileFailed"
+	// reasonBoundCountsFailed marks Available=False when listing the config
+	// CRDs (Configuration/ServiceEntry/Bookmark/InfoWidget) bound to this
+	// Instance failed.
+	reasonBoundCountsFailed = "BoundCountsListFailed"
+	// reasonDeploymentNotReady marks Available=False when the Deployment
+	// object matches the desired spec but doesn't yet have as many ready
+	// replicas as requested — e.g. an unpullable image, a crash-looping
+	// container, or insufficient cluster resources. Without this, Available
+	// would report True the instant the Deployment object exists/matches
+	// spec, even though no dashboard pod is actually serving traffic.
+	reasonDeploymentNotReady = "DeploymentNotReady"
+)
+
+// deploymentNotReadyRequeueInterval is how soon Reconcile re-checks Deployment
+// readiness while it's not yet ready. Deployment status changes (pod
+// transitions, crash-loop backoff) already trigger a reconcile via Owns(&appsv1.Deployment{}),
+// but this acts as a fallback so a stalled pull-backoff timer or slow
+// container start doesn't leave Available stuck on stale information.
+const deploymentNotReadyRequeueInterval = 15 * time.Second
+
 // InstanceReconciler reconciles a Instance object
 type InstanceReconciler struct {
 	client.Client
@@ -221,13 +271,13 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Ensure the per-Instance ServiceAccount/Role/RoleBinding the dashboard
 	// pod authenticates as, before the Deployment that references it.
 	if err := r.reconcileDashboardRBAC(ctx, instance); err != nil {
-		return r.failAvailable(ctx, instance, "RBAC", err)
+		return r.failAvailable(ctx, instance, "RBAC", reasonRBACFailed, err)
 	}
 
 	// Cluster-scoped RBAC for the kubemetrics InfoWidget, created only while
 	// one is bound and removed otherwise (see reconcileClusterMetricsRBAC).
 	if err := r.reconcileClusterMetricsRBAC(ctx, instance); err != nil {
-		return r.failAvailable(ctx, instance, "RBAC", err)
+		return r.failAvailable(ctx, instance, "RBAC", reasonRBACFailed, err)
 	}
 
 	// Define the Deployment we want on the cluster, create it if it doesn't
@@ -242,18 +292,18 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// spec.gateway.enabled, and only if Gateway API CRDs are installed)
 	// match the desired state.
 	if err := r.reconcileService(ctx, instance); err != nil {
-		return r.failAvailable(ctx, instance, "Service", err)
+		return r.failAvailable(ctx, instance, "Service", reasonServiceFailed, err)
 	}
 	if err := r.reconcileIngress(ctx, instance); err != nil {
-		return r.failAvailable(ctx, instance, "Ingress", err)
+		return r.failAvailable(ctx, instance, "Ingress", reasonIngressFailed, err)
 	}
 	if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
-		return r.failAvailable(ctx, instance, "HTTPRoute", err)
+		return r.failAvailable(ctx, instance, "HTTPRoute", reasonHTTPRouteFailed, err)
 	}
 
 	counts, err := r.boundCountsForInstance(ctx, instance)
 	if err != nil {
-		return r.failAvailable(ctx, instance, "bound config CRDs", err)
+		return r.failAvailable(ctx, instance, "bound config CRDs", reasonBoundCountsFailed, err)
 	}
 
 	// If the size is not defined in the Custom Resource then we will set the desired replicas to 0
@@ -268,9 +318,26 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	instance.Status.BoundBookmarks = counts.bookmarks
 	instance.Status.BoundInfoWidgets = counts.infoWidgets
 
+	ready, notReadyMessage, err := r.deploymentReady(ctx, instance, desiredReplicas)
+	if err != nil {
+		return r.failAvailable(ctx, instance, "Deployment", reasonDeploymentNotReady, err)
+	}
+	if !ready {
+		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
+			Status: metav1.ConditionFalse, Reason: reasonDeploymentNotReady,
+			Message: notReadyMessage})
+
+		if err := r.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Failed to update Instance status")
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{RequeueAfter: deploymentNotReadyRequeueInterval}, nil
+	}
+
 	// The following implementation will update the status
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-		Status: metav1.ConditionTrue, Reason: reasonReconciling,
+		Status: metav1.ConditionTrue, Reason: reasonReconcileSucceeded,
 		Message: fmt.Sprintf("Deployment for custom resource (%s) with %d replicas created successfully", instance.Name, desiredReplicas)})
 
 	if err := r.Status().Update(ctx, instance); err != nil {
@@ -281,15 +348,32 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
+// deploymentReady reports whether the dashboard Deployment for instance has
+// at least as many ready replicas as desiredReplicas, so Available reflects
+// that pods are actually serving rather than merely that a Deployment object
+// matching spec exists. Without this check, an unpullable image or a
+// crash-looping container would leave Available=True the instant the
+// Deployment is created/updated, even though no pod is actually up.
+func (r *InstanceReconciler) deploymentReady(ctx context.Context, instance *pagev1alpha1.Instance, desiredReplicas int32) (ready bool, message string, err error) {
+	found := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found); err != nil {
+		return false, "", err
+	}
+	if found.Status.ReadyReplicas >= desiredReplicas {
+		return true, "", nil
+	}
+	return false, fmt.Sprintf("Deployment %s has %d/%d ready replicas", found.Name, found.Status.ReadyReplicas, desiredReplicas), nil
+}
+
 // failAvailable sets the Available condition to False with err's message
 // (identifying which resource kind failed) and updates status, returning the
 // error so the caller can return it from Reconcile unchanged.
-func (r *InstanceReconciler) failAvailable(ctx context.Context, instance *pagev1alpha1.Instance, resource string, err error) (ctrl.Result, error) {
+func (r *InstanceReconciler) failAvailable(ctx context.Context, instance *pagev1alpha1.Instance, resource, reason string, err error) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	log.Error(err, fmt.Sprintf("Failed to reconcile %s for Instance", resource))
 
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-		Status: metav1.ConditionFalse, Reason: reasonReconciling,
+		Status: metav1.ConditionFalse, Reason: reason,
 		Message: fmt.Sprintf("Failed to reconcile %s for the custom resource (%s): (%s)", resource, instance.Name, err)})
 
 	if serr := r.Status().Update(ctx, instance); serr != nil {
@@ -389,7 +473,7 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 		log.Error(err, "Failed to define new Deployment resource for Instance")
 
 		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-			Status: metav1.ConditionFalse, Reason: reasonReconciling,
+			Status: metav1.ConditionFalse, Reason: reasonDeploymentDefinitionFailed,
 			Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", instance.Name, err)})
 
 		if serr := r.Status().Update(ctx, instance); serr != nil {
@@ -469,8 +553,8 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 		}
 
 		meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{Type: typeAvailableInstance,
-			Status: metav1.ConditionFalse, Reason: "Resizing",
-			Message: fmt.Sprintf("Failed to update the size for the custom resource (%s): (%s)", instance.Name, err)})
+			Status: metav1.ConditionFalse, Reason: reasonDeploymentUpdateFailed,
+			Message: fmt.Sprintf("Failed to update the Deployment for the custom resource (%s): (%s)", instance.Name, err)})
 
 		if serr := r.Status().Update(ctx, instance); serr != nil {
 			log.Error(serr, "Failed to update Instance status")

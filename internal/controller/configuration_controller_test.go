@@ -93,7 +93,7 @@ var _ = Describe("Configuration Controller", func() {
 				HaveField("Type", Equal(typeAvailableBound))))
 			cond := cfg.Status.Conditions[0]
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal(reasonReconciling))
+			Expect(cond.Reason).To(Equal(reasonBound))
 		})
 	})
 })

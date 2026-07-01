@@ -26,6 +26,18 @@ import (
 
 const testDashboardImage = "example.com/image:test"
 
+// markDeploymentReady patches the named Deployment's status to report
+// readyReplicas, standing in for the kubelet + Deployment controller that
+// envtest doesn't run: without this, ReadyReplicas would stay 0 forever and
+// deploymentReady (instance_controller.go) would never see Available=True.
+func markDeploymentReady(ctx context.Context, key types.NamespacedName, readyReplicas int32) {
+	found := &appsv1.Deployment{}
+	ExpectWithOffset(1, k8sClient.Get(ctx, key, found)).To(Succeed())
+	found.Status.Replicas = readyReplicas
+	found.Status.ReadyReplicas = readyReplicas
+	ExpectWithOffset(1, k8sClient.Status().Update(ctx, found)).To(Succeed())
+}
+
 var _ = Describe("Instance controller", func() {
 	Context("Instance controller test", func() {
 
@@ -111,6 +123,13 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, found)).To(Succeed())
 			}).Should(Succeed())
 
+			// envtest runs no Deployment controller, so ReadyReplicas never
+			// advances on its own; simulate pods coming up so the
+			// Available condition's new readiness check (deploymentReady)
+			// can observe a ready Deployment, same as it would once a real
+			// kubelet reports the dashboard pod Ready.
+			markDeploymentReady(ctx, typeNamespacedName, 1)
+
 			By("Reconciling the custom resource again")
 			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -124,7 +143,7 @@ var _ = Describe("Instance controller", func() {
 				HaveField("Type", Equal(typeAvailableInstance)), &conditions))
 			Expect(conditions).To(HaveLen(1), "Multiple conditions of type %s", typeAvailableInstance)
 			Expect(conditions[0].Status).To(Equal(metav1.ConditionTrue), "condition %s", typeAvailableInstance)
-			Expect(conditions[0].Reason).To(Equal(reasonReconciling), "condition %s", typeAvailableInstance)
+			Expect(conditions[0].Reason).To(Equal(reasonReconcileSucceeded), "condition %s", typeAvailableInstance)
 		})
 	})
 
@@ -685,6 +704,7 @@ var _ = Describe("Instance controller", func() {
 			instanceReconciler := &InstanceReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage, GatewayAPIEnabled: false}
 			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
+			markDeploymentReady(ctx, typeNamespacedName, 1)
 			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 

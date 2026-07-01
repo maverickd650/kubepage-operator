@@ -13,9 +13,18 @@ import (
 )
 
 const (
-	reasonReconciling      = "Reconciling"
-	reasonFinalizing       = "Finalizing"
+	// reasonReconciling marks a condition as Unknown while a reconcile is in
+	// flight and the outcome isn't settled yet.
+	reasonReconciling = "Reconciling"
+	// reasonFinalizing marks the Degraded condition while finalizer cleanup
+	// is in progress (Unknown) or has completed (True).
+	reasonFinalizing = "Finalizing"
+	// reasonInstanceNotFound marks Available=False on a config CRD whose
+	// instanceRef does not resolve to an existing Instance in its namespace.
 	reasonInstanceNotFound = "InstanceNotFound"
+	// reasonBound marks Available=True on a config CRD whose instanceRef
+	// resolves to an existing Instance.
+	reasonBound = "Bound"
 )
 
 // typeAvailableBound represents whether a config CRD's instanceRef resolves
@@ -50,7 +59,7 @@ func boundInstanceCondition(ctx context.Context, c client.Client, namespace, ins
 		return metav1.Condition{}, err
 	default:
 		return metav1.Condition{
-			Type: typeAvailableBound, Status: metav1.ConditionTrue, Reason: reasonReconciling,
+			Type: typeAvailableBound, Status: metav1.ConditionTrue, Reason: reasonBound,
 			Message: fmt.Sprintf("Bound to Instance %q", instanceRefName),
 		}, nil
 	}
