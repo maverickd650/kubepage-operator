@@ -64,42 +64,55 @@ spec:
             properties:
               abbr:
                 description: |-
-                  Abbr is a two-letter abbreviation shown when Icon is not set. If both
+                  abbr is a two-letter abbreviation shown when Icon is not set. If both
                   are set, Icon takes precedence.
+                maxLength: 8
+                minLength: 1
                 type: string
               description:
-                description: Description overrides the default hostname-derived description.
+                description: description overrides the default hostname-derived description.
+                maxLength: 1024
+                minLength: 1
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) bookmarks.yaml group this entry
+                  group is the name of the (top-level) bookmarks.yaml group this entry
                   belongs to. Entries sharing a Group are rendered together.
+                maxLength: 256
                 minLength: 1
                 type: string
               href:
-                description: Href is the bookmark's link target.
+                description: href is the bookmark's link target.
+                maxLength: 2048
                 minLength: 1
                 type: string
               icon:
+                description: |-
+                  icon overrides the group header's icon, resolved as a dashboard-icons
+                  slug (or passed through as-is if it's already a full URL).
+                maxLength: 256
+                minLength: 1
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this Bookmark belongs
+                description: instanceRef names the Instance this Bookmark belongs
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               name:
-                description: Name is the bookmark's display name.
+                description: name is the bookmark's display name.
+                maxLength: 256
                 minLength: 1
                 type: string
               order:
                 description: |-
-                  Order controls rendering position: groups and entries are sorted by
+                  order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
                   inherent ordering but bookmarks.yaml's groups/entries are an ordered
                   list. Purely an operator-side rendering concern; not a homepage field.
@@ -113,6 +126,7 @@ spec:
             type: object
           status:
             description: status defines the observed state of Bookmark
+            minProperties: 1
             properties:
               conditions:
                 description: conditions represent the current state of the Bookmark
@@ -237,43 +251,64 @@ spec:
             description: spec defines the desired state of Configuration
             properties:
               background:
-                description: Background image and filters, used instead of the solid
+                description: background image and filters, used instead of the solid
                   theme color.
+                minProperties: 1
                 properties:
                   blur:
-                    description: Backdrop blur, a Tailwind backdrop-blur size keyword
-                      (e.g. "sm", "md", "xl", "").
+                    description: |-
+                      blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.
+                      "sm", "md", "xl", ""). An explicit "" is equivalent to leaving it
+                      unset (the default 8px blur).
+                    maxLength: 8
+                    minLength: 0
                     type: string
                   brightness:
-                    description: Backdrop brightness percentage (Tailwind backdrop-brightness
-                      scale, e.g. 0, 50, 75).
+                    description: |-
+                      brightness is a backdrop brightness percentage (Tailwind
+                      backdrop-brightness scale, e.g. 0, 50, 75).
                     format: int32
                     type: integer
                   image:
-                    description: Full URL or path (relative to /app/public) to the
+                    description: |-
+                      image is the full URL or path (relative to /app/public) to the
                       background image.
+                    maxLength: 2048
+                    minLength: 1
                     type: string
                   opacity:
-                    description: Opacity to blend the background image with the background
+                    description: opacity blends the background image with the background
                       color, 0-100.
                     format: int32
                     maximum: 100
                     minimum: 0
                     type: integer
                   saturate:
-                    description: Backdrop saturate percentage (Tailwind backdrop-saturate
+                    description: |-
+                      saturate is a backdrop saturate percentage (Tailwind backdrop-saturate
                       scale, e.g. 0, 50, 100).
                     format: int32
                     type: integer
                 type: object
+              bookmarksStyle:
+                description: |-
+                  bookmarksStyle renders every bookmark card icon-only (no name or
+                  description), matching homepage's `bookmarksStyle: icons`.
+                enum:
+                - icons
+                type: string
               cardBlur:
                 description: |-
-                  CardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
-                  size keyword (e.g. "sm", "md", "xl"). Most visible over a background
-                  image.
+                  cardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
+                  size keyword (e.g. "sm", "md", "xl", ""). An explicit "" is equivalent
+                  to leaving it unset (the default 8px blur). Most visible over a
+                  background image.
+                maxLength: 8
+                minLength: 0
                 type: string
               color:
-                description: Fixed color palette, disabling the palette switcher.
+                description: color is the fixed color palette, disabling the palette
+                  switcher.
                 enum:
                 - slate
                 - gray
@@ -298,20 +333,62 @@ spec:
                 - red
                 - white
                 type: string
+              customCSS:
+                description: |-
+                  customCSS is raw CSS injected into the dashboard's page in a second
+                  <style> block appended after the built-in stylesheet, so its rules
+                  can override it. Trusted, operator-supplied content — the same trust
+                  level as every other Configuration field (e.g. Background.Image).
+                maxLength: 10000
+                minLength: 1
+                type: string
               description:
                 description: |-
-                  Description is shown as a header subtitle and the page's meta
+                  description is shown as a header subtitle and the page's meta
                   description.
+                maxLength: 1024
+                minLength: 1
+                type: string
+              disableCollapse:
+                description: |-
+                  disableCollapse disables the collapsible expand/collapse control on
+                  service and bookmark group headers. Collapsing is enabled by default.
+                enum:
+                - Enabled
+                - Disabled
+                type: string
+              disableIndexing:
+                description: |-
+                  disableIndexing asks search engines not to index the dashboard:
+                  disallows all crawlers in robots.txt and adds a noindex meta tag.
+                enum:
+                - Indexed
+                - NoIndex
                 type: string
               favicon:
-                description: Favicon is a URL to the dashboard's favicon.
+                description: favicon is a URL to the dashboard's favicon.
+                maxLength: 2048
+                minLength: 1
                 type: string
               fullWidth:
-                description: Use the entire window width instead of a centered, constrained
-                  layout.
-                type: boolean
+                description: |-
+                  fullWidth uses the entire window width instead of a centered,
+                  constrained layout.
+                enum:
+                - Full
+                - Contained
+                type: string
+              groupsInitiallyCollapsed:
+                description: |-
+                  groupsInitiallyCollapsed collapses every group by default on first
+                  load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
+                  group. Ignored when DisableCollapse is set.
+                enum:
+                - Collapsed
+                - Expanded
+                type: string
               headerStyle:
-                description: Header style for service/bookmark group headers.
+                description: headerStyle for service/bookmark group headers.
                 enum:
                 - underlined
                 - boxed
@@ -319,22 +396,25 @@ spec:
                 - boxedWidgets
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this Configuration applies
+                description: instanceRef names the Instance this Configuration applies
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               language:
-                description: UI language, e.g. "en", "fr", "de".
+                description: language is the UI language, e.g. "en", "fr", "de".
+                maxLength: 16
+                minLength: 1
                 type: string
               layout:
                 description: |-
-                  Layout arranges ServiceEntry Groups into tabs, mirroring homepage's
+                  layout arranges ServiceEntry Groups into tabs, mirroring homepage's
                   settings.yaml `layout:` map (group -> style) with tabs added on top.
                   Omitted/empty renders every group flat with no tab UI, as before.
                 items:
@@ -345,7 +425,7 @@ spec:
                     under the first tab that lists it.
                   properties:
                     groups:
-                      description: Groups lists, in display order, the Groups shown
+                      description: groups lists, in display order, the Groups shown
                         under this tab.
                       items:
                         description: |-
@@ -356,60 +436,99 @@ spec:
                         properties:
                           columns:
                             description: |-
-                              Columns is the number of card columns to render this group in,
+                              columns is the number of card columns to render this group in,
                               overriding the dashboard's default auto-fill grid.
                             format: int32
                             maximum: 6
                             minimum: 1
                             type: integer
+                          header:
+                            description: |-
+                              header renders this group's header (name + icon) when "Shown" (the
+                              default). Set "Hidden" to hide it while still rendering the group's
+                              cards.
+                            enum:
+                            - Shown
+                            - Hidden
+                            type: string
                           icon:
                             description: |-
-                              Icon overrides the group header's icon. Same resolution rules as
+                              icon overrides the group header's icon. Same resolution rules as
                               ServiceEntry/Bookmark Icon: a full URL passes through, anything else
                               is resolved as a dashboard-icons slug.
+                            maxLength: 256
+                            minLength: 1
+                            type: string
+                          initiallyCollapsed:
+                            description: |-
+                              initiallyCollapsed collapses this group by default on first load,
+                              overriding the Configuration's GroupsInitiallyCollapsed. Ignored when
+                              DisableCollapse is set.
+                            enum:
+                            - Collapsed
+                            - Expanded
                             type: string
                           name:
-                            description: Name is the ServiceEntry Group this entry
+                            description: name is the ServiceEntry Group this entry
                               places and styles.
+                            maxLength: 256
                             minLength: 1
                             type: string
                           style:
-                            description: Style lays the group's cards out in a single
+                            description: style lays the group's cards out in a single
                               row instead of a grid.
                             enum:
                             - row
                             - column
                             type: string
+                          useEqualHeights:
+                            description: |-
+                              useEqualHeights makes every card in this group the same height,
+                              overriding the Configuration's UseEqualHeights.
+                            enum:
+                            - Equal
+                            - Auto
+                            type: string
                         required:
                         - name
                         type: object
+                      maxItems: 64
                       minItems: 1
                       type: array
+                      x-kubernetes-list-type: atomic
                     name:
-                      description: Name is the tab's label.
+                      description: name is the tab's label.
+                      maxLength: 256
                       minLength: 1
                       type: string
                   required:
                   - groups
                   - name
                   type: object
+                maxItems: 32
+                minItems: 1
                 type: array
+                x-kubernetes-list-type: atomic
               search:
                 description: |-
-                  Search configures the native dashboard's header search box (card
+                  search configures the native dashboard's header search box (card
                   filtering + web-search fallthrough).
+                minProperties: 1
                 properties:
                   filterCards:
-                    default: true
+                    default: Enabled
                     description: |-
-                      FilterCards enables as-you-type filtering of service and bookmark
+                      filterCards enables as-you-type filtering of service and bookmark
                       cards by name/description, independent of the Enter-to-search
                       fallthrough.
-                    type: boolean
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   provider:
                     default: duckduckgo
                     description: |-
-                      Provider is the web search engine Enter submits the query to.
+                      provider is the web search engine Enter submits the query to.
                       "custom" requires URL.
                     enum:
                     - duckduckgo
@@ -420,7 +539,7 @@ spec:
                   target:
                     default: _blank
                     description: |-
-                      Target controls whether the search results page opens in the same tab
+                      target controls whether the search results page opens in the same tab
                       or a new one.
                     enum:
                     - _blank
@@ -428,21 +547,36 @@ spec:
                     type: string
                   url:
                     description: |-
-                      URL is the search endpoint used when Provider is "custom". The query
-                      is appended as a URL-encoded "q" parameter.
+                      url is the search endpoint used when Provider is "custom". The query
+                      is appended as a URL-encoded "q" parameter. Must be an http(s) URL —
+                      the dashboard passes this straight into a client-side window.open()/
+                      href, so a non-http(s) scheme (e.g. "javascript:") would be a stored
+                      script-injection vector rather than a search endpoint.
+                    maxLength: 2048
+                    minLength: 1
+                    pattern: ^https?://
                     type: string
                 type: object
+              startUrl:
+                description: |-
+                  startUrl is the PWA manifest's start_url, used when the dashboard is
+                  installed as an app. Defaults to "/".
+                maxLength: 2048
+                minLength: 1
+                pattern: ^(https?://|/)
+                type: string
               target:
                 default: _blank
                 description: |-
-                  Target is the default link target for service and bookmark cards.
+                  target is the default link target for service and bookmark cards.
                   Individual ServiceEntries may override it via their own target.
                 enum:
                 - _blank
                 - _self
                 type: string
               theme:
-                description: Fixed theme, disabling the theme switcher. One of "light"
+                description: |-
+                  theme is the fixed theme, disabling the theme switcher. One of "light"
                   or "dark".
                 enum:
                 - light
@@ -450,14 +584,25 @@ spec:
                 type: string
               title:
                 description: |-
-                  Title is the dashboard's browser tab title and header heading.
+                  title is the dashboard's browser tab title and header heading.
                   Defaults to "kubepage" when unset.
+                maxLength: 256
+                minLength: 1
+                type: string
+              useEqualHeights:
+                description: |-
+                  useEqualHeights makes every card in a group the same height. A
+                  LayoutGroupSpec's own UseEqualHeights overrides this per group.
+                enum:
+                - Equal
+                - Auto
                 type: string
             required:
             - instanceRef
             type: object
           status:
             description: status defines the observed state of Configuration
+            minProperties: 1
             properties:
               conditions:
                 description: |-
@@ -592,23 +737,35 @@ spec:
           spec:
             description: spec defines the desired state of InfoWidget
             properties:
+              icon:
+                description: |-
+                  icon shown to the left of this widget's value(s) in the header strip,
+                  matching homepage's Resource component. Resolved the same way as
+                  ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
+                  anything else is treated as a dashboard-icons slug. Ignored by the
+                  "greeting" and "datetime" widget types, which homepage renders without
+                  an icon.
+                maxLength: 256
+                minLength: 1
+                type: string
               instanceRef:
-                description: InstanceRef names the Instance this InfoWidget belongs
+                description: instanceRef names the Instance this InfoWidget belongs
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               options:
-                description: Options holds every widget-type-specific field.
+                description: options holds every widget-type-specific field.
                 x-kubernetes-preserve-unknown-fields: true
               order:
                 description: |-
-                  Order controls rendering position: widgets are sorted by Order (nil
+                  order controls rendering position: widgets are sorted by Order (nil
                   sorts last), ties broken by the InfoWidget object's name, since CRDs
                   have no inherent ordering of their own.
                 format: int32
@@ -624,7 +781,7 @@ spec:
                     resolves whichever is set in-process at poll time.
                   properties:
                     secretKeyRef:
-                      description: SecretKeyRef selects a key of a Secret in the same
+                      description: secretKeyRef selects a key of a Secret in the same
                         namespace.
                       properties:
                         key:
@@ -650,17 +807,21 @@ spec:
                       x-kubernetes-map-type: atomic
                     value:
                       description: |-
-                        Value is a literal value. Avoid this for real credentials; prefer
+                        value is a literal value. Avoid this for real credentials; prefer
                         SecretKeyRef so the value isn't stored in the CR.
+                      maxLength: 4096
+                      minLength: 1
                       type: string
                   type: object
                 description: |-
-                  Secret-bearing option fields. Merged into Options under the same field
-                  names once a renderer for this CRD exists.
+                  secrets are secret-bearing option fields. Merged into Options under the
+                  same field names once a renderer for this CRD exists.
+                minProperties: 1
                 type: object
               type:
-                description: Type is the widget type, e.g. "resources", "search",
+                description: type is the widget type, e.g. "resources", "search",
                   "datetime".
+                maxLength: 64
                 minLength: 1
                 type: string
             required:
@@ -669,6 +830,7 @@ spec:
             type: object
           status:
             description: status defines the observed state of InfoWidget
+            minProperties: 1
             properties:
               conditions:
                 description: conditions represent the current state of the InfoWidget
@@ -804,15 +966,19 @@ spec:
               annotations:
                 additionalProperties:
                   type: string
-                description: Additional annotations to add to the workload and pod
+                description: annotations are the additional annotations to add to
+                  the workload and pod
+                minProperties: 1
                 type: object
               containerPort:
                 description: containerPort defines the port the dashboard HTTP server
                   listens on
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               containerSecurityContext:
-                description: Container security context
+                description: containerSecurityContext is the container security context
                 properties:
                   allowPrivilegeEscalation:
                     description: |-
@@ -1002,8 +1168,8 @@ spec:
                 type: object
               env:
                 description: |-
-                  Additional environment variables to set
-                  Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)
+                  env is the additional environment variables to set. Uses k8s env var
+                  syntax (includes secretKeyRef, configMapKeyRef, etc.)
                 items:
                   description: EnvVar represents an environment variable present in
                     a Container.
@@ -1158,10 +1324,15 @@ spec:
                   required:
                   - name
                   type: object
+                maxItems: 64
+                minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               gateway:
                 description: |-
-                  Gateway optionally exposes the dashboard Service via a Gateway API
+                  gateway optionally exposes the dashboard Service via a Gateway API
                   HTTPRoute instead of (or alongside) Ingress. Off by default, and only
                   takes effect if the cluster has Gateway API CRDs installed — the
                   Instance controller checks this once at startup and surfaces a clear
@@ -1171,37 +1342,52 @@ spec:
                   annotations:
                     additionalProperties:
                       type: string
-                    description: Annotations to set on the generated HTTPRoute.
+                    description: annotations to set on the generated HTTPRoute.
+                    minProperties: 1
                     type: object
                   enabled:
-                    default: false
-                    description: Enabled creates and manages an HTTPRoute for this
-                      Instance when true.
-                    type: boolean
+                    default: Disabled
+                    description: |-
+                      enabled creates and manages an HTTPRoute for this Instance when
+                      "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   hostnames:
-                    description: Hostnames the HTTPRoute matches. At least one is
+                    description: hostnames the HTTPRoute matches. At least one is
                       required.
                     items:
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
+                    maxItems: 16
                     minItems: 1
                     type: array
+                    x-kubernetes-list-type: set
                   parentRef:
-                    description: ParentRef names the Gateway this HTTPRoute attaches
+                    description: parentRef names the Gateway this HTTPRoute attaches
                       to.
                     properties:
                       name:
-                        description: Name of the Gateway.
+                        description: name of the Gateway.
+                        maxLength: 253
                         minLength: 1
                         type: string
                       namespace:
                         description: |-
-                          Namespace of the Gateway. Defaults to the Instance's own namespace if
+                          namespace of the Gateway. Defaults to the Instance's own namespace if
                           unset.
+                        maxLength: 253
+                        minLength: 1
                         type: string
                       sectionName:
                         description: |-
-                          SectionName names a specific listener on the Gateway to attach to.
+                          sectionName names a specific listener on the Gateway to attach to.
                           Leave unset to attach to every listener that allows it.
+                        maxLength: 253
+                        minLength: 1
                         type: string
                     required:
                     - name
@@ -1211,14 +1397,17 @@ spec:
                 - parentRef
                 type: object
               hostUsers:
-                default: true
+                default: Enabled
                 description: |-
-                  HostUsers controls whether the container's user namespace is separate from the host
-                  Defaults to true
-                type: boolean
+                  hostUsers controls whether the container's user namespace is separate
+                  from the host. Defaults to "Enabled" (separate namespace).
+                enum:
+                - Enabled
+                - Disabled
+                type: string
               ingress:
                 description: |-
-                  Ingress optionally exposes the dashboard Service via an Ingress. Off by
+                  ingress optionally exposes the dashboard Service via an Ingress. Off by
                   default: most users reach the dashboard through a Service (port-forward,
                   LoadBalancer, existing Ingress/Gateway managed outside this operator,
                   etc.), so this operator shouldn't assume an IngressClass / external-DNS
@@ -1228,30 +1417,41 @@ spec:
                     additionalProperties:
                       type: string
                     description: |-
-                      Annotations to set on the generated Ingress (e.g. a cert-manager
+                      annotations to set on the generated Ingress (e.g. a cert-manager
                       issuer, nginx rewrite rules).
+                    minProperties: 1
                     type: object
                   enabled:
-                    default: false
-                    description: Enabled creates and manages an Ingress for this Instance
-                      when true.
-                    type: boolean
+                    default: Disabled
+                    description: |-
+                      enabled creates and manages an Ingress for this Instance when
+                      "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   host:
-                    description: Host is the hostname routed to the dashboard Service.
+                    description: host is the hostname routed to the dashboard Service.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                   ingressClassName:
                     description: |-
-                      IngressClassName selects the IngressClass that implements this
+                      ingressClassName selects the IngressClass that implements this
                       Ingress. Leave unset to use the cluster's default IngressClass.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   tls:
                     description: |-
-                      TLS terminates TLS for Host using the named Secret. Leave unset to
+                      tls terminates TLS for Host using the named Secret. Leave unset to
                       serve plain HTTP.
                     properties:
                       secretName:
-                        description: SecretName is the Secret holding the TLS certificate/key
+                        description: secretName is the Secret holding the TLS certificate/key
                           for Host.
+                        maxLength: 253
                         minLength: 1
                         type: string
                     required:
@@ -1263,10 +1463,12 @@ spec:
               labels:
                 additionalProperties:
                   type: string
-                description: Additional labels to add to the workload and pod
+                description: labels are the additional labels to add to the workload
+                  and pod
+                minProperties: 1
                 type: object
               livenessProbe:
-                description: Liveness probe configuration
+                description: livenessProbe is the liveness probe configuration
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -1417,7 +1619,7 @@ spec:
                     type: integer
                 type: object
               podSecurityContext:
-                description: Pod security context
+                description: podSecurityContext is the pod security context
                 properties:
                   appArmorProfile:
                     description: |-
@@ -1649,7 +1851,7 @@ spec:
                     type: object
                 type: object
               readinessProbe:
-                description: Readiness probe configuration
+                description: readinessProbe is the readiness probe configuration
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -1800,7 +2002,8 @@ spec:
                     type: integer
                 type: object
               resources:
-                description: Resource requests and limits for the container
+                description: resources are the resource requests and limits for the
+                  container
                 properties:
                   claims:
                     description: |-
@@ -1869,33 +2072,34 @@ spec:
             type: object
           status:
             description: status defines the observed state of Instance
+            minProperties: 1
             properties:
               boundBookmarks:
                 description: |-
-                  BoundBookmarks is the number of Bookmark objects currently bound to
+                  boundBookmarks is the number of Bookmark objects currently bound to
                   this Instance.
                 format: int32
                 type: integer
               boundConfigurations:
                 description: |-
-                  BoundConfigurations is the number of Configuration objects currently
+                  boundConfigurations is the number of Configuration objects currently
                   bound to (instanceRef-ing) this Instance.
                 format: int32
                 type: integer
               boundInfoWidgets:
                 description: |-
-                  BoundInfoWidgets is the number of InfoWidget objects currently bound to
+                  boundInfoWidgets is the number of InfoWidget objects currently bound to
                   this Instance.
                 format: int32
                 type: integer
               boundServiceEntries:
                 description: |-
-                  BoundServiceEntries is the number of ServiceEntry objects currently
+                  boundServiceEntries is the number of ServiceEntry objects currently
                   bound to this Instance.
                 format: int32
                 type: integer
               conditions:
-                description: Conditions represent the current status of the Instance
+                description: conditions represent the current status of the Instance
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -1955,7 +2159,7 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               observedGeneration:
-                description: ObservedGeneration is the most recent generation this
+                description: observedGeneration is the most recent generation this
                   status reflects.
                 format: int64
                 type: integer
@@ -2024,42 +2228,59 @@ spec:
             description: spec defines the desired state of ServiceEntry
             properties:
               description:
+                description: description overrides the default description shown on
+                  the card.
+                maxLength: 1024
+                minLength: 1
                 type: string
               group:
                 description: |-
-                  Group is the name of the (top-level) group this entry belongs to.
+                  group is the name of the (top-level) group this entry belongs to.
                   Entries sharing a Group are rendered together.
+                maxLength: 256
                 minLength: 1
                 type: string
               hideErrors:
                 description: |-
-                  HideErrors suppresses a widget's error text on the card (e.g. for a
+                  hideErrors suppresses a widget's error text on the card (e.g. for a
                   service that is expected to be intermittently unreachable). Defaults
-                  to false.
-                type: boolean
+                  to "Show".
+                enum:
+                - Show
+                - Hide
+                type: string
               href:
-                description: Href makes the card's title a link to the service.
+                description: href makes the card's title a link to the service.
+                maxLength: 2048
+                minLength: 1
                 type: string
               icon:
+                description: |-
+                  icon resolves as a dashboard-icons slug, or passes through as-is if
+                  it's already a full URL.
+                maxLength: 256
+                minLength: 1
                 type: string
               instanceRef:
-                description: InstanceRef names the Instance this ServiceEntry belongs
+                description: instanceRef names the Instance this ServiceEntry belongs
                   to.
                 properties:
                   name:
-                    description: Name of the Instance this object belongs to.
+                    description: name of the Instance this object belongs to.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
               name:
-                description: Name is the service's display name (the card title).
+                description: name is the service's display name (the card title).
+                maxLength: 256
                 minLength: 1
                 type: string
               order:
                 description: |-
-                  Order controls rendering position: groups and entries are sorted by
+                  order controls rendering position: groups and entries are sorted by
                   Order (nil sorts last), ties broken by Name, since CRDs have no
                   inherent ordering but the dashboard's groups/entries are displayed in a
                   fixed order.
@@ -2067,33 +2288,96 @@ spec:
                 type: integer
               ping:
                 description: |-
-                  Ping is a URL probed over HTTP for reachability and latency, shown as
+                  ping is a URL probed over HTTP for reachability and latency, shown as
                   an up/down status on the card. (Raw ICMP is not used, so a pod needs
                   no elevated capabilities.)
+                maxLength: 2048
+                minLength: 1
+                pattern: ^https?://
                 type: string
+              podSelector:
+                description: |-
+                  podSelector selects pods in this ServiceEntry's namespace whose
+                  readiness determines this service's up/down status — a
+                  Kubernetes-native alternative to Ping/SiteMonitor for services that
+                  run as pods in this cluster, needing no externally reachable URL.
+                  With multiple matches, any Ready pod renders "Up"; the card shows
+                  "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
+                  Mutually exclusive with Ping and SiteMonitor (enforced by the
+                  serviceentry-monitor-source ValidatingAdmissionPolicy).
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
               showStats:
                 description: |-
-                  ShowStats controls whether the polled widget fields are displayed on
-                  the card. Defaults to true; set false to show only the title/icon/
+                  showStats controls whether the polled widget fields are displayed on
+                  the card. Defaults to "Show"; set "Hide" to show only the title/icon/
                   description (and any monitor status).
-                type: boolean
+                enum:
+                - Show
+                - Hide
+                type: string
               siteMonitor:
                 description: |-
-                  SiteMonitor is a URL probed over HTTP, shown as an up/down status with
+                  siteMonitor is a URL probed over HTTP, shown as an up/down status with
                   response latency on the card.
+                maxLength: 2048
+                minLength: 1
+                pattern: ^https?://
                 type: string
               statusStyle:
                 description: |-
-                  StatusStyle controls how the Ping/SiteMonitor status renders: "dot" a
-                  colored status dot, "basic" up/down text. Ignored unless Ping or
-                  SiteMonitor is set.
+                  statusStyle controls how the Ping/SiteMonitor/PodSelector status
+                  renders: "dot" a colored status dot, "basic" up/down text. Ignored
+                  unless one of Ping, SiteMonitor, or PodSelector is set.
                 enum:
                 - dot
                 - basic
                 type: string
               target:
                 description: |-
-                  Target overrides the Configuration's default link target for this
+                  target overrides the Configuration's default link target for this
                   card's Href ("_blank" opens a new tab, "_self" the same tab).
                 enum:
                 - _blank
@@ -2101,7 +2385,7 @@ spec:
                 type: string
               widgets:
                 description: |-
-                  Widgets attached to this service. Zero, one, or many are allowed; the
+                  widgets attached to this service. Zero, one, or many are allowed; the
                   dashboard polls each one independently and shows its fields on the
                   card.
                 items:
@@ -2116,9 +2400,123 @@ spec:
                   properties:
                     config:
                       description: |-
-                        Remaining widget-type-specific options (e.g. PrometheusMetric's
-                        "query", Cloudflared's "accountId"/"tunnelId").
+                        config holds the remaining widget-type-specific options (e.g.
+                        PrometheusMetric's "query", Cloudflared's "accountId"/"tunnelId").
                       x-kubernetes-preserve-unknown-fields: true
+                    fields:
+                      description: |-
+                        fields restricts which of the widget's returned fields are rendered,
+                        by label (e.g. "queued", "wanted"). Unset (the default) renders every
+                        field the widget returns.
+                      items:
+                        maxLength: 64
+                        minLength: 1
+                        type: string
+                      maxItems: 32
+                      minItems: 1
+                      type: array
+                      x-kubernetes-list-type: set
+                    highlight:
+                      additionalProperties:
+                        description: |-
+                          FieldHighlight configures highlight rules for one widget field, keyed by
+                          the field's label in ServiceWidget.Highlight.
+                        properties:
+                          rules:
+                            description: |-
+                              rules are evaluated in order; the first match sets the field's
+                              highlight level. No match leaves the field unhighlighted.
+                            items:
+                              description: |-
+                                HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules
+                                are evaluated in order; the first match sets the field's highlight level.
+                                Mirrors homepage's per-field highlight rule, see
+                                https://gethomepage.dev/configs/services/#block-highlighting.
+                              properties:
+                                caseSensitive:
+                                  description: |-
+                                    caseSensitive makes a string operator's comparison case-sensitive.
+                                    Defaults to "CaseInsensitive"; ignored by numeric operators.
+                                  enum:
+                                  - CaseSensitive
+                                  - CaseInsensitive
+                                  type: string
+                                level:
+                                  description: level this rule sets when it matches.
+                                  enum:
+                                  - good
+                                  - warn
+                                  - danger
+                                  type: string
+                                negate:
+                                  description: |-
+                                    negate inverts the rule's match ("Negate") instead of the default
+                                    ("Match").
+                                  enum:
+                                  - Match
+                                  - Negate
+                                  type: string
+                                value:
+                                  description: |-
+                                    value is the rule's comparison value: a number for a numeric
+                                    operator, text for a string operator. For "between"/"outside" this is
+                                    the lower bound.
+                                  maxLength: 256
+                                  minLength: 1
+                                  type: string
+                                value2:
+                                  description: |-
+                                    value2 is the upper bound for the "between"/"outside" operators;
+                                    ignored by every other operator.
+                                  maxLength: 256
+                                  minLength: 1
+                                  type: string
+                                when:
+                                  description: |-
+                                    when is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
+                                    ne/between/outside (Value/Value2 parsed as numbers); string fields use
+                                    equals/includes/startsWith/endsWith/regex (Value compared as text).
+                                  enum:
+                                  - gt
+                                  - gte
+                                  - lt
+                                  - lte
+                                  - eq
+                                  - ne
+                                  - between
+                                  - outside
+                                  - equals
+                                  - includes
+                                  - startsWith
+                                  - endsWith
+                                  - regex
+                                  type: string
+                              required:
+                              - level
+                              - value
+                              - when
+                              type: object
+                            maxItems: 32
+                            minItems: 1
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          valueOnly:
+                            description: |-
+                              valueOnly highlights only the field's value ("ValueOnly") rather than
+                              its whole stat chip (label included, the default "WholeField") when a
+                              rule matches.
+                            enum:
+                            - WholeField
+                            - ValueOnly
+                            type: string
+                        required:
+                        - rules
+                        type: object
+                      description: |-
+                        highlight tints a field's stat chip by severity (good/warn/danger),
+                        keyed by the field's label. See FieldHighlight.
+                      minProperties: 1
+                      type: object
                     secrets:
                       additionalProperties:
                         description: |-
@@ -2130,7 +2528,7 @@ spec:
                           resolves whichever is set in-process at poll time.
                         properties:
                           secretKeyRef:
-                            description: SecretKeyRef selects a key of a Secret in
+                            description: secretKeyRef selects a key of a Secret in
                               the same namespace.
                             properties:
                               key:
@@ -2156,28 +2554,38 @@ spec:
                             x-kubernetes-map-type: atomic
                           value:
                             description: |-
-                              Value is a literal value. Avoid this for real credentials; prefer
+                              value is a literal value. Avoid this for real credentials; prefer
                               SecretKeyRef so the value isn't stored in the CR.
+                            maxLength: 4096
+                            minLength: 1
                             type: string
                         type: object
                       description: |-
-                        Secret-bearing widget fields (commonly "token", sometimes "username"/
-                        "password" depending on widget type), resolved directly by the
-                        dashboard backend rather than stored inline.
+                        secrets are secret-bearing widget fields (commonly "token", sometimes
+                        "username"/"password" depending on widget type), resolved directly by
+                        the dashboard backend rather than stored inline.
+                      minProperties: 1
                       type: object
                     type:
                       description: |-
-                        Widget type, e.g. "plex", "grafana", "unifi". See internal/dashboard
-                        for the registered set.
+                        type is the widget type, e.g. "plex", "grafana", "unifi". See
+                        internal/dashboard for the registered set.
+                      maxLength: 64
                       minLength: 1
                       type: string
                     url:
-                      description: Base URL the widget talks to.
+                      description: url is the base URL the widget talks to.
+                      maxLength: 2048
+                      minLength: 1
+                      pattern: ^https?://
                       type: string
                   required:
                   - type
                   type: object
+                maxItems: 16
+                minItems: 1
                 type: array
+                x-kubernetes-list-type: atomic
             required:
             - group
             - instanceRef
@@ -2185,6 +2593,7 @@ spec:
             type: object
           status:
             description: status defines the observed state of ServiceEntry
+            minProperties: 1
             properties:
               conditions:
                 description: conditions represent the current state of the ServiceEntry
@@ -3023,6 +3432,30 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
+  name: kubepage-operator-serviceentry-monitor-source
+  namespace: kubepage-operator-system
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - page.kubepage.dev
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - serviceentries
+  validations:
+  - expression: '(has(object.spec.ping) ? 1 : 0) + (has(object.spec.siteMonitor) ?
+      1 : 0) + (has(object.spec.podSelector) ? 1 : 0) <= 1'
+    message: a ServiceEntry may set at most one of ping, siteMonitor, or podSelector
+    reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
   name: kubepage-operator-serviceentry-secret-source
   namespace: kubepage-operator-system
 spec:
@@ -3094,6 +3527,16 @@ metadata:
   namespace: kubepage-operator-system
 spec:
   policyName: kubepage-operator-infowidget-type
+  validationActions:
+  - Deny
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: kubepage-operator-serviceentry-monitor-source
+  namespace: kubepage-operator-system
+spec:
+  policyName: kubepage-operator-serviceentry-monitor-source
   validationActions:
   - Deny
 ---

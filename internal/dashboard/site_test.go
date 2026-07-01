@@ -274,11 +274,11 @@ func TestLoadSiteThemeFixedAndColorFixed(t *testing.T) {
 
 func TestLoadSiteAppliesNewLookFields(t *testing.T) {
 	scheme := testScheme(t)
-	disableCollapse := true
-	groupsCollapsed := true
-	equalHeights := true
+	disableCollapse := pagev1alpha1.Disabled
+	groupsCollapsed := pagev1alpha1.CollapseCollapsed
+	equalHeights := pagev1alpha1.HeightsEqual
 	bookmarksStyle := bookmarksStyleIcons
-	disableIndexing := true
+	disableIndexing := pagev1alpha1.IndexingNoIndex
 	startURL := "/dash"
 	customCSS := "body{color:red}"
 	cfg := &pagev1alpha1.Configuration{
@@ -308,9 +308,9 @@ func TestLoadSiteAppliesNewLookFields(t *testing.T) {
 
 func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
 	scheme := testScheme(t)
-	header := false
-	initiallyCollapsed := true
-	equalHeights := true
+	header := pagev1alpha1.HeaderHidden
+	initiallyCollapsed := pagev1alpha1.CollapseCollapsed
+	equalHeights := pagev1alpha1.HeightsEqual
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{

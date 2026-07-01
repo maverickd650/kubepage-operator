@@ -484,8 +484,8 @@ func TestPollerShowStatsAndHideErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	showStats := false
-	hideErrors := true
+	showStats := pagev1alpha1.StatsHide
+	hideErrors := pagev1alpha1.StatsHide
 	url := srv.URL
 	entry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "flags", Namespace: testNamespace},

@@ -130,7 +130,7 @@ func TestReconcileServiceUpdateError(t *testing.T) {
 
 func TestIngressForInstanceSetControllerReferenceError(t *testing.T) {
 	instance := newNetworkErrorTestInstance()
-	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
+	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
 	r := &InstanceReconciler{Scheme: schemeWithoutInstance(t)}
 
 	if _, err := r.ingressForInstance(instance); err == nil {
@@ -141,7 +141,7 @@ func TestIngressForInstanceSetControllerReferenceError(t *testing.T) {
 func TestReconcileIngressDefineErrorOnCreate(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newNetworkErrorTestInstance()
-	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
+	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
 	r := &InstanceReconciler{Client: cl, Scheme: schemeWithoutInstance(t)}
 
@@ -174,7 +174,7 @@ func TestReconcileIngressGetError(t *testing.T) {
 func TestReconcileIngressCreateError(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newNetworkErrorTestInstance()
-	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
+	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
 	wantErr := errors.New("create Ingress boom")
 
 	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
@@ -218,7 +218,7 @@ func TestReconcileIngressDeleteError(t *testing.T) {
 func TestReconcileIngressUpdateError(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newNetworkErrorTestInstance()
-	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
+	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
 	wantErr := errors.New("update Ingress boom")
 
 	drifted := &networkingv1.Ingress{
@@ -250,7 +250,7 @@ func TestReconcileIngressUpdateError(t *testing.T) {
 func TestReconcileIngressDefineErrorOnUpdate(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newNetworkErrorTestInstance()
-	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
+	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
 
 	existing := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, existing).Build()
@@ -266,7 +266,7 @@ func TestReconcileIngressDefineErrorOnUpdate(t *testing.T) {
 func newGatewayEnabledInstance() *pagev1alpha1.Instance {
 	instance := newNetworkErrorTestInstance()
 	instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{
-		Enabled:   true,
+		Enabled:   pagev1alpha1.Enabled,
 		Hostnames: []string{testDashboardHost},
 		ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 	}
@@ -401,7 +401,7 @@ func TestReconcileHTTPRouteUpdateError(t *testing.T) {
 func TestHTTPRouteForInstanceSetControllerReferenceError(t *testing.T) {
 	instance := newNetworkErrorTestInstance()
 	instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{
-		Enabled:   true,
+		Enabled:   pagev1alpha1.Enabled,
 		Hostnames: []string{testDashboardHost},
 		ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 	}

@@ -292,7 +292,7 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 		site.Language = *spec.Language
 	}
 	if spec.FullWidth != nil {
-		site.FullWidth = *spec.FullWidth
+		site.FullWidth = *spec.FullWidth == pagev1alpha1.FullWidthFull
 	}
 	if spec.Background != nil {
 		bg := &Background{Saturate: spec.Background.Saturate, Brightness: spec.Background.Brightness, Opacity: spec.Background.Opacity}
@@ -321,7 +321,7 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 			site.Search.Target = *s.Target
 		}
 		if s.FilterCards != nil {
-			site.Search.FilterCards = *s.FilterCards
+			site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
 		}
 	}
 	if spec.Layout != nil {
@@ -334,9 +334,9 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 					Columns:            g.Columns,
 					Style:              stringOrEmpty(g.Style),
 					IconURL:            IconURL(g.Icon),
-					Header:             g.Header,
-					InitiallyCollapsed: g.InitiallyCollapsed,
-					UseEqualHeights:    g.UseEqualHeights,
+					Header:             boolFromEnum(g.Header, pagev1alpha1.HeaderShown),
+					InitiallyCollapsed: boolFromEnum(g.InitiallyCollapsed, pagev1alpha1.CollapseCollapsed),
+					UseEqualHeights:    boolFromEnum(g.UseEqualHeights, pagev1alpha1.HeightsEqual),
 				})
 			}
 			tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
@@ -344,19 +344,19 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 		site.Layout = tabs
 	}
 	if spec.DisableCollapse != nil {
-		site.DisableCollapse = *spec.DisableCollapse
+		site.DisableCollapse = *spec.DisableCollapse == pagev1alpha1.Disabled
 	}
 	if spec.GroupsInitiallyCollapsed != nil {
-		site.GroupsInitiallyCollapsed = *spec.GroupsInitiallyCollapsed
+		site.GroupsInitiallyCollapsed = *spec.GroupsInitiallyCollapsed == pagev1alpha1.CollapseCollapsed
 	}
 	if spec.UseEqualHeights != nil {
-		site.UseEqualHeights = *spec.UseEqualHeights
+		site.UseEqualHeights = *spec.UseEqualHeights == pagev1alpha1.HeightsEqual
 	}
 	if spec.BookmarksStyle != nil {
 		site.BookmarksIconsOnly = *spec.BookmarksStyle == bookmarksStyleIcons
 	}
 	if spec.DisableIndexing != nil {
-		site.DisableIndexing = *spec.DisableIndexing
+		site.DisableIndexing = *spec.DisableIndexing == pagev1alpha1.IndexingNoIndex
 	}
 	if spec.StartURL != nil {
 		site.StartURL = *spec.StartURL
@@ -364,6 +364,18 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.CustomCSS != nil {
 		site.CustomCSS = *spec.CustomCSS
 	}
+}
+
+// boolFromEnum converts an optional two-valued enum pointer (e.g.
+// LayoutGroupSpec.Header's "Shown"/"Hidden") into the *bool tri-state used
+// internally: nil stays nil (caller falls back to a site-wide default),
+// otherwise the pointee reports whether the enum equals trueValue.
+func boolFromEnum(s *string, trueValue string) *bool {
+	if s == nil {
+		return nil
+	}
+	b := *s == trueValue
+	return &b
 }
 
 func stringOrEmpty(s *string) string {

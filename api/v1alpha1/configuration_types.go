@@ -8,26 +8,56 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// Enum values for LayoutGroupSpec.Header/InitiallyCollapsed/UseEqualHeights
+// and ConfigurationSpec's site-wide equivalents (FullWidth/DisableCollapse/
+// GroupsInitiallyCollapsed/UseEqualHeights/DisableIndexing).
+const (
+	HeaderShown  = "Shown"
+	HeaderHidden = "Hidden"
+
+	CollapseCollapsed = "Collapsed"
+	CollapseExpanded  = "Expanded"
+
+	HeightsEqual = "Equal"
+	HeightsAuto  = "Auto"
+
+	FullWidthFull      = "Full"
+	FullWidthContained = "Contained"
+
+	IndexingIndexed = "Indexed"
+	IndexingNoIndex = "NoIndex"
+)
+
 // BackgroundSpec specifies a background image and the filters applied over it.
 // See https://gethomepage.dev/configs/settings/#background-image
+// +kubebuilder:validation:MinProperties=1
 type BackgroundSpec struct {
-	// Full URL or path (relative to /app/public) to the background image.
+	// image is the full URL or path (relative to /app/public) to the
+	// background image.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	Image *string `json:"image,omitempty"`
 
-	// Backdrop blur, a Tailwind backdrop-blur size keyword (e.g. "sm", "md", "xl", "").
+	// blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.
+	// "sm", "md", "xl", ""). An explicit "" is equivalent to leaving it
+	// unset (the default 8px blur).
+	// +kubebuilder:validation:MinLength=0
+	// +kubebuilder:validation:MaxLength=8
 	// +optional
 	Blur *string `json:"blur,omitempty"`
 
-	// Backdrop saturate percentage (Tailwind backdrop-saturate scale, e.g. 0, 50, 100).
+	// saturate is a backdrop saturate percentage (Tailwind backdrop-saturate
+	// scale, e.g. 0, 50, 100).
 	// +optional
 	Saturate *int32 `json:"saturate,omitempty"`
 
-	// Backdrop brightness percentage (Tailwind backdrop-brightness scale, e.g. 0, 50, 75).
+	// brightness is a backdrop brightness percentage (Tailwind
+	// backdrop-brightness scale, e.g. 0, 50, 75).
 	// +optional
 	Brightness *int32 `json:"brightness,omitempty"`
 
-	// Opacity to blend the background image with the background color, 0-100.
+	// opacity blends the background image with the background color, 0-100.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=100
 	// +optional
@@ -39,36 +69,40 @@ type BackgroundSpec struct {
 // to a web search provider. This has no homepage settings.yaml equivalent —
 // it's specific to the native dashboard renderer, not rendered into
 // settings.yaml.
+// +kubebuilder:validation:MinProperties=1
 type SearchSpec struct {
-	// Provider is the web search engine Enter submits the query to.
+	// provider is the web search engine Enter submits the query to.
 	// "custom" requires URL.
 	// +kubebuilder:validation:Enum=duckduckgo;google;bing;custom
-	// +kubebuilder:default=duckduckgo
+	// +default="duckduckgo"
 	// +optional
 	Provider *string `json:"provider,omitempty"`
 
-	// URL is the search endpoint used when Provider is "custom". The query
+	// url is the search endpoint used when Provider is "custom". The query
 	// is appended as a URL-encoded "q" parameter. Must be an http(s) URL —
 	// the dashboard passes this straight into a client-side window.open()/
 	// href, so a non-http(s) scheme (e.g. "javascript:") would be a stored
 	// script-injection vector rather than a search endpoint.
 	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	URL *string `json:"url,omitempty"`
 
-	// Target controls whether the search results page opens in the same tab
+	// target controls whether the search results page opens in the same tab
 	// or a new one.
 	// +kubebuilder:validation:Enum=_blank;_self
-	// +kubebuilder:default=_blank
+	// +default="_blank"
 	// +optional
 	Target *string `json:"target,omitempty"`
 
-	// FilterCards enables as-you-type filtering of service and bookmark
+	// filterCards enables as-you-type filtering of service and bookmark
 	// cards by name/description, independent of the Enter-to-search
 	// fallthrough.
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Enabled"
 	// +optional
-	FilterCards *bool `json:"filterCards,omitempty"`
+	FilterCards *string `json:"filterCards,omitempty"`
 }
 
 // LayoutGroupSpec configures one Group's placement and style within a
@@ -76,44 +110,51 @@ type SearchSpec struct {
 // style keys (style/columns/icon).
 // See https://gethomepage.dev/configs/settings/#layout
 type LayoutGroupSpec struct {
-	// Name is the ServiceEntry Group this entry places and styles.
+	// name is the ServiceEntry Group this entry places and styles.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +required
 	Name string `json:"name"`
 
-	// Columns is the number of card columns to render this group in,
+	// columns is the number of card columns to render this group in,
 	// overriding the dashboard's default auto-fill grid.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=6
 	// +optional
 	Columns *int32 `json:"columns,omitempty"`
 
-	// Style lays the group's cards out in a single row instead of a grid.
+	// style lays the group's cards out in a single row instead of a grid.
 	// +kubebuilder:validation:Enum=row;column
 	// +optional
 	Style *string `json:"style,omitempty"`
 
-	// Icon overrides the group header's icon. Same resolution rules as
+	// icon overrides the group header's icon. Same resolution rules as
 	// ServiceEntry/Bookmark Icon: a full URL passes through, anything else
 	// is resolved as a dashboard-icons slug.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +optional
 	Icon *string `json:"icon,omitempty"`
 
-	// Header renders this group's header (name + icon) when true (the
-	// default). Set false to hide it while still rendering the group's
+	// header renders this group's header (name + icon) when "Shown" (the
+	// default). Set "Hidden" to hide it while still rendering the group's
 	// cards.
+	// +kubebuilder:validation:Enum=Shown;Hidden
 	// +optional
-	Header *bool `json:"header,omitempty"`
+	Header *string `json:"header,omitempty"`
 
-	// InitiallyCollapsed collapses this group by default on first load,
+	// initiallyCollapsed collapses this group by default on first load,
 	// overriding the Configuration's GroupsInitiallyCollapsed. Ignored when
 	// DisableCollapse is set.
+	// +kubebuilder:validation:Enum=Collapsed;Expanded
 	// +optional
-	InitiallyCollapsed *bool `json:"initiallyCollapsed,omitempty"`
+	InitiallyCollapsed *string `json:"initiallyCollapsed,omitempty"`
 
-	// UseEqualHeights makes every card in this group the same height,
+	// useEqualHeights makes every card in this group the same height,
 	// overriding the Configuration's UseEqualHeights.
+	// +kubebuilder:validation:Enum=Equal;Auto
 	// +optional
-	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
+	UseEqualHeights *string `json:"useEqualHeights,omitempty"`
 }
 
 // LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
@@ -121,12 +162,17 @@ type LayoutGroupSpec struct {
 // trailing "Other" tab; a Group referenced by more than one tab is shown
 // under the first tab that lists it.
 type LayoutTabSpec struct {
-	// Name is the tab's label.
+	// name is the tab's label.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +required
 	Name string `json:"name"`
 
-	// Groups lists, in display order, the Groups shown under this tab.
+	// groups lists, in display order, the Groups shown under this tab.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
+	// +listType=atomic
+	// +required
 	Groups []LayoutGroupSpec `json:"groups"`
 }
 
@@ -134,118 +180,143 @@ type LayoutTabSpec struct {
 // dashboard's theme/color/background/header-style look and its header search
 // box, applied by internal/dashboard's LoadSite.
 type ConfigurationSpec struct {
-	// InstanceRef names the Instance this Configuration applies to.
+	// instanceRef names the Instance this Configuration applies to.
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Title is the dashboard's browser tab title and header heading.
+	// title is the dashboard's browser tab title and header heading.
 	// Defaults to "kubepage" when unset.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +optional
 	Title *string `json:"title,omitempty"`
 
-	// Description is shown as a header subtitle and the page's meta
+	// description is shown as a header subtitle and the page's meta
 	// description.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	Description *string `json:"description,omitempty"`
 
-	// Favicon is a URL to the dashboard's favicon.
+	// favicon is a URL to the dashboard's favicon.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	Favicon *string `json:"favicon,omitempty"`
 
-	// CardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
-	// size keyword (e.g. "sm", "md", "xl"). Most visible over a background
-	// image.
+	// cardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
+	// size keyword (e.g. "sm", "md", "xl", ""). An explicit "" is equivalent
+	// to leaving it unset (the default 8px blur). Most visible over a
+	// background image.
+	// +kubebuilder:validation:MinLength=0
+	// +kubebuilder:validation:MaxLength=8
 	// +optional
 	CardBlur *string `json:"cardBlur,omitempty"`
 
-	// Target is the default link target for service and bookmark cards.
+	// target is the default link target for service and bookmark cards.
 	// Individual ServiceEntries may override it via their own target.
 	// +kubebuilder:validation:Enum=_blank;_self
-	// +kubebuilder:default=_blank
+	// +default="_blank"
 	// +optional
 	Target *string `json:"target,omitempty"`
 
-	// Background image and filters, used instead of the solid theme color.
+	// background image and filters, used instead of the solid theme color.
 	// +optional
 	Background *BackgroundSpec `json:"background,omitempty"`
 
-	// Fixed theme, disabling the theme switcher. One of "light" or "dark".
+	// theme is the fixed theme, disabling the theme switcher. One of "light"
+	// or "dark".
 	// +kubebuilder:validation:Enum=light;dark
 	// +optional
 	Theme *string `json:"theme,omitempty"`
 
-	// Fixed color palette, disabling the palette switcher.
+	// color is the fixed color palette, disabling the palette switcher.
 	// +kubebuilder:validation:Enum=slate;gray;zinc;neutral;stone;amber;yellow;lime;green;emerald;teal;cyan;sky;blue;indigo;violet;purple;fuchsia;pink;rose;red;white
 	// +optional
 	Color *string `json:"color,omitempty"`
 
-	// Header style for service/bookmark group headers.
+	// headerStyle for service/bookmark group headers.
 	// +kubebuilder:validation:Enum=underlined;boxed;clean;boxedWidgets
 	// +optional
 	HeaderStyle *string `json:"headerStyle,omitempty"`
 
-	// UI language, e.g. "en", "fr", "de".
+	// language is the UI language, e.g. "en", "fr", "de".
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=16
 	// +optional
 	Language *string `json:"language,omitempty"`
 
-	// Use the entire window width instead of a centered, constrained layout.
+	// fullWidth uses the entire window width instead of a centered,
+	// constrained layout.
+	// +kubebuilder:validation:Enum=Full;Contained
 	// +optional
-	FullWidth *bool `json:"fullWidth,omitempty"`
+	FullWidth *string `json:"fullWidth,omitempty"`
 
-	// Search configures the native dashboard's header search box (card
+	// search configures the native dashboard's header search box (card
 	// filtering + web-search fallthrough).
 	// +optional
 	Search *SearchSpec `json:"search,omitempty"`
 
-	// Layout arranges ServiceEntry Groups into tabs, mirroring homepage's
+	// layout arranges ServiceEntry Groups into tabs, mirroring homepage's
 	// settings.yaml `layout:` map (group -> style) with tabs added on top.
 	// Omitted/empty renders every group flat with no tab UI, as before.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=atomic
 	// +optional
 	Layout []LayoutTabSpec `json:"layout,omitempty"`
 
-	// DisableCollapse disables the collapsible expand/collapse control on
+	// disableCollapse disables the collapsible expand/collapse control on
 	// service and bookmark group headers. Collapsing is enabled by default.
+	// +kubebuilder:validation:Enum=Enabled;Disabled
 	// +optional
-	DisableCollapse *bool `json:"disableCollapse,omitempty"`
+	DisableCollapse *string `json:"disableCollapse,omitempty"`
 
-	// GroupsInitiallyCollapsed collapses every group by default on first
+	// groupsInitiallyCollapsed collapses every group by default on first
 	// load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
 	// group. Ignored when DisableCollapse is set.
+	// +kubebuilder:validation:Enum=Collapsed;Expanded
 	// +optional
-	GroupsInitiallyCollapsed *bool `json:"groupsInitiallyCollapsed,omitempty"`
+	GroupsInitiallyCollapsed *string `json:"groupsInitiallyCollapsed,omitempty"`
 
-	// UseEqualHeights makes every card in a group the same height. A
+	// useEqualHeights makes every card in a group the same height. A
 	// LayoutGroupSpec's own UseEqualHeights overrides this per group.
+	// +kubebuilder:validation:Enum=Equal;Auto
 	// +optional
-	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
+	UseEqualHeights *string `json:"useEqualHeights,omitempty"`
 
-	// BookmarksStyle renders every bookmark card icon-only (no name or
+	// bookmarksStyle renders every bookmark card icon-only (no name or
 	// description), matching homepage's `bookmarksStyle: icons`.
 	// +kubebuilder:validation:Enum=icons
 	// +optional
 	BookmarksStyle *string `json:"bookmarksStyle,omitempty"`
 
-	// DisableIndexing asks search engines not to index the dashboard:
+	// disableIndexing asks search engines not to index the dashboard:
 	// disallows all crawlers in robots.txt and adds a noindex meta tag.
+	// +kubebuilder:validation:Enum=Indexed;NoIndex
 	// +optional
-	DisableIndexing *bool `json:"disableIndexing,omitempty"`
+	DisableIndexing *string `json:"disableIndexing,omitempty"`
 
-	// StartURL is the PWA manifest's start_url, used when the dashboard is
+	// startUrl is the PWA manifest's start_url, used when the dashboard is
 	// installed as an app. Defaults to "/".
 	// +kubebuilder:validation:Pattern=`^(https?://|/)`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	StartURL *string `json:"startUrl,omitempty"`
 
-	// CustomCSS is raw CSS injected into the dashboard's page in a second
+	// customCSS is raw CSS injected into the dashboard's page in a second
 	// <style> block appended after the built-in stylesheet, so its rules
 	// can override it. Trusted, operator-supplied content — the same trust
 	// level as every other Configuration field (e.g. Background.Image).
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=10000
 	// +optional
 	CustomCSS *string `json:"customCSS,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.
+// +kubebuilder:validation:MinProperties=1
 type ConfigurationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -262,10 +333,12 @@ type ConfigurationStatus struct {
 	// - "Degraded": the resource failed to reach or maintain its desired state
 	//
 	// The status of each condition is one of True, False, or Unknown.
+	// +patchStrategy=merge
+	// +patchMergeKey=type
 	// +listType=map
 	// +listMapKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true

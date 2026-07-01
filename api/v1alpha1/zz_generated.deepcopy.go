@@ -283,7 +283,7 @@ func (in *ConfigurationSpec) DeepCopyInto(out *ConfigurationSpec) {
 	}
 	if in.FullWidth != nil {
 		in, out := &in.FullWidth, &out.FullWidth
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.Search != nil {
@@ -300,17 +300,17 @@ func (in *ConfigurationSpec) DeepCopyInto(out *ConfigurationSpec) {
 	}
 	if in.DisableCollapse != nil {
 		in, out := &in.DisableCollapse, &out.DisableCollapse
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.GroupsInitiallyCollapsed != nil {
 		in, out := &in.GroupsInitiallyCollapsed, &out.GroupsInitiallyCollapsed
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.UseEqualHeights != nil {
 		in, out := &in.UseEqualHeights, &out.UseEqualHeights
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.BookmarksStyle != nil {
@@ -320,7 +320,7 @@ func (in *ConfigurationSpec) DeepCopyInto(out *ConfigurationSpec) {
 	}
 	if in.DisableIndexing != nil {
 		in, out := &in.DisableIndexing, &out.DisableIndexing
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.StartURL != nil {
@@ -379,7 +379,7 @@ func (in *FieldHighlight) DeepCopyInto(out *FieldHighlight) {
 	}
 	if in.ValueOnly != nil {
 		in, out := &in.ValueOnly, &out.ValueOnly
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 }
@@ -457,12 +457,12 @@ func (in *HighlightRuleSpec) DeepCopyInto(out *HighlightRuleSpec) {
 	}
 	if in.Negate != nil {
 		in, out := &in.Negate, &out.Negate
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.CaseSensitive != nil {
 		in, out := &in.CaseSensitive, &out.CaseSensitive
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 }
@@ -744,7 +744,7 @@ func (in *InstanceSpec) DeepCopyInto(out *InstanceSpec) {
 	}
 	if in.HostUsers != nil {
 		in, out := &in.HostUsers, &out.HostUsers
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.Labels != nil {
@@ -836,17 +836,17 @@ func (in *LayoutGroupSpec) DeepCopyInto(out *LayoutGroupSpec) {
 	}
 	if in.Header != nil {
 		in, out := &in.Header, &out.Header
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.InitiallyCollapsed != nil {
 		in, out := &in.InitiallyCollapsed, &out.InitiallyCollapsed
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.UseEqualHeights != nil {
 		in, out := &in.UseEqualHeights, &out.UseEqualHeights
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 }
@@ -903,7 +903,7 @@ func (in *SearchSpec) DeepCopyInto(out *SearchSpec) {
 	}
 	if in.FilterCards != nil {
 		in, out := &in.FilterCards, &out.FilterCards
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 }
@@ -1033,12 +1033,12 @@ func (in *ServiceEntrySpec) DeepCopyInto(out *ServiceEntrySpec) {
 	}
 	if in.ShowStats != nil {
 		in, out := &in.ShowStats, &out.ShowStats
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.HideErrors != nil {
 		in, out := &in.HideErrors, &out.HideErrors
-		*out = new(bool)
+		*out = new(string)
 		**out = **in
 	}
 	if in.Ping != nil {

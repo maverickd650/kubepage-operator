@@ -172,7 +172,7 @@ func (r *InstanceReconciler) ingressForInstance(instance *pagev1alpha1.Instance)
 func (r *InstanceReconciler) reconcileIngress(ctx context.Context, instance *pagev1alpha1.Instance) error {
 	log := logf.FromContext(ctx)
 
-	enabled := instance.Spec.Ingress != nil && instance.Spec.Ingress.Enabled
+	enabled := instance.Spec.Ingress != nil && instance.Spec.Ingress.Enabled == pagev1alpha1.Enabled
 
 	found := &networkingv1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
@@ -357,7 +357,7 @@ func (r *InstanceReconciler) httpRouteForInstance(instance *pagev1alpha1.Instanc
 func (r *InstanceReconciler) reconcileHTTPRoute(ctx context.Context, instance *pagev1alpha1.Instance) error {
 	log := logf.FromContext(ctx)
 
-	enabled := instance.Spec.Gateway != nil && instance.Spec.Gateway.Enabled
+	enabled := instance.Spec.Gateway != nil && instance.Spec.Gateway.Enabled == pagev1alpha1.Enabled
 	if !enabled {
 		if !r.GatewayAPIEnabled {
 			// Nothing to do, and nothing we could even look up.

@@ -84,7 +84,7 @@ func TestEvaluateNumericRules(t *testing.T) {
 		{"outside match", pagev1alpha1.HighlightRuleSpec{When: whenOutside, Value: "10", Value2: value2("20")}, "25", true},
 		{"tolerates formatted value", pagev1alpha1.HighlightRuleSpec{When: whenGTE, Value: "20"}, "45%", true},
 		{"unparseable value", pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "5"}, testNotANumber, false},
-		{"negated", pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "5", Negate: new(true)}, "10", false},
+		{"negated", pagev1alpha1.HighlightRuleSpec{When: whenGT, Value: "5", Negate: new(pagev1alpha1.NegateNegate)}, "10", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -179,7 +179,7 @@ func TestEvaluateStringRules(t *testing.T) {
 		want  bool
 	}{
 		{"equals case-insensitive by default", pagev1alpha1.HighlightRuleSpec{When: whenEquals, Value: "OK"}, "ok", true},
-		{"equals case-sensitive", pagev1alpha1.HighlightRuleSpec{When: whenEquals, Value: "OK", CaseSensitive: new(true)}, "ok", false},
+		{"equals case-sensitive", pagev1alpha1.HighlightRuleSpec{When: whenEquals, Value: "OK", CaseSensitive: new(pagev1alpha1.CaseSensitiveOn)}, "ok", false},
 		{"includes", pagev1alpha1.HighlightRuleSpec{When: whenIncludes, Value: "pending"}, "import pending", true},
 		{"startsWith", pagev1alpha1.HighlightRuleSpec{When: whenStartsWith, Value: "5"}, "503", true},
 		{"endsWith", pagev1alpha1.HighlightRuleSpec{When: whenEndsWith, Value: "02"}, "503 502", true},

@@ -18,48 +18,55 @@ import (
 // since header widgets are a flat, ordered list rather than grouped like
 // ServiceEntry/Bookmark.
 type InfoWidgetSpec struct {
-	// InstanceRef names the Instance this InfoWidget belongs to.
+	// instanceRef names the Instance this InfoWidget belongs to.
 	// +required
 	InstanceRef InstanceRef `json:"instanceRef"`
 
-	// Type is the widget type, e.g. "resources", "search", "datetime".
+	// type is the widget type, e.g. "resources", "search", "datetime".
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
 	// +required
 	Type string `json:"type"`
 
-	// Order controls rendering position: widgets are sorted by Order (nil
+	// order controls rendering position: widgets are sorted by Order (nil
 	// sorts last), ties broken by the InfoWidget object's name, since CRDs
 	// have no inherent ordering of their own.
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
-	// Icon shown to the left of this widget's value(s) in the header strip,
+	// icon shown to the left of this widget's value(s) in the header strip,
 	// matching homepage's Resource component. Resolved the same way as
 	// ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
 	// anything else is treated as a dashboard-icons slug. Ignored by the
 	// "greeting" and "datetime" widget types, which homepage renders without
 	// an icon.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	// +optional
 	Icon *string `json:"icon,omitempty"`
 
-	// Secret-bearing option fields. Merged into Options under the same field
-	// names once a renderer for this CRD exists.
+	// secrets are secret-bearing option fields. Merged into Options under the
+	// same field names once a renderer for this CRD exists.
+	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
-	// Options holds every widget-type-specific field.
+	// options holds every widget-type-specific field.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Options *apiextensionsv1.JSON `json:"options,omitempty"`
 }
 
 // InfoWidgetStatus defines the observed state of InfoWidget.
+// +kubebuilder:validation:MinProperties=1
 type InfoWidgetStatus struct {
 	// conditions represent the current state of the InfoWidget resource.
+	// +patchStrategy=merge
+	// +patchMergeKey=type
 	// +listType=map
 	// +listMapKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true

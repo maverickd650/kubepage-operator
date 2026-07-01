@@ -210,7 +210,7 @@ func TestServerFragmentRendersCollapsibleGroupsByDefault(t *testing.T) {
 func TestServerFragmentDisableCollapseRendersPlainHeaders(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testGroup, ServiceName: testSvcAName})
-	disable := true
+	disable := pagev1alpha1.Disabled
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -225,7 +225,7 @@ func TestServerFragmentDisableCollapseRendersPlainHeaders(t *testing.T) {
 
 	body := rec.Body.String()
 	if strings.Contains(body, "<details") {
-		t.Errorf("fragment body has <details> with DisableCollapse=true:\n%s", body)
+		t.Errorf("fragment body has <details> with DisableCollapse=Disabled:\n%s", body)
 	}
 	if !strings.Contains(body, "<h2>") {
 		t.Errorf("fragment body missing plain <h2> group header:\n%s", body)
@@ -294,7 +294,7 @@ func TestServerManifestRoute(t *testing.T) {
 }
 
 func TestServerRobotsRoute(t *testing.T) {
-	disable := true
+	disable := pagev1alpha1.IndexingNoIndex
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -674,7 +674,7 @@ func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
 
-	header := false
+	header := pagev1alpha1.HeaderHidden
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -710,7 +710,7 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 			Abbr:        &abbr,
 		},
 	}
-	disable := true
+	disable := pagev1alpha1.Disabled
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -855,7 +855,7 @@ func TestServerIndexRendersDescriptionMetaAndParagraph(t *testing.T) {
 }
 
 func TestServerIndexAppliesDisableIndexingMetaRobots(t *testing.T) {
-	disable := true
+	disable := pagev1alpha1.IndexingNoIndex
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -978,7 +978,7 @@ func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
 	store.Set(Card{Key: "ns/row/0", Group: testGroup, ServiceName: testServiceName})
 
 	style := "row"
-	equalHeights := true
+	equalHeights := pagev1alpha1.HeightsEqual
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{

@@ -200,7 +200,7 @@ var _ = Describe("Instance controller", func() {
 				Spec: pagev1alpha1.InstanceSpec{
 					Size:          ptr.To(int32(1)),
 					ContainerPort: 8080,
-					HostUsers:     ptr.To(false),
+					HostUsers:     ptr.To(pagev1alpha1.Disabled),
 					Labels: map[string]string{
 						"team": "platform",
 					},
@@ -548,7 +548,7 @@ var _ = Describe("Instance controller", func() {
 					Size:          ptr.To(int32(1)),
 					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
-						Enabled: true,
+						Enabled: pagev1alpha1.Enabled,
 						Host:    testDashboardHost,
 						TLS:     &pagev1alpha1.IngressTLSSpec{SecretName: "dashboard-tls"},
 					},
@@ -576,7 +576,7 @@ var _ = Describe("Instance controller", func() {
 
 			By("disabling spec.ingress.enabled removes the Ingress")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
-			instance.Spec.Ingress.Enabled = false
+			instance.Spec.Ingress.Enabled = pagev1alpha1.Disabled
 			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
 
 			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
@@ -594,7 +594,7 @@ var _ = Describe("Instance controller", func() {
 					Size:          ptr.To(int32(1)),
 					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
-						Enabled: true,
+						Enabled: pagev1alpha1.Enabled,
 						Host:    testDashboardHost,
 					},
 				},
@@ -670,7 +670,7 @@ var _ = Describe("Instance controller", func() {
 					Size:          ptr.To(int32(1)),
 					ContainerPort: 8080,
 					Gateway: &pagev1alpha1.GatewaySpec{
-						Enabled:   true,
+						Enabled:   pagev1alpha1.Enabled,
 						Hostnames: []string{testDashboardHost},
 						ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 					},
