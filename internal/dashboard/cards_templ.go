@@ -297,7 +297,7 @@ func serviceCardView(c Card, siteTarget string) templ.Component {
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(statusWithLatency(c.Status, c.Latency))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 35, Col: 102}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 35, Col: 103}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 				if templ_7745c5c3_Err != nil {
@@ -334,7 +334,7 @@ func serviceCardView(c Card, siteTarget string) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(c.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 38, Col: 73}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 38, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 				if templ_7745c5c3_Err != nil {
@@ -347,7 +347,7 @@ func serviceCardView(c Card, siteTarget string) templ.Component {
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(statusPillText(c))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 38, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 38, Col: 96}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 				if templ_7745c5c3_Err != nil {
@@ -542,7 +542,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(siteTarget)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 69, Col: 37}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 70, Col: 21}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -555,7 +555,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(b.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 69, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 71, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 		if templ_7745c5c3_Err != nil {
@@ -568,7 +568,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(b.Description)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 69, Col: 93}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 72, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 		if templ_7745c5c3_Err != nil {
@@ -581,7 +581,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 		var templ_7745c5c3_Var35 string
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(b.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 70, Col: 16}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 73, Col: 16}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 		if templ_7745c5c3_Err != nil {
@@ -604,7 +604,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(b.Abbr)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 75, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 78, Col: 30}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -623,7 +623,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(b.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 79, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 82, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -680,7 +680,7 @@ func groupHeading(name, iconURL string) templ.Component {
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 90, Col: 6}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 93, Col: 6}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -693,7 +693,7 @@ func groupHeading(name, iconURL string) templ.Component {
 		var templ_7745c5c3_Var40 string
 		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 91, Col: 7}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 94, Col: 7}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 		if templ_7745c5c3_Err != nil {
@@ -741,7 +741,7 @@ func serviceGroupBlock(g cardGroup, siteTarget string, collapsible bool) templ.C
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.ResolveAttributeValue(g.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 102, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 105, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -850,7 +850,7 @@ func serviceCardGrid(g cardGroup, siteTarget string) templ.Component {
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(gridStyle(g.Columns))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 120, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 123, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -911,7 +911,7 @@ func bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, collapsible, initia
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue("bookmark:" + bg.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 134, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 137, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
 			if templ_7745c5c3_Err != nil {
@@ -934,7 +934,7 @@ func bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, collapsible, initia
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(bg.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 135, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 138, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -960,7 +960,7 @@ func bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, collapsible, initia
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(bg.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 139, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 142, Col: 15}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 			if templ_7745c5c3_Err != nil {
@@ -1083,7 +1083,7 @@ func Cards(data fragmentData) templ.Component {
 				var templ_7745c5c3_Var56 string
 				templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 156, Col: 125}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 159, Col: 125}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 				if templ_7745c5c3_Err != nil {
