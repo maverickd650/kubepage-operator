@@ -44,6 +44,12 @@ const managerContainerName = "manager"
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+
+	// version and commit are stamped at build time via -ldflags (see
+	// Dockerfile's VERSION/REVISION build args); "dev" is the fallback for
+	// `go run`/`go build` without those flags.
+	version = "dev"
+	commit  = "dev"
 )
 
 func init() {
@@ -268,7 +274,7 @@ func runManager() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("Starting manager")
+	setupLog.Info("Starting manager", "version", version, "commit", commit)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
@@ -354,6 +360,9 @@ func runDashboard(args []string) {
 		setupLog.Error(nil, "--namespace and --instance-name are required")
 		os.Exit(1)
 	}
+
+	setupLog.Info("Starting dashboard", "version", version, "commit", commit,
+		"namespace", namespace, "instanceName", instanceName)
 
 	if err := dashboard.Run(ctrl.SetupSignalHandler(), dashboard.Options{
 		RestConfig:   ctrl.GetConfigOrDie(),

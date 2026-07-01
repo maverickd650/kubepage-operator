@@ -18,6 +18,8 @@ kubebuilder = "4.15.0"
 IMG = "{{ env.IMG | default(value='controller:latest') }}"
 KIND_CLUSTER = "{{ env.KIND_CLUSTER | default(value='kubepage-operator-test-e2e') }}"
 CONTAINER_TOOL = "{{ env.CONTAINER_TOOL | default(value='docker') }}"
+# Passed to the Dockerfile's GO_VERSION build-arg; must match [tools].go above.
+GO_VERSION = "1.26.4"
 
 ##@ Development
 
@@ -129,7 +131,13 @@ run = "go run ./cmd/main.go"
 
 [tasks.docker-build]
 description = "Build docker image with the manager"
-run = "$CONTAINER_TOOL build -t $IMG ."
+run = '''
+$CONTAINER_TOOL build -t $IMG \
+  --build-arg GO_VERSION="$GO_VERSION" \
+  --build-arg VERSION="${VERSION:-dev}" \
+  --build-arg REVISION="${REVISION:-$(git rev-parse --short HEAD)}" \
+  .
+'''
 
 [tasks.docker-push]
 description = "Push docker image with the manager"
@@ -145,7 +153,11 @@ sed -e '1 s/\(^FROM\)/FROM --platform=${BUILDPLATFORM}/; t' \
 trap 'rm -f Dockerfile.cross; $CONTAINER_TOOL buildx rm "$builder" 2>/dev/null || true' EXIT
 $CONTAINER_TOOL buildx create --name "$builder" 2>/dev/null || true
 $CONTAINER_TOOL buildx use "$builder"
-$CONTAINER_TOOL buildx build --push --platform="$platforms" --tag "$IMG" -f Dockerfile.cross .
+$CONTAINER_TOOL buildx build --push --platform="$platforms" --tag "$IMG" \
+  --build-arg GO_VERSION="$GO_VERSION" \
+  --build-arg VERSION="${VERSION:-dev}" \
+  --build-arg REVISION="${REVISION:-$(git rev-parse --short HEAD)}" \
+  -f Dockerfile.cross .
 '''
 
 [tasks.build-installer]
