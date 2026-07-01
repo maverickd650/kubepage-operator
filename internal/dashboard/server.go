@@ -14,6 +14,7 @@ import (
 const (
 	headerTypeGreeting = "greeting"
 	headerTypeDatetime = "datetime"
+	headerTypeLogo     = "logo"
 )
 
 // assetFS holds static assets served verbatim under /assets/ — the
@@ -60,15 +61,25 @@ type Server struct {
 	Namespace      string
 	InstanceName   string
 	RefreshSeconds int
+
+	// Version/Commit are stamped at build time (see cmd/main.go), shown in
+	// the page shell's footer unless Site.HideVersion is set.
+	Version string
+	Commit  string
 }
 
 // indexData is the page shell's template data: site-wide look (theme/
-// color/background/search) plus the htmx poll interval.
+// color/background/search) plus the htmx poll interval. Fragment is the
+// initial card grid, server-rendered into the shell so the page never shows
+// an empty grid while htmx's first /fragment poll is in flight.
 type indexData struct {
 	Site           Site
 	AccentHex      string
 	Ramp           Ramp
 	RefreshSeconds int
+	Fragment       fragmentData
+	Version        string
+	Commit         string
 }
 
 // fragmentData is the polled fragment's template data: the live widget
@@ -97,8 +108,10 @@ type headerWidgetView struct {
 	Greeting string
 	Format   string
 	IconURL  string
-	Fields   []Field
-	Err      string
+	// Href optionally wraps the "logo" widget type's image in a link.
+	Href   string
+	Fields []Field
+	Err    string
 }
 
 // headerData is the /header fragment's template data.
@@ -240,7 +253,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := indexData{Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh}
+	data := indexData{
+		Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh,
+		Fragment: s.buildFragmentData(site),
+		Version:  s.Version, Commit: s.Commit,
+	}
 	if err := Index(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -254,16 +271,23 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := fragmentData{
+	if err := Cards(s.buildFragmentData(site)).Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// buildFragmentData builds the polled fragment's template data from the
+// Store's current snapshot; shared by handleIndex (the page shell's
+// server-rendered initial fragment) and handleFragment (every subsequent
+// htmx poll), so the two never drift apart.
+func (s *Server) buildFragmentData(site Site) fragmentData {
+	return fragmentData{
 		Tabs:                        layoutTabs(serviceCards(s.Store.Snapshot()), site),
 		BookmarkGroups:              site.BookmarkGroups,
 		SiteTarget:                  site.Target,
 		DisableCollapse:             site.DisableCollapse,
 		BookmarksInitiallyCollapsed: site.GroupsInitiallyCollapsed,
 		BookmarksIconsOnly:          site.BookmarksIconsOnly,
-	}
-	if err := Cards(data).Render(r.Context(), w); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -311,6 +335,9 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 			v.Greeting = d.Options["text"]
 		case headerTypeDatetime:
 			v.Format = d.Options["format"]
+		case headerTypeLogo:
+			v.IconURL = d.IconURL
+			v.Href = d.Options["href"]
 		default:
 			v.IconURL = d.IconURL
 			if c, ok := live[d.Name]; ok {

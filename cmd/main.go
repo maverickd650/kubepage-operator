@@ -375,6 +375,8 @@ func runDashboard(args []string) {
 		Addr:         addr,
 		MetricsAddr:  metricsAddr,
 		PollInterval: pollInterval,
+		Version:      version,
+		Commit:       commit,
 	}); err != nil {
 		setupLog.Error(err, "Failed to run dashboard")
 		os.Exit(1)

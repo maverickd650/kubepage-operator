@@ -38,6 +38,7 @@ templ Index(data indexData) {
 				[data-full-width] .wrap { max-width: none; }
 				.page-title { margin: 0; font-size: 1.5rem; }
 				.page-desc { margin: 0.25rem 0 1rem; color: var(--muted); }
+				.footer { margin-top: 2rem; text-align: center; font-size: 0.75rem; color: var(--muted); }
 				.header-strip { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
 				.header-widget {
 					background: color-mix(in srgb, var(--panel) 45%, transparent);
@@ -64,9 +65,9 @@ templ Index(data indexData) {
 					margin: 1.5rem 0 0.5rem;
 				}
 				[data-header-style="underlined"] h2, [data-header-style="underlined"] summary { border-bottom: 1px solid var(--accent); padding-bottom: 0.25rem; }
-				[data-header-style="boxed"] h2, [data-header-style="boxedWidgets"] h2,
-				[data-header-style="boxed"] summary, [data-header-style="boxedWidgets"] summary { background: var(--panel); padding: 0.4rem 0.6rem; border-radius: 0.4rem; }
+				[data-header-style="boxed"] h2, [data-header-style="boxed"] summary { background: var(--panel); padding: 0.4rem 0.6rem; border-radius: 0.4rem; }
 				[data-header-style="clean"] h2, [data-header-style="clean"] summary { color: var(--text); letter-spacing: 0.02em; }
+				[data-header-style="boxedWidgets"] .header-widget { background: var(--panel); border: 1px solid var(--border); box-shadow: none; }
 				details.group summary {
 					font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
 					margin: 1.5rem 0 0.5rem; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.3rem;
@@ -170,6 +171,9 @@ templ Index(data indexData) {
 			if data.Site.CustomCSS != "" {
 				@templ.Raw("<style>" + cssStringEscape(data.Site.CustomCSS) + "</style>")
 			}
+			if data.Site.CustomJS != "" {
+				@templ.Raw("<script>" + jsStringEscape(data.Site.CustomJS) + "</script>")
+			}
 			if !data.Site.ThemeFixed || !data.Site.ColorFixed {
 				@templ.JSONScript("switcher-config", switcherConfig{ThemeFixed: data.Site.ThemeFixed, ColorFixed: data.Site.ColorFixed})
 				@templ.JSONScript("palette-ramps", AllPalettes())
@@ -229,8 +233,13 @@ templ Index(data indexData) {
 				<div class="search-bar">
 					<input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off"/>
 				</div>
-				<div id="cards" hx-get="/fragment" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="innerHTML"></div>
+				<div id="cards" hx-get="/fragment" hx-trigger={ "every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="innerHTML">
+					@Cards(data.Fragment)
+				</div>
 			</div>
+			if !data.Site.HideVersion {
+				<div class="footer">{ versionFooterText(data.Version, data.Commit) }</div>
+			}
 			<div class="ql-overlay" id="ql-overlay">
 				<div class="ql-box">
 					<input id="ql-input" type="text" placeholder="Jump to a service or search the web…" autocomplete="off"/>
@@ -270,11 +279,22 @@ templ Index(data indexData) {
 				}
 
 				// datetime header widget: tick every second, re-selecting each tick so it
-				// keeps working across htmx swaps of the header strip.
+				// keeps working across htmx swaps of the header strip. data-format, when
+				// present, is a JSON-encoded Intl.DateTimeFormat options object (e.g.
+				// '{"dateStyle":"short","timeStyle":"short"}'); invalid or absent falls
+				// back to the previous fixed medium/medium format.
 				setInterval(function () {
 					const now = new Date();
 					document.querySelectorAll("[data-clock]").forEach(function (el) {
-						el.textContent = now.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+						let opts = { dateStyle: "medium", timeStyle: "medium" };
+						if (el.dataset.format) {
+							try {
+								opts = JSON.parse(el.dataset.format);
+							} catch (e) {
+								// keep the default on invalid JSON
+							}
+						}
+						el.textContent = now.toLocaleString(undefined, opts);
 					});
 				}, 1000);
 

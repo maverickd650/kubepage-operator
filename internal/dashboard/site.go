@@ -79,6 +79,17 @@ type Site struct {
 	// CustomCSS is raw, operator-supplied CSS appended after the built-in
 	// stylesheet.
 	CustomCSS string
+	// CustomJS is raw, operator-supplied JavaScript run once on page load.
+	CustomJS string
+
+	// StatusStyle/HideErrors are the site-wide defaults a ServiceEntry falls
+	// back to when it doesn't set its own StatusStyle/HideErrors (see
+	// poller.go's siteDefaults).
+	StatusStyle string
+	HideErrors  bool
+
+	// HideVersion hides the dashboard's version/commit footer.
+	HideVersion bool
 
 	BookmarkGroups []BookmarkGroup
 	HeaderWidgets  []HeaderWidget
@@ -166,27 +177,16 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Title:       defaultTitle,
 		Target:      defaultTarget,
 		StartURL:    "/",
+		StatusStyle: statusStyleDot,
 		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true},
 	}
 
-	var configs pagev1alpha1.ConfigurationList
-	if err := reader.List(ctx, &configs, client.InNamespace(namespace)); err != nil {
-		return site, fmt.Errorf("listing Configurations: %w", err)
+	spec, err := boundConfigurationSpec(ctx, reader, namespace, instanceName)
+	if err != nil {
+		return site, err
 	}
-
-	var bound []pagev1alpha1.Configuration
-	for _, c := range configs.Items {
-		if c.Spec.InstanceRef.Name == instanceName {
-			bound = append(bound, c)
-		}
-	}
-	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
-	if len(bound) > 1 {
-		siteLog.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
-			"instance", instanceName, "using", bound[0].Name)
-	}
-	if len(bound) > 0 {
-		applyConfiguration(&site, &bound[0].Spec)
+	if spec != nil {
+		applyConfiguration(&site, spec)
 	}
 
 	var bookmarks pagev1alpha1.BookmarkList
@@ -259,6 +259,34 @@ func scalarOptions(raw *apiextensionsv1.JSON) map[string]string {
 		}
 	}
 	return opts
+}
+
+// boundConfigurationSpec returns the Spec of the Configuration bound to
+// instanceName (the lexicographically first by name, when more than one
+// references the same Instance), or nil if none is bound. Shared by LoadSite
+// and Poller.siteDefaults so both read the same "which Configuration wins"
+// rule from a single place.
+func boundConfigurationSpec(ctx context.Context, reader client.Reader, namespace, instanceName string) (*pagev1alpha1.ConfigurationSpec, error) {
+	var configs pagev1alpha1.ConfigurationList
+	if err := reader.List(ctx, &configs, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("listing Configurations: %w", err)
+	}
+
+	var bound []pagev1alpha1.Configuration
+	for _, c := range configs.Items {
+		if c.Spec.InstanceRef.Name == instanceName {
+			bound = append(bound, c)
+		}
+	}
+	if len(bound) == 0 {
+		return nil, nil
+	}
+	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
+	if len(bound) > 1 {
+		siteLog.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
+			"instance", instanceName, "using", bound[0].Name)
+	}
+	return &bound[0].Spec, nil
 }
 
 func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
@@ -363,6 +391,18 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	}
 	if spec.CustomCSS != nil {
 		site.CustomCSS = *spec.CustomCSS
+	}
+	if spec.CustomJS != nil {
+		site.CustomJS = *spec.CustomJS
+	}
+	if spec.StatusStyle != nil {
+		site.StatusStyle = *spec.StatusStyle
+	}
+	if spec.HideErrors != nil {
+		site.HideErrors = *spec.HideErrors == pagev1alpha1.StatsHide
+	}
+	if spec.HideVersion != nil {
+		site.HideVersion = *spec.HideVersion == pagev1alpha1.Enabled
 	}
 }
 

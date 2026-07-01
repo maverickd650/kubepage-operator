@@ -143,6 +143,14 @@ spec:
                 maxLength: 10000
                 minLength: 1
                 type: string
+              customJS:
+                description: |-
+                  customJS is raw JavaScript injected into the dashboard's page in a
+                  <script> block, run once on page load. Trusted, operator-supplied
+                  content — the same trust level as CustomCSS/Background.Image.
+                maxLength: 10000
+                minLength: 1
+                type: string
               description:
                 description: |-
                   description is shown as a header subtitle and the page's meta
@@ -196,6 +204,21 @@ spec:
                 - boxed
                 - clean
                 - boxedWidgets
+                type: string
+              hideErrors:
+                description: |-
+                  hideErrors is the site-wide default for whether a widget's error text
+                  is suppressed on its card, used when a ServiceEntry doesn't set its own
+                  HideErrors. Defaults to "Show" when unset here too.
+                enum:
+                - Show
+                - Hide
+                type: string
+              hideVersion:
+                description: hideVersion hides the dashboard's version/commit footer.
+                enum:
+                - Enabled
+                - Disabled
                 type: string
               instanceRef:
                 description: instanceRef names the Instance this Configuration applies
@@ -366,6 +389,16 @@ spec:
                 maxLength: 2048
                 minLength: 1
                 pattern: ^(https?://|/)
+                type: string
+              statusStyle:
+                description: |-
+                  statusStyle is the site-wide default for how a ServiceEntry's Ping/
+                  SiteMonitor/PodSelector status renders ("dot" or "basic"), used when a
+                  ServiceEntry doesn't set its own StatusStyle. Defaults to "dot" when
+                  unset here too.
+                enum:
+                - dot
+                - basic
                 type: string
               target:
                 default: _blank

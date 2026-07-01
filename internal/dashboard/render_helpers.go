@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -151,4 +152,32 @@ func backgroundStyle(bg *Background) string {
 		return ""
 	}
 	return fmt.Sprintf(`<style>body { background-image: url("%s"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`, cssStringEscape(bg.Image))
+}
+
+// scriptCloseTag matches a case-insensitive "</script" anywhere in a string,
+// the one sequence jsStringEscape must neutralize: CustomJS is emitted
+// verbatim inside a literal <script> element via @templ.Raw (see index.templ),
+// so a value containing it would otherwise close that tag early and let
+// whatever follows execute/render as ordinary page markup instead of script
+// text, regardless of the JavaScript inside being otherwise well-formed.
+var scriptCloseTag = regexp.MustCompile(`(?i)</script`)
+
+// jsStringEscape escapes CustomJS for safe embedding as the raw text content
+// of a literal <script> block (see CustomCSS's cssStringEscape for the same
+// concern applied to <style>).
+func jsStringEscape(s string) string {
+	return scriptCloseTag.ReplaceAllString(s, "<\\/script")
+}
+
+// versionFooterText formats the dashboard's version/commit footer text,
+// e.g. "v0.4.0 (abc1234)". commit is omitted when empty, "dev" (the
+// ldflags-unset fallback — see cmd/main.go), or identical to version.
+func versionFooterText(version, commit string) string {
+	if version == "" {
+		version = "dev"
+	}
+	if commit == "" || commit == "dev" || commit == version {
+		return version
+	}
+	return version + " (" + commit + ")"
 }

@@ -263,6 +263,41 @@ spec:
                         type: string
                     type: object
                 type: object
+              discovery:
+                description: |-
+                  discovery opts this Instance into synthesizing service cards from
+                  annotated Ingresses in its own namespace, in addition to explicit
+                  ServiceEntry cards (an explicit ServiceEntry wins on a Group+Name
+                  collision). Off by default. See DiscoverySpec for the annotation
+                  contract.
+                properties:
+                  annotationPrefix:
+                    description: |-
+                      annotationPrefix is the annotation key prefix an Ingress must carry to
+                      be discovered, e.g. "<prefix>enabled", "<prefix>name", "<prefix>group".
+                      Defaults to "kubepage.io/".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  enabled:
+                    default: Disabled
+                    description: enabled turns on Ingress annotation discovery for
+                      this Instance.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                  homepageCompat:
+                    description: |-
+                      homepageCompat additionally honors "gethomepage.dev/*" annotations
+                      (homepage's own discovery convention) on any Ingress that doesn't carry
+                      AnnotationPrefix's own enable annotation, so a cluster migrating from
+                      homepage doesn't need to relabel every Ingress.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                type: object
               env:
                 description: |-
                   env is the additional environment variables to set. Uses k8s env var

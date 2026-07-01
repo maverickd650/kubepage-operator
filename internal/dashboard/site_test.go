@@ -540,6 +540,55 @@ func TestScalarOptions(t *testing.T) {
 	}
 }
 
+func TestLoadSiteAppliesCustomJSStatusStyleHideErrorsHideVersion(t *testing.T) {
+	scheme := testScheme(t)
+	customJS := "console.log('hi')"
+	statusStyle := testStatusBasic
+	hideErrors := pagev1alpha1.StatsHide
+	hideVersion := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			CustomJS:    &customJS,
+			StatusStyle: &statusStyle,
+			HideErrors:  &hideErrors,
+			HideVersion: &hideVersion,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.CustomJS != customJS {
+		t.Errorf("CustomJS = %q, want %q", site.CustomJS, customJS)
+	}
+	if site.StatusStyle != statusStyle {
+		t.Errorf("StatusStyle = %q, want %q", site.StatusStyle, statusStyle)
+	}
+	if !site.HideErrors {
+		t.Error("HideErrors = false, want true")
+	}
+	if !site.HideVersion {
+		t.Error("HideVersion = false, want true")
+	}
+}
+
+func TestLoadSiteStatusStyleDefaultsToDot(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.StatusStyle != statusStyleDot {
+		t.Errorf("StatusStyle = %q, want default %q", site.StatusStyle, statusStyleDot)
+	}
+}
+
 func TestBlurPx(t *testing.T) {
 	tests := map[string]struct{ keyword, want string }{
 		"keyword none":    {keyword: "none", want: ""},

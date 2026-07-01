@@ -41,6 +41,12 @@ type Options struct {
 	// Addr's port.
 	MetricsAddr  string
 	PollInterval time.Duration
+
+	// Version/Commit are stamped at build time (cmd/main.go's ldflags-set
+	// package vars), shown in the page shell's footer unless the bound
+	// Configuration sets HideVersion.
+	Version string
+	Commit  string
 }
 
 // Run wires the CRD cache, secret-resolving client, background poller, and
@@ -98,6 +104,8 @@ func Run(ctx context.Context, opts Options) error {
 		Namespace:      opts.Namespace,
 		InstanceName:   opts.InstanceName,
 		RefreshSeconds: int(opts.PollInterval.Seconds()),
+		Version:        opts.Version,
+		Commit:         opts.Commit,
 	}
 	httpServer := &http.Server{
 		Addr:              opts.Addr,
