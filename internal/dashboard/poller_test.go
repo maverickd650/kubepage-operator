@@ -341,7 +341,7 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(t.Context(), entry)
+	status, style, latency := p.monitor(t.Context(), entry, func(string) {})
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
