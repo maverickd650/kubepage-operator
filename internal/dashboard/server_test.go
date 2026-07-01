@@ -925,7 +925,7 @@ func TestServerFragmentRendersHighlightedStatClasses(t *testing.T) {
 	store.Set(Card{
 		Key: "ns/hl/0", Group: testGroup, ServiceName: "Highlighted",
 		Fields: []Field{
-			{Label: "cpu", Value: "1", Highlight: HighlightGood},
+			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
 			{Label: "disk", Value: "3", Highlight: HighlightDanger},
 		},
@@ -948,7 +948,7 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 	store.Set(Card{
 		Key: "header/hl", ServiceName: testHeaderWeather, Header: true,
 		Fields: []Field{
-			{Label: "cpu", Value: "1", Highlight: HighlightGood},
+			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
 			{Label: "disk", Value: "3", Highlight: HighlightDanger},
 		},
