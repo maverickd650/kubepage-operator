@@ -25,6 +25,27 @@ func TestPercentBarStyle(t *testing.T) {
 	}
 }
 
+func TestIsNewTabTarget(t *testing.T) {
+	tests := map[string]struct {
+		target string
+		want   bool
+	}{
+		"blank opens a new tab":         {target: "_blank", want: true},
+		"empty stays in place":          {target: "", want: false},
+		"self stays in place":           {target: "_self", want: false},
+		"parent stays in place":         {target: "_parent", want: false},
+		"top stays in place":            {target: targetTop, want: false},
+		"named frame opens new context": {target: "sidebar", want: true},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := isNewTabTarget(tc.target); got != tc.want {
+				t.Errorf("isNewTabTarget(%q) = %v, want %v", tc.target, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIsHTTPURL(t *testing.T) {
 	tests := map[string]struct {
 		in   string
@@ -56,7 +77,7 @@ func TestCardTarget(t *testing.T) {
 		siteTarget string
 		want       string
 	}{
-		"card override wins": {card: Card{Target: "_top"}, siteTarget: defaultTarget, want: "_top"},
+		"card override wins": {card: Card{Target: targetTop}, siteTarget: defaultTarget, want: targetTop},
 		"falls back to site": {card: Card{}, siteTarget: defaultTarget, want: defaultTarget},
 	}
 	for name, tc := range tests {

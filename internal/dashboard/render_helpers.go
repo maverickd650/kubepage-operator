@@ -39,6 +39,11 @@ func cardTarget(c Card, siteTarget string) string {
 	return siteTarget
 }
 
+// targetTop is the HTML link target that navigates the topmost browsing
+// context, pulled out as a constant since it's referenced from both
+// isNewTabTarget and its tests.
+const targetTop = "_top"
+
 // isNewTabTarget reports whether target opens a new browsing context
 // ("_blank" or a named target other than "_self"/"_parent"/"_top"), in which
 // case the link should carry rel="noopener noreferrer": without it, the
@@ -47,7 +52,7 @@ func cardTarget(c Card, siteTarget string) string {
 // URL to every linked service via the Referer header.
 func isNewTabTarget(target string) bool {
 	switch target {
-	case "", "_self", "_parent", "_top":
+	case "", "_self", "_parent", targetTop:
 		return false
 	default:
 		return true
