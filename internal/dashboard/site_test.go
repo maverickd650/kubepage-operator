@@ -127,7 +127,7 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 
 func TestLoadSiteAppliesColorHeaderLanguageFullWidth(t *testing.T) {
 	scheme := testScheme(t)
-	color := "amber"
+	color := testColor
 	headerStyle := "boxed"
 	language := "fr"
 	fullWidth := pagev1alpha1.FullWidthFull
