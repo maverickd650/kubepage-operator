@@ -191,13 +191,16 @@ MAKEFILE
 # config/admission's ValidatingAdmissionPolicy/Binding pairs (secret-source,
 # widget-type, serviceentry-monitor-source) are a custom addition on top of
 # the stock kubebuilder scaffold, hand-translated into Helm templates gated
-# on .Values.admissionPolicies.enabled — the plugin has no built-in concept
-# of ValidatingAdmissionPolicy and won't manage these at all, so back them
-# up and restore them verbatim rather than risk losing the hand-authored
-# templating if a future plugin version touches files it doesn't recognize
-# today. If config/admission gains a new policy, add its chart template by
-# hand (mirroring an existing one in dist/chart/templates/admission/) —
-# this task can't create it for you.
+# on .Values.admissionPolicies.enabled. Confirmed empirically (not just from
+# --help text): the plugin does NOT leave these alone — it emits its own
+# Binding-only, ungated templates under templates/extras/, each with an
+# invalid `namespace:` field on a cluster-scoped kind, duplicating (and
+# conflicting with) the hand-authored Policy+Binding pairs here. Back up and
+# restore the real ones, then delete whatever the plugin dropped in
+# templates/extras/ outright — it's never something to keep. If
+# config/admission gains a new policy, add its chart template by hand
+# (mirroring an existing one in dist/chart/templates/admission/) — this task
+# can't create it for you.
 preserved="dist/chart/templates/admission/secret-source-policy.yaml dist/chart/templates/admission/widget-type-policy.yaml dist/chart/templates/admission/serviceentry-monitor-source-policy.yaml"
 backup_dir="$(mktemp -d)"
 trap 'rm -f Makefile; rm -rf "$backup_dir"' EXIT
@@ -214,9 +217,20 @@ for f in $preserved; do
   cp "$backup_dir/$f" "$f"
 done
 
+# See the comment above: these duplicate the admission Policy+Binding pairs
+# with an invalid namespace field and no admissionPolicies.enabled gate.
+rm -rf dist/chart/templates/extras
+
+# The plugin also scaffolds a Test-Chart workflow assuming this project's
+# stock kubebuilder Makefile targets (make docker-build, make install-helm,
+# make helm-deploy, ...), none of which exist here — mise tasks are the only
+# source of truth (see CLAUDE.md) — and chart linting/deploy is already
+# covered by test-e2e.yml's own `helm lint dist/chart` step. Never keep it.
+rm -f .github/workflows/test-chart.yml
+
 helm lint dist/chart
 echo "--- dist/chart diff ---"
-git diff --stat -- dist/chart dist/install.yaml
+git diff --stat -- dist/chart dist/install.yaml .github/workflows
 '''
 
 ##@ Deployment
