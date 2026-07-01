@@ -925,9 +925,9 @@ func TestServerFragmentRendersHighlightedStatClasses(t *testing.T) {
 	store.Set(Card{
 		Key: "ns/hl/0", Group: testGroup, ServiceName: "Highlighted",
 		Fields: []Field{
-			{Label: "good", Value: "1", Highlight: HighlightGood},
-			{Label: "warn", Value: "2", Highlight: HighlightWarn},
-			{Label: "danger", Value: "3", Highlight: HighlightDanger},
+			{Label: "cpu", Value: "1", Highlight: HighlightGood},
+			{Label: "mem", Value: "2", Highlight: HighlightWarn},
+			{Label: "disk", Value: "3", Highlight: HighlightDanger},
 		},
 	})
 	srv := newTestServer(t, store)
@@ -948,9 +948,9 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 	store.Set(Card{
 		Key: "header/hl", ServiceName: testHeaderWeather, Header: true,
 		Fields: []Field{
-			{Label: "good", Value: "1", Highlight: HighlightGood},
-			{Label: "warn", Value: "2", Highlight: HighlightWarn},
-			{Label: "danger", Value: "3", Highlight: HighlightDanger},
+			{Label: "cpu", Value: "1", Highlight: HighlightGood},
+			{Label: "mem", Value: "2", Highlight: HighlightWarn},
+			{Label: "disk", Value: "3", Highlight: HighlightDanger},
 		},
 	})
 	weather := &pagev1alpha1.InfoWidget{
