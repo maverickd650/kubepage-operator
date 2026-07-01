@@ -831,3 +831,174 @@ func TestServerIndexDefaultTitleOmitsHeadingNoDescription(t *testing.T) {
 		t.Errorf("index body has page-desc with no Description configured, want it omitted:\n%s", body)
 	}
 }
+
+func TestServerIndexRendersDescriptionMetaAndParagraph(t *testing.T) {
+	desc := "Everything self-hosted, in one place."
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Description: &desc,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`<meta name="description" content="` + desc + `"`, `class="page-desc"`, desc} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q, want it rendered when Description is configured:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerIndexAppliesDisableIndexingMetaRobots(t *testing.T) {
+	disable := true
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
+			DisableIndexing: &disable,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	want := `<meta name="robots" content="noindex, nofollow">`
+	if body := rec.Body.String(); !strings.Contains(body, want) {
+		t.Errorf("index body missing %q, want it emitted when DisableIndexing is set on the page itself (distinct from the /robots.txt route):\n%s", want, body)
+	}
+}
+
+func TestServerIndexShowsOnlyColorSwitcherWhenThemeFixed(t *testing.T) {
+	theme := themeLight
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Theme:       &theme,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="color-switcher-btn"`) {
+		t.Errorf("index body missing color-switcher-btn, want it rendered when only Theme is fixed:\n%s", body)
+	}
+	if strings.Contains(body, `id="theme-switcher-btn"`) {
+		t.Errorf("index body has theme-switcher-btn, want it omitted when Theme is fixed:\n%s", body)
+	}
+}
+
+func TestServerIndexShowsOnlyThemeSwitcherWhenColorFixed(t *testing.T) {
+	color := testColor
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Color:       &color,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="theme-switcher-btn"`) {
+		t.Errorf("index body missing theme-switcher-btn, want it rendered when only Color is fixed:\n%s", body)
+	}
+	if strings.Contains(body, `id="color-switcher-btn"`) {
+		t.Errorf("index body has color-switcher-btn, want it omitted when Color is fixed:\n%s", body)
+	}
+}
+
+func TestServerFragmentRendersHighlightedStatClasses(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/hl/0", Group: testGroup, ServiceName: "Highlighted",
+		Fields: []Field{
+			{Label: "good", Value: "1", Highlight: HighlightGood},
+			{Label: "warn", Value: "2", Highlight: HighlightWarn},
+			{Label: "danger", Value: "3", Highlight: HighlightDanger},
+		},
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"stat-good", "stat-warn", "stat-danger"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q, want a stat class per Field.Highlight:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "header/hl", ServiceName: testHeaderWeather, Header: true,
+		Fields: []Field{
+			{Label: "good", Value: "1", Highlight: HighlightGood},
+			{Label: "warn", Value: "2", Highlight: HighlightWarn},
+			{Label: "danger", Value: "3", Highlight: HighlightDanger},
+		},
+	})
+	weather := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        testOpenMeteoType,
+		},
+	}
+	srv := newTestServer(t, store, weather)
+	req := httptest.NewRequest(http.MethodGet, "/header", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"hl-good", "hl-warn", "hl-danger"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("header body missing %q, want a header-field class per Field.Highlight:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: "ns/row/0", Group: testGroup, ServiceName: testServiceName})
+
+	style := "row"
+	equalHeights := true
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{Groups: []pagev1alpha1.LayoutGroupSpec{{
+					Name: testGroup, Style: &style, UseEqualHeights: &equalHeights,
+				}}},
+			},
+		},
+	}
+	srv := newTestServer(t, store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"grid-row", "grid-equal"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q, want it applied from the group's Style/UseEqualHeights override:\n%s", want, body)
+		}
+	}
+}
