@@ -29,7 +29,7 @@ import (
 
 const (
 	testNamespace     = "ns"
-	testInstanceName  = "main"
+	testDashboardName = "main"
 	testGroup         = "Monitoring"
 	testServiceName   = "Prometheus"
 	testSvcAName      = "Svc A"
@@ -74,13 +74,13 @@ func TestPollerPollOnce(t *testing.T) {
 
 	url := srv.URL
 	href := "https://prometheus.example.com"
-	entry := &pagev1alpha1.ServiceEntry{
+	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "prom", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testGroup,
-			Name:        testServiceName,
-			Href:        &href,
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testGroup,
+			Name:         testServiceName,
+			Href:         &href,
 			Widgets: []pagev1alpha1.ServiceWidget{
 				{
 					Type: testWidgetType,
@@ -96,35 +96,35 @@ func TestPollerPollOnce(t *testing.T) {
 		},
 	}
 
-	otherInstance := &pagev1alpha1.ServiceEntry{
+	otherDashboard := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-main"},
-			Group:       testOtherGroup,
-			Name:        "Skip me",
-			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-main"},
+			Group:        testOtherGroup,
+			Name:         "Skip me",
+			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
 		},
 	}
 
 	scheme := testScheme(t)
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret, entry, otherInstance).Build()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret, entry, otherDashboard).Build()
 
 	store := NewStore()
 	p := &Poller{
-		Reader:       cl,
-		SecretReader: cl,
-		Namespace:    testNamespace,
-		InstanceName: testInstanceName,
-		Interval:     time.Hour,
-		HTTPClient:   srv.Client(),
-		Store:        store,
+		Reader:        cl,
+		SecretReader:  cl,
+		Namespace:     testNamespace,
+		DashboardName: testDashboardName,
+		Interval:      time.Hour,
+		HTTPClient:    srv.Client(),
+		Store:         store,
 	}
 
 	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
-		t.Fatalf("Snapshot() returned %d cards, want 1 (bound only to InstanceRef %q)", len(cards), testInstanceName)
+		t.Fatalf("Snapshot() returned %d cards, want 1 (bound only to DashboardRef %q)", len(cards), testDashboardName)
 	}
 
 	card := cards[0]
@@ -164,7 +164,7 @@ func TestPollerRunPollsOnIntervalAndStopsOnCancel(t *testing.T) {
 		store := NewStore()
 		ctx, cancel := context.WithCancel(context.Background())
 		p := &Poller{
-			Reader: counting, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+			Reader: counting, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 			Interval: 10 * time.Second, HTTPClient: http.DefaultClient, Store: store,
 		}
 
@@ -175,16 +175,16 @@ func TestPollerRunPollsOnIntervalAndStopsOnCancel(t *testing.T) {
 		}()
 
 		synctest.Wait()
-		// pollOnce lists Configurations (site-wide defaults), ServiceEntries,
-		// and InfoWidgets once each.
-		if n := listCalls.Load(); n != 3 {
-			t.Fatalf("after the immediate poll, List was called %d times, want 3", n)
+		// pollOnce Gets the DashboardStyle (site-wide defaults, not counted
+		// here) and lists ServiceCards and InfoWidgets once each.
+		if n := listCalls.Load(); n != 2 {
+			t.Fatalf("after the immediate poll, List was called %d times, want 2", n)
 		}
 
 		time.Sleep(10 * time.Second)
 		synctest.Wait()
-		if n := listCalls.Load(); n != 6 {
-			t.Fatalf("after one Interval, List was called %d times, want 6 (one more poll)", n)
+		if n := listCalls.Load(); n != 4 {
+			t.Fatalf("after one Interval, List was called %d times, want 4 (one more poll)", n)
 		}
 
 		cancel()
@@ -203,7 +203,7 @@ func TestPollerPollOnceListEntriesErrorLeavesStoreUntouched(t *testing.T) {
 	failing := errInjectingReader{
 		Reader: cl,
 		failList: func(list client.ObjectList) bool {
-			_, ok := list.(*pagev1alpha1.ServiceEntryList)
+			_, ok := list.(*pagev1alpha1.ServiceCardList)
 			return ok
 		},
 	}
@@ -212,26 +212,26 @@ func TestPollerPollOnceListEntriesErrorLeavesStoreUntouched(t *testing.T) {
 	store.Set(Card{Key: "stale", ServiceName: "Stale"})
 
 	p := &Poller{
-		Reader: failing, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: failing, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
 	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Key != "stale" {
-		t.Fatalf("Snapshot() = %+v, want the stale card untouched (pollOnce returns before pruning on a ServiceEntry List error)", cards)
+		t.Fatalf("Snapshot() = %+v, want the stale card untouched (pollOnce returns before pruning on a ServiceCard List error)", cards)
 	}
 }
 
 func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testing.T) {
 	url := testUnreachableAddr
-	entry := &pagev1alpha1.ServiceEntry{
+	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       "G",
-			Name:        testSvcDisplayName,
-			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         testSvcDisplayName,
+			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
 		},
 	}
 
@@ -249,27 +249,27 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 	store.Set(Card{Key: "header/stale", Header: true, ServiceName: "StaleHeader"})
 
 	p := &Poller{
-		Reader: failing, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: failing, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
 	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Key != "ns/svc/0" {
-		t.Fatalf("Snapshot() = %+v, want only the ServiceEntry card: an InfoWidget List error logs and continues "+
+		t.Fatalf("Snapshot() = %+v, want only the ServiceCard card: an InfoWidget List error logs and continues "+
 			"(rather than returning early), so the stale header card should still be pruned", cards)
 	}
 }
 
 func TestPollerUnsupportedWidgetType(t *testing.T) {
 	url := testExampleURL
-	entry := &pagev1alpha1.ServiceEntry{
+	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "mystery", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       "G",
-			Name:        "Mystery",
-			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testDoesNotExist, URL: &url}},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         "Mystery",
+			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testDoesNotExist, URL: &url}},
 		},
 	}
 
@@ -278,7 +278,7 @@ func TestPollerUnsupportedWidgetType(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
 	p.pollOnce(t.Context())
@@ -296,14 +296,14 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 	defer srv.Close()
 
 	style := testStatusBasic
-	entry := &pagev1alpha1.ServiceEntry{
+	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "mon", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       "G",
-			Name:        "Monitored",
-			SiteMonitor: &srv.URL,
-			StatusStyle: &style,
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         "Monitored",
+			SiteMonitor:  &srv.URL,
+			StatusStyle:  &style,
 		},
 	}
 
@@ -311,7 +311,7 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
 	p.pollOnce(t.Context())
@@ -338,13 +338,13 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	entry := pagev1alpha1.ServiceEntry{
+	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "ping", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       "G",
-			Name:        "Pinged",
-			Ping:        &srv.URL,
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         "Pinged",
+			Ping:         &srv.URL,
 		},
 	}
 
@@ -362,9 +362,9 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 }
 
 func TestPollerPodStatusInvalidSelector(t *testing.T) {
-	entry := pagev1alpha1.ServiceEntry{
+	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
+		Spec: pagev1alpha1.ServiceCardSpec{
 			PodSelector: &metav1.LabelSelector{
 				MatchExpressions: []metav1.LabelSelectorRequirement{{Key: testAppLabelKey, Operator: testBogusWhen, Values: []string{"x"}}},
 			},
@@ -374,7 +374,7 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
@@ -385,9 +385,9 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 }
 
 func TestPollerPodStatusListPodsError(t *testing.T) {
-	entry := pagev1alpha1.ServiceEntry{
+	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
+		Spec: pagev1alpha1.ServiceCardSpec{
 			PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
 		},
 	}
@@ -402,7 +402,7 @@ func TestPollerPodStatusListPodsError(t *testing.T) {
 		},
 	}
 	p := &Poller{
-		Reader: failing, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: failing, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
@@ -449,14 +449,14 @@ func TestPollerPodSelector(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			selector := &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}}
 			style := testStatusBasic
-			entry := &pagev1alpha1.ServiceEntry{
+			entry := &pagev1alpha1.ServiceCard{
 				ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
-				Spec: pagev1alpha1.ServiceEntrySpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-					Group:       "G",
-					Name:        "PodService",
-					PodSelector: selector,
-					StatusStyle: &style,
+				Spec: pagev1alpha1.ServiceCardSpec{
+					DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+					Group:        "G",
+					Name:         "PodService",
+					PodSelector:  selector,
+					StatusStyle:  &style,
 				},
 			}
 
@@ -465,7 +465,7 @@ func TestPollerPodSelector(t *testing.T) {
 			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 			store := NewStore()
 			p := &Poller{
-				Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+				Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 				Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 			}
 			p.pollOnce(t.Context())
@@ -493,17 +493,17 @@ func TestPollerShowStatsAndHideErrors(t *testing.T) {
 	defer srv.Close()
 
 	showStats := pagev1alpha1.StatsHide
-	hideErrors := pagev1alpha1.StatsHide
+	hideErrors := pagev1alpha1.ErrorDisplayHidden
 	url := srv.URL
-	entry := &pagev1alpha1.ServiceEntry{
+	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "flags", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       "G",
-			Name:        "Flags",
-			ShowStats:   &showStats,
-			HideErrors:  &hideErrors,
-			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         "Flags",
+			ShowStats:    &showStats,
+			ErrorDisplay: &hideErrors,
+			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
 		},
 	}
 
@@ -511,7 +511,7 @@ func TestPollerShowStatsAndHideErrors(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
 	p.pollOnce(t.Context())
@@ -540,9 +540,9 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 	iw := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        testOpenMeteoType,
-			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testOpenMeteoType,
+			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
 		},
 	}
 	// A datetime InfoWidget carries no registered widget, so it must NOT
@@ -550,8 +550,8 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 	dt := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeDatetime,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeDatetime,
 		},
 	}
 
@@ -559,7 +559,7 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(iw, dt).Build()
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
 	p.pollOnce(t.Context())
@@ -607,13 +607,13 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 	url := srv.URL
 	objs := make([]client.Object, 0, numEntries)
 	for i := range numEntries {
-		objs = append(objs, &pagev1alpha1.ServiceEntry{
+		objs = append(objs, &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("svc-%d", i), Namespace: testNamespace},
-			Spec: pagev1alpha1.ServiceEntrySpec{
-				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testGroup,
-				Name:        fmt.Sprintf("Service %d", i),
-				Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			Spec: pagev1alpha1.ServiceCardSpec{
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testGroup,
+				Name:         fmt.Sprintf("Service %d", i),
+				Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
 			},
 		})
 	}
@@ -623,7 +623,7 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
 	}
 
@@ -656,12 +656,12 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 
 func TestPollerMissingSecret(t *testing.T) {
 	url := testExampleURL
-	entry := &pagev1alpha1.ServiceEntry{
+	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       "G",
-			Name:        testSvcDisplayName,
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         testSvcDisplayName,
 			Widgets: []pagev1alpha1.ServiceWidget{{
 				Type: testWidgetType,
 				URL:  &url,
@@ -680,7 +680,7 @@ func TestPollerMissingSecret(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
 	p.pollOnce(t.Context())
@@ -705,9 +705,9 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 	url := srv.URL
 	description := "a description"
 	target := targetSelf
-	entry := pagev1alpha1.ServiceEntry{
+	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
+		Spec: pagev1alpha1.ServiceCardSpec{
 			Group:       testGroup,
 			Name:        testSvcAName,
 			Description: &description,
@@ -754,9 +754,9 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 
 	url := srv.URL
 	overrideSeconds := int32(100)
-	entry := pagev1alpha1.ServiceEntry{
+	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
-		Spec:       pagev1alpha1.ServiceEntrySpec{Group: testGroup, Name: testSvcAName},
+		Spec:       pagev1alpha1.ServiceCardSpec{Group: testGroup, Name: testSvcAName},
 	}
 	widget := &pagev1alpha1.ServiceWidget{Type: testWidgetType, URL: &url, PollIntervalSeconds: &overrideSeconds}
 
@@ -802,7 +802,7 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	iw := pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef:         pagev1alpha1.InstanceRef{Name: testInstanceName},
+			DashboardRef:        pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Type:                testOpenMeteoType,
 			Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
 			PollIntervalSeconds: &overrideSeconds,
@@ -912,8 +912,8 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 	iw := pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        testOpenMeteoType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testOpenMeteoType,
 			Secrets: map[string]pagev1alpha1.SecretValueSource{
 				testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "missing"},
@@ -949,8 +949,8 @@ func TestPollerInfoWidgetClusterWidgetUsesKubeReader(t *testing.T) {
 	iw := pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        testKubeMetricsType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testKubeMetricsType,
 		},
 	}
 
@@ -978,8 +978,8 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 	iw := pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "metric", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        "prometheusmetric",
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         "prometheusmetric",
 		},
 	}
 
@@ -1047,20 +1047,20 @@ func TestResolveSecretGetError(t *testing.T) {
 	}
 }
 
-func TestPollerSiteDefaultsAppliesConfiguration(t *testing.T) {
+func TestPollerSiteDefaultsAppliesDashboardStyle(t *testing.T) {
 	scheme := testScheme(t)
 	style := testStatusBasic
-	hide := pagev1alpha1.StatsHide
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			StatusStyle: &style,
-			HideErrors:  &hide,
+	hide := pagev1alpha1.ErrorDisplayHidden
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			StatusStyle:  &style,
+			ErrorDisplay: &hide,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
-	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	statusStyle, hideErrors := p.siteDefaults(t.Context())
 	if statusStyle != style || !hideErrors {
@@ -1068,10 +1068,10 @@ func TestPollerSiteDefaultsAppliesConfiguration(t *testing.T) {
 	}
 }
 
-func TestPollerSiteDefaultsNoConfiguration(t *testing.T) {
+func TestPollerSiteDefaultsNoDashboardStyle(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	statusStyle, hideErrors := p.siteDefaults(t.Context())
 	if statusStyle != statusStyleDot || hideErrors {
@@ -1079,21 +1079,21 @@ func TestPollerSiteDefaultsNoConfiguration(t *testing.T) {
 	}
 }
 
-func TestPollerSiteDefaultsListError(t *testing.T) {
+func TestPollerSiteDefaultsGetError(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	failing := errInjectingReader{
 		Reader: cl,
-		failList: func(list client.ObjectList) bool {
-			_, ok := list.(*pagev1alpha1.ConfigurationList)
+		failGet: func(_ client.ObjectKey, obj client.Object) bool {
+			_, ok := obj.(*pagev1alpha1.DashboardStyle)
 			return ok
 		},
 	}
-	p := &Poller{Reader: failing, Namespace: testNamespace, InstanceName: testInstanceName}
+	p := &Poller{Reader: failing, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	statusStyle, hideErrors := p.siteDefaults(t.Context())
 	if statusStyle != statusStyleDot || hideErrors {
-		t.Errorf("siteDefaults() = (%q, %v), want (%q, false) on a Configuration list error", statusStyle, hideErrors, statusStyleDot)
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, false) on a DashboardStyle get error", statusStyle, hideErrors, statusStyleDot)
 	}
 }
 
@@ -1101,18 +1101,18 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	defer srv.Close()
 
-	entry := pagev1alpha1.ServiceEntry{
-		Spec: pagev1alpha1.ServiceEntrySpec{Ping: &srv.URL},
+	entry := pagev1alpha1.ServiceCard{
+		Spec: pagev1alpha1.ServiceCardSpec{Ping: &srv.URL},
 	}
 	p := &Poller{HTTPClient: srv.Client()}
 	_, style, _ := p.monitor(t.Context(), entry, testStatusBasic, func(string) {})
 	if style != testStatusBasic {
-		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceEntry.StatusStyle is unset", style, testStatusBasic)
+		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceCard.StatusStyle is unset", style, testStatusBasic)
 	}
 }
 
 func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
-	entry := pagev1alpha1.ServiceEntry{Spec: pagev1alpha1.ServiceEntrySpec{Group: testGroup, Name: testSvcAName}}
+	entry := pagev1alpha1.ServiceCard{Spec: pagev1alpha1.ServiceCardSpec{Group: testGroup, Name: testSvcAName}}
 	widget := &pagev1alpha1.ServiceWidget{Type: testDoesNotExist}
 
 	store := NewStore()
@@ -1127,27 +1127,27 @@ func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
 
 func TestPollerDiscoverySpecDisabledByDefault(t *testing.T) {
 	scheme := testScheme(t)
-	instance := &pagev1alpha1.Instance{
-		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
-	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	if _, ok := p.discoverySpec(t.Context()); ok {
-		t.Error("discoverySpec() ok = true, want false when Instance.Spec.Discovery is unset")
+		t.Error("discoverySpec() ok = true, want false when Dashboard.Spec.Discovery is unset")
 	}
 }
 
 func TestPollerDiscoverySpecEnabled(t *testing.T) {
 	scheme := testScheme(t)
-	instance := &pagev1alpha1.Instance{
-		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
-		Spec: pagev1alpha1.InstanceSpec{
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
 			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
-	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	spec, ok := p.discoverySpec(t.Context())
 	if !ok || spec.Enabled != pagev1alpha1.Enabled {
@@ -1155,13 +1155,13 @@ func TestPollerDiscoverySpecEnabled(t *testing.T) {
 	}
 }
 
-func TestPollerDiscoverySpecMissingInstance(t *testing.T) {
+func TestPollerDiscoverySpecMissingDashboard(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	if _, ok := p.discoverySpec(t.Context()); ok {
-		t.Error("discoverySpec() ok = true, want false when the Instance can't be read")
+		t.Error("discoverySpec() ok = true, want false when the Dashboard can't be read")
 	}
 }
 
@@ -1199,9 +1199,9 @@ func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
 
 func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	scheme := testScheme(t)
-	instance := &pagev1alpha1.Instance{
-		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
-		Spec: pagev1alpha1.InstanceSpec{
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
 			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
 		},
 	}
@@ -1214,7 +1214,7 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, ing).Build()
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
 	p.pollOnce(t.Context())
@@ -1233,13 +1233,13 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 
 // TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled verifies
 // pollOnce also discovers annotated HTTPRoutes when GatewayAPIEnabled is
-// set (gap-analysis §4.7), reusing the same discovery-enabled Instance as
+// set (gap-analysis §4.7), reusing the same discovery-enabled Dashboard as
 // Ingress discovery.
 func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
 	scheme := testScheme(t)
-	instance := &pagev1alpha1.Instance{
-		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
-		Spec: pagev1alpha1.InstanceSpec{
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
 			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
 		},
 	}
@@ -1252,7 +1252,7 @@ func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, route).Build()
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store, GatewayAPIEnabled: true,
 	}
 	p.pollOnce(t.Context())
@@ -1274,9 +1274,9 @@ func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
 // must be a hard gate, not just missing RBAC.
 func TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled(t *testing.T) {
 	scheme := testScheme(t)
-	instance := &pagev1alpha1.Instance{
-		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
-		Spec: pagev1alpha1.InstanceSpec{
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
 			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
 		},
 	}
@@ -1289,7 +1289,7 @@ func TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, route).Build()
 	store := NewStore()
 	p := &Poller{
-		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
 	}
 	p.pollOnce(t.Context())

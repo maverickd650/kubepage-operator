@@ -38,10 +38,10 @@ var assetFS embed.FS
 // checker (Chrome, Android) without needing multiple raster sizes.
 const pwaIconPath = "/assets/icon.svg"
 
-// cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
+// cardGroup is a display-ready group of cards sharing a ServiceCard Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
 // Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights come from the
-// Configuration's Layout, when one places this group in a tab, already
+// DashboardStyle's Layout, when one places this group in a tab, already
 // resolved against the Site-wide defaults by layoutTabs.
 type cardGroup struct {
 	Name               string
@@ -72,7 +72,7 @@ type Server struct {
 	Store          *Store
 	Reader         client.Reader
 	Namespace      string
-	InstanceName   string
+	DashboardName  string
 	RefreshSeconds int
 
 	// SecretReader resolves the basic-auth Secret (spec.auth.basicAuthSecretRef),
@@ -277,7 +277,7 @@ type pwaIcon struct {
 }
 
 func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
-	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.DashboardName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -304,10 +304,10 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRobots serves a permissive robots.txt by default, or a disallow-all
-// one when the Configuration sets DisableIndexing — homepage's documented
+// one when the DashboardStyle sets Indexing: NoIndex — homepage's documented
 // "ask search engines not to index" setting.
 func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
-	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.DashboardName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -348,7 +348,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		refresh = 10
 	}
 
-	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.DashboardName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -366,7 +366,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
-	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.DashboardName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -381,7 +381,7 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 // writeCachedHTML renders an HTML fragment into a buffer and serves it with
 // a content-hash ETag: unlike a Store generation counter, a hash of the
 // actual rendered bytes stays correct even though /fragment and /header
-// depend on more than the Store (Configuration/Bookmark/InfoWidget changes,
+// depend on more than the Store (DashboardStyle/Bookmark/InfoWidget changes,
 // read through the cached client, also change the output — see LoadSite).
 // "Cache-Control: no-cache" tells the browser to keep revalidating on every
 // request rather than caching outright, so it automatically sends
@@ -446,7 +446,7 @@ func (s *Server) buildFragmentData(site Site) fragmentData {
 }
 
 func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
-	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.InstanceName)
+	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.DashboardName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -550,7 +550,7 @@ func groupCards(cards []Card, site Site) []cardGroup {
 	return groups
 }
 
-// layoutTabs arranges groupCards' output into tabs per the Configuration's
+// layoutTabs arranges groupCards' output into tabs per the DashboardStyle's
 // Layout. An empty layout returns the groups unchanged in a single unnamed
 // tab, so the dashboard renders exactly as it did before tabs existed. A
 // Group placed by more than one LayoutTab is shown only under the first;

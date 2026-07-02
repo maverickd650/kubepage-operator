@@ -1,5 +1,5 @@
 // Package dashboard implements the native dashboard subcommand (D11 / Phase
-// 6): a Go+htmx renderer that reads an Instance's bound CRDs directly and
+// 6): a Go+htmx renderer that reads a Dashboard's bound CRDs directly and
 // polls each ServiceWidget's upstream, replacing the homepage image wrapper.
 package dashboard
 

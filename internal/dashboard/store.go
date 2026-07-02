@@ -9,7 +9,7 @@ import (
 
 // Card is one widget instance's latest poll result, ready for rendering.
 type Card struct {
-	// Key uniquely identifies this card across polls (ServiceEntry
+	// Key uniquely identifies this card across polls (ServiceCard
 	// namespace/name + widget index), used as the DOM id for htmx swaps.
 	Key string
 
@@ -21,11 +21,11 @@ type Card struct {
 	Description string
 	Href        string
 	// Target is the link target for Href ("_blank"/"_self"), already
-	// resolved from the ServiceEntry override or the site default.
+	// resolved from the ServiceCard override or the site default.
 	Target string
 
 	// Header marks a card produced from an InfoWidget (rendered in the
-	// header strip) rather than a ServiceEntry service card.
+	// header strip) rather than a ServiceCard service card.
 	Header bool
 
 	// ShowStats controls whether Fields render; HideErrors suppresses Err.
@@ -63,7 +63,7 @@ func (s *Store) Set(c Card) {
 }
 
 // Prune removes any stored card whose key is not in keep, so cards for
-// deleted/rebound ServiceEntries don't linger forever.
+// deleted/rebound ServiceCards don't linger forever.
 func (s *Store) Prune(keep map[string]bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

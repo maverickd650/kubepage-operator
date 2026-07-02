@@ -60,7 +60,7 @@ func init() {
 	utilruntime.Must(pagev1alpha1.AddToScheme(scheme))
 	// Registered unconditionally so the client can decode HTTPRoute objects
 	// when Gateway API is available; gatewayAPIAvailable (checked at startup)
-	// decides whether InstanceReconciler ever watches or creates one.
+	// decides whether DashboardReconciler ever watches or creates one.
 	utilruntime.Must(gatewayv1.Install(scheme))
 	// Registered so the dashboard's cluster client can decode NodeMetrics for
 	// the kubemetrics InfoWidget (internal/dashboard/kubemetrics.go).
@@ -213,7 +213,7 @@ func runManager() {
 		os.Exit(1)
 	}
 
-	// The dashboard Deployment InstanceReconciler creates per Instance (D11 /
+	// The dashboard Deployment DashboardReconciler creates per Dashboard (D11 /
 	// Phase 6.4) runs the same binary's `dashboard` subcommand, so it should
 	// always be the exact image this manager process is itself running as —
 	// there's no separately-pinned operand image to read from an env var
@@ -235,7 +235,7 @@ func runManager() {
 	}
 
 	// Gateway API is an optional, separately-installed CRD set (unlike
-	// Ingress, which every cluster has built in), so InstanceReconciler only
+	// Ingress, which every cluster has built in), so DashboardReconciler only
 	// watches/manages HTTPRoute if it's actually present — see
 	// gatewayAPIAvailable's doc comment.
 	gatewayAPIEnabled, err := gatewayAPIAvailable(mgr.GetConfig())
@@ -244,29 +244,29 @@ func runManager() {
 	}
 	setupLog.Info("Gateway API support", "enabled", gatewayAPIEnabled)
 
-	if err := (&controller.InstanceReconciler{
+	if err := (&controller.DashboardReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
-		Recorder:          mgr.GetEventRecorder("instance-controller"),
+		Recorder:          mgr.GetEventRecorder("dashboard-controller"),
 		DashboardImage:    dashboardImage,
 		GatewayAPIEnabled: gatewayAPIEnabled,
 		DirectReader:      directClient,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "instance")
+		setupLog.Error(err, "Failed to create controller", "controller", "dashboard")
 		os.Exit(1)
 	}
-	if err := (&controller.ConfigurationReconciler{
+	if err := (&controller.DashboardStyleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "configuration")
+		setupLog.Error(err, "Failed to create controller", "controller", "dashboardstyle")
 		os.Exit(1)
 	}
-	if err := (&controller.ServiceEntryReconciler{
+	if err := (&controller.ServiceCardReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "serviceentry")
+		setupLog.Error(err, "Failed to create controller", "controller", "servicecard")
 		os.Exit(1)
 	}
 	if err := (&controller.BookmarkReconciler{
@@ -330,7 +330,7 @@ func namespaceCacheConfigs(namespaces []string) map[string]cache.Config {
 
 // ownDashboardImage looks up the running manager Pod (named by the
 // POD_NAME/POD_NAMESPACE downward-API env vars) and returns the image
-// reference for InstanceReconciler to reuse when it builds each Instance's
+// reference for DashboardReconciler to reuse when it builds each Dashboard's
 // dashboard Deployment: c is expected to be a direct (uncached) client, used
 // once before mgr.Start() brings up the cache.
 //
@@ -453,17 +453,17 @@ func gatewayAPIAvailable(cfg *rest.Config) (bool, error) {
 }
 
 // runDashboard serves the native dashboard (D11 / Phase 6.0) for a single
-// Instance: a per-Instance Deployment runs the same image with `dashboard`
+// Dashboard: a per-Dashboard Deployment runs the same image with `dashboard`
 // as its first argument instead of the manager's reconcile loop.
 func runDashboard(args []string) {
 	fs := flag.NewFlagSet("dashboard", flag.ExitOnError)
-	var namespace, instanceName, addr, metricsAddr string
+	var namespace, dashboardName, addr, metricsAddr string
 	var pollInterval time.Duration
-	fs.StringVar(&namespace, "namespace", "", "Namespace of the Instance to serve a dashboard for.")
-	fs.StringVar(&instanceName, "instance-name", "", "Name of the Instance to serve a dashboard for.")
+	fs.StringVar(&namespace, "namespace", "", "Namespace of the Dashboard to serve a dashboard for.")
+	fs.StringVar(&dashboardName, "dashboard-name", "", "Name of the Dashboard to serve a dashboard for.")
 	fs.StringVar(&addr, "addr", ":8080", "The address the dashboard HTTP server binds to.")
 	metricsAddrUsage := "The address the /metrics endpoint binds to, kept separate from --addr " +
-		"so Prometheus metrics aren't reachable through the Instance's public Ingress/Gateway."
+		"so Prometheus metrics aren't reachable through the Dashboard's public Ingress/Gateway."
 	fs.StringVar(&metricsAddr, "metrics-addr", ":9090", metricsAddrUsage)
 	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
 	opts := zap.Options{Development: true}
@@ -472,13 +472,13 @@ func runDashboard(args []string) {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	if namespace == "" || instanceName == "" {
-		setupLog.Error(nil, "--namespace and --instance-name are required")
+	if namespace == "" || dashboardName == "" {
+		setupLog.Error(nil, "--namespace and --dashboard-name are required")
 		os.Exit(1)
 	}
 
 	setupLog.Info("Starting dashboard", "version", version, "commit", commit,
-		"namespace", namespace, "instanceName", instanceName)
+		"namespace", namespace, "dashboardName", dashboardName)
 
 	restConfig := ctrl.GetConfigOrDie()
 	gatewayAPIEnabled, err := gatewayAPIAvailable(restConfig)
@@ -491,7 +491,7 @@ func runDashboard(args []string) {
 		RestConfig:        restConfig,
 		Scheme:            scheme,
 		Namespace:         namespace,
-		InstanceName:      instanceName,
+		DashboardName:     dashboardName,
 		Addr:              addr,
 		MetricsAddr:       metricsAddr,
 		PollInterval:      pollInterval,

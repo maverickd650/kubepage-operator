@@ -29,18 +29,18 @@ var pollerLog = ctrl.Log.WithName("dashboard-poller")
 // service list sequentially.
 const maxConcurrentPolls = 8
 
-// statusStyleDot is the default ServiceEntry.Spec.StatusStyle, rendered by
+// statusStyleDot is the default ServiceCard.Spec.StatusStyle, rendered by
 // cards.templ as a colored dot rather than a text pill.
 const statusStyleDot = "dot"
 
-// Poller periodically lists the ServiceEntries bound to one Instance,
+// Poller periodically lists the ServiceCards bound to one Dashboard,
 // resolves each widget's secrets and config, polls every widget whose type
 // is registered, and writes the results into Store. Polling runs on its own
 // interval rather than per browser request, so a slow or unreachable
 // upstream never blocks a page load.
 type Poller struct {
 	// Reader lists CRDs; expected to be a cache-backed (informer) client
-	// scoped to Namespace, per D11's "reads its Instance's bound CRDs via a
+	// scoped to Namespace, per D11's "reads its Dashboard's bound CRDs via a
 	// controller-runtime cache".
 	Reader client.Reader
 
@@ -55,11 +55,11 @@ type Poller struct {
 	// cluster-scoped while the CRD cache is namespace-scoped.
 	KubeReader client.Reader
 
-	Namespace    string
-	InstanceName string
-	Interval     time.Duration
-	HTTPClient   *http.Client
-	Store        *Store
+	Namespace     string
+	DashboardName string
+	Interval      time.Duration
+	HTTPClient    *http.Client
+	Store         *Store
 
 	// GatewayAPIEnabled reports whether this cluster has Gateway API CRDs
 	// installed; see dashboard.Options.GatewayAPIEnabled's doc comment.
@@ -67,7 +67,7 @@ type Poller struct {
 	// discovery.
 	GatewayAPIEnabled bool
 
-	// monitorLabels is the set of ServiceEntry "namespace/name" labels
+	// monitorLabels is the set of ServiceCard "namespace/name" labels
 	// monitorUp reported on the previous poll cycle. pollOnce diffs the
 	// current cycle's set against this to delete a label series for an
 	// entry that's since been deleted or had its monitor removed —
@@ -134,13 +134,13 @@ func (p *Poller) pollOnce(ctx context.Context) {
 
 	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
 
-	var entries pagev1alpha1.ServiceEntryList
+	var entries pagev1alpha1.ServiceCardList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
-		pollerLog.Error(err, "listing ServiceEntries")
+		pollerLog.Error(err, "listing ServiceCards")
 		return
 	}
 	for _, entry := range entries.Items {
-		if entry.Spec.InstanceRef.Name != p.InstanceName {
+		if entry.Spec.DashboardRef.Name != p.DashboardName {
 			continue
 		}
 
@@ -210,7 +210,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		pollerLog.Error(err, "listing InfoWidgets")
 	} else {
 		for _, iw := range infoWidgets.Items {
-			if iw.Spec.InstanceRef.Name != p.InstanceName {
+			if iw.Spec.DashboardRef.Name != p.DashboardName {
 				continue
 			}
 			if _, ok := Lookup(iw.Spec.Type); !ok {
@@ -267,7 +267,7 @@ func (p *Poller) pruneWidgetLastPolled(keep map[string]bool) {
 
 // pruneMonitorMetrics deletes any monitorUp label series from the previous
 // cycle that current (this cycle's labels) no longer reports, so a deleted
-// ServiceEntry — or one that's had its Ping/SiteMonitor/PodSelector removed —
+// ServiceCard — or one that's had its Ping/SiteMonitor/PodSelector removed —
 // doesn't leave a stale gauge value exported forever.
 func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
 	for label := range p.monitorLabels {
@@ -284,7 +284,7 @@ func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
 // status/style/latency, or empty strings when none is configured. record is
 // called with the monitorUp label this probe reported under, so the caller
 // can track which labels are still live this cycle (see pruneMonitorMetrics).
-func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
+func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceCard, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
 	switch {
 	case entry.Spec.PodSelector != nil:
 		status, latency = p.podStatus(ctx, entry)
@@ -312,13 +312,13 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry, d
 
 // podStatus computes an up/down status from entry's PodSelector: pods are
 // listed in entry's own namespace through the same namespace-scoped,
-// cache-backed Reader as ServiceEntry itself (RBAC granted by
+// cache-backed Reader as ServiceCard itself (RBAC granted by
 // internal/controller/instance_rbac.go's dashboardPodsRule — namespaced and
 // owner-referenced, unlike the cluster-scoped KubeReader used by
 // ClusterWidget types). Any matching pod with a Ready condition of True
 // renders "Up"; the monitor's latency slot is repurposed to show
 // "<ready>/<total> ready" in place of a network latency figure.
-func (p *Poller) podStatus(ctx context.Context, entry pagev1alpha1.ServiceEntry) (status, readyText string) {
+func (p *Poller) podStatus(ctx context.Context, entry pagev1alpha1.ServiceCard) (status, readyText string) {
 	selector, err := metav1.LabelSelectorAsSelector(entry.Spec.PodSelector)
 	if err != nil {
 		pollerLog.Error(err, "invalid PodSelector", "serviceEntry", entry.Name)
@@ -362,14 +362,14 @@ func podReady(pod *corev1.Pod) bool {
 // pollWidget returns immediately without touching Store, leaving the
 // previous cycle's card (monitor status included) in place — key is already
 // in this cycle's keep set from the caller, so it survives Store.Prune.
-func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool) {
+func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceCard, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool) {
 	if widget != nil && !p.duePoll(key, widget.PollIntervalSeconds) {
 		return
 	}
 
 	hideErrors := defaultHideErrors
-	if entry.Spec.HideErrors != nil {
-		hideErrors = *entry.Spec.HideErrors == pagev1alpha1.StatsHide
+	if entry.Spec.ErrorDisplay != nil {
+		hideErrors = *entry.Spec.ErrorDisplay == pagev1alpha1.ErrorDisplayHidden
 	}
 	card := Card{
 		Key:         key,
@@ -618,15 +618,15 @@ func (p *Poller) resolveSecret(ctx context.Context, namespace string, src pagev1
 }
 
 // siteDefaults returns the site-wide StatusStyle/HideErrors defaults from
-// the Instance's bound Configuration (falling back to statusStyleDot/false
-// when none is bound), the same "which Configuration wins" resolution
+// the Dashboard's bound DashboardStyle (falling back to statusStyleDot/false
+// when none is bound), the same "which DashboardStyle wins" resolution
 // LoadSite uses for the HTTP-serving side.
 func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErrors bool) {
 	statusStyle = statusStyleDot
 
-	spec, err := boundConfigurationSpec(ctx, p.Reader, p.Namespace, p.InstanceName)
+	spec, err := boundDashboardStyleSpec(ctx, p.Reader, p.Namespace, p.DashboardName)
 	if err != nil {
-		pollerLog.Error(err, "loading Configuration for site-wide defaults")
+		pollerLog.Error(err, "loading DashboardStyle for site-wide defaults")
 		return statusStyle, hideErrors
 	}
 	if spec == nil {
@@ -635,21 +635,21 @@ func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErro
 	if spec.StatusStyle != nil {
 		statusStyle = *spec.StatusStyle
 	}
-	if spec.HideErrors != nil {
-		hideErrors = *spec.HideErrors == pagev1alpha1.StatsHide
+	if spec.ErrorDisplay != nil {
+		hideErrors = *spec.ErrorDisplay == pagev1alpha1.ErrorDisplayHidden
 	}
 	return statusStyle, hideErrors
 }
 
-// discoverySpec returns the Instance's DiscoverySpec when Ingress annotation
+// discoverySpec returns the Dashboard's DiscoverySpec when Ingress annotation
 // discovery is enabled, or (zero value, false) otherwise (including when the
-// Instance can't be read — a transient error here should not make every
+// Dashboard can't be read — a transient error here should not make every
 // discovered card vanish from the log at more than Error level, but it must
 // not panic the poll cycle either).
 func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec, bool) {
-	var instance pagev1alpha1.Instance
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.InstanceName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Instance for discovery config")
+	var instance pagev1alpha1.Dashboard
+	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
+		pollerLog.Error(err, "getting Dashboard for discovery config")
 		return pagev1alpha1.DiscoverySpec{}, false
 	}
 	if instance.Spec.Discovery == nil || instance.Spec.Discovery.Enabled != pagev1alpha1.Enabled {

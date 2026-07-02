@@ -31,15 +31,15 @@ const metricsServiceName = "kubepage-operator-controller-manager-metrics-service
 const metricsRoleBindingName = "kubepage-operator-metrics-binding"
 
 // dashboardTestNamespace is a separate namespace (not the operator's own
-// namespace) where the Dashboard scenario applies an Instance plus config
-// CRDs and exercises the per-Instance dashboard Deployment it produces.
+// namespace) where the Dashboard scenario applies a Dashboard plus config
+// CRDs and exercises the per-Dashboard dashboard Deployment it produces.
 const dashboardTestNamespace = "kubepage-e2e-dashboard"
 
-// dashboardInstanceName is both the Instance name and (per
-// internal/controller/instance_controller.go's deploymentForInstance /
-// instance_network.go's serviceForInstance, which both reuse instance.Name)
+// e2eDashboardName is both the Dashboard name and (per
+// internal/controller/dashboard_controller.go's deploymentForDashboard /
+// dashboard_network.go's serviceForDashboard, which both reuse instance.Name)
 // the name of the Deployment and Service it produces.
-const dashboardInstanceName = "e2e-dashboard"
+const e2eDashboardName = "e2e-dashboard"
 
 // dashboardConfigTitle and dashboardBookmarkName are distinctive strings
 // this scenario looks for in the dashboard's rendered HTML to confirm it's
@@ -49,27 +49,27 @@ const (
 	dashboardBookmarkName = "E2E Bookmark Card"
 )
 
-// dashboardSampleManifest is a minimal, self-contained Instance plus
-// Configuration and Bookmark, deliberately avoiding ServiceEntry widgets
+// dashboardSampleManifest is a minimal, self-contained Dashboard plus
+// DashboardStyle and Bookmark, deliberately avoiding ServiceCard widgets
 // (which need a real upstream and Secret) so this scenario has no external
 // dependencies.
 var dashboardSampleManifest = fmt.Sprintf(`
 apiVersion: page.kubepage.dev/v1alpha1
-kind: Instance
+kind: Dashboard
 metadata:
   name: %[1]s
   namespace: %[2]s
 spec:
-  size: 1
+  replicas: 1
   containerPort: 8080
 ---
 apiVersion: page.kubepage.dev/v1alpha1
-kind: Configuration
+kind: DashboardStyle
 metadata:
-  name: e2e-dashboard-config
+  name: %[1]s
   namespace: %[2]s
 spec:
-  instanceRef:
+  dashboardRef:
     name: %[1]s
   title: %[3]s
 ---
@@ -79,12 +79,12 @@ metadata:
   name: e2e-dashboard-bookmark
   namespace: %[2]s
 spec:
-  instanceRef:
+  dashboardRef:
     name: %[1]s
   group: Links
   name: %[4]s
   href: https://example.com
-`, dashboardInstanceName, dashboardTestNamespace, dashboardConfigTitle, dashboardBookmarkName)
+`, e2eDashboardName, dashboardTestNamespace, dashboardConfigTitle, dashboardBookmarkName)
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -326,7 +326,7 @@ var _ = Describe("Manager", Ordered, func() {
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
-			By("applying an Instance plus Configuration and Bookmark")
+			By("applying a Dashboard plus DashboardStyle and Bookmark")
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(dashboardSampleManifest)
 			_, err = utils.Run(cmd)
@@ -342,7 +342,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("serves a dashboard reflecting the applied CRDs", func() {
 			By("waiting for the dashboard Deployment to become ready")
 			verifyDashboardDeploymentReady := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", dashboardInstanceName,
+				cmd := exec.Command("kubectl", "get", "deployment", e2eDashboardName,
 					"-n", dashboardTestNamespace, "-o", "jsonpath={.status.readyReplicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -350,7 +350,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyDashboardDeploymentReady, 3*time.Minute, time.Second).Should(Succeed())
 
-			dashboardURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:8080", dashboardInstanceName, dashboardTestNamespace)
+			dashboardURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:8080", e2eDashboardName, dashboardTestNamespace)
 
 			By("creating a curl pod to reach the dashboard Service from inside the cluster")
 			cmd := exec.Command("kubectl", "run", "curl-dashboard", "--restart=Never",
@@ -390,7 +390,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyCurlUp, 3*time.Minute).Should(Succeed())
 
-			By("verifying the page shell reflects the applied Configuration's title")
+			By("verifying the page shell reflects the applied DashboardStyle's title")
 			cmd = exec.Command("kubectl", "logs", "curl-dashboard", "-n", dashboardTestNamespace)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl-dashboard pod")

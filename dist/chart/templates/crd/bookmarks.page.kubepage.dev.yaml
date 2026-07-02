@@ -23,8 +23,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Available')].status
       name: Ready
       type: string
-    - jsonPath: .spec.instanceRef.name
-      name: Instance
+    - jsonPath: .spec.dashboardRef.name
+      name: Dashboard
       type: string
     - jsonPath: .spec.group
       name: Group
@@ -64,6 +64,18 @@ spec:
                 maxLength: 8
                 minLength: 1
                 type: string
+              dashboardRef:
+                description: dashboardRef names the Dashboard this Bookmark belongs
+                  to.
+                properties:
+                  name:
+                    description: name of the Dashboard this object belongs to.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
               description:
                 description: description overrides the default hostname-derived description.
                 maxLength: 1024
@@ -89,18 +101,6 @@ spec:
                 maxLength: 256
                 minLength: 1
                 type: string
-              instanceRef:
-                description: instanceRef names the Instance this Bookmark belongs
-                  to.
-                properties:
-                  name:
-                    description: name of the Instance this object belongs to.
-                    maxLength: 253
-                    minLength: 1
-                    type: string
-                required:
-                - name
-                type: object
               name:
                 description: name is the bookmark's display name.
                 maxLength: 256
@@ -115,9 +115,9 @@ spec:
                 format: int32
                 type: integer
             required:
+            - dashboardRef
             - group
             - href
-            - instanceRef
             - name
             type: object
           status:

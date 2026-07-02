@@ -14,7 +14,7 @@ plugins:
     resources:
     - domain: kubepage.dev
       group: page
-      kind: Instance
+      kind: Dashboard
       options:
         containerPort: "3000"
         image: ghcr.io/maverickd650/kubepage:0.0.1
@@ -32,7 +32,7 @@ resources:
   controller: true
   domain: kubepage.dev
   group: page
-  kind: Instance
+  kind: Dashboard
   path: github.com/maverickd650/kubepage-operator/api/v1alpha1
   version: v1alpha1
 - api:
@@ -41,7 +41,7 @@ resources:
   controller: true
   domain: kubepage.dev
   group: page
-  kind: Configuration
+  kind: DashboardStyle
   path: github.com/maverickd650/kubepage-operator/api/v1alpha1
   version: v1alpha1
 - api:
@@ -50,7 +50,7 @@ resources:
   controller: true
   domain: kubepage.dev
   group: page
-  kind: ServiceEntry
+  kind: ServiceCard
   path: github.com/maverickd650/kubepage-operator/api/v1alpha1
   version: v1alpha1
 - api:

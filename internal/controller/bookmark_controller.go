@@ -18,10 +18,10 @@ import (
 
 // BookmarkReconciler reconciles a Bookmark object.
 //
-// Thin, like ConfigurationReconciler and ServiceEntryReconciler: it only
-// validates that instanceRef resolves to an existing Instance and reflects
+// Thin, like DashboardStyleReconciler and ServiceCardReconciler: it only
+// validates that dashboardRef resolves to an existing Dashboard and reflects
 // that in status. Rendering bookmarks.yaml and watching Bookmark changes is
-// the InstanceReconciler's job (see instance_controller.go).
+// the DashboardReconciler's job (see instance_controller.go).
 type BookmarkReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -30,10 +30,10 @@ type BookmarkReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks/finalizers,verbs=update
-// +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances,verbs=get;list;watch
+// +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards,verbs=get;list;watch
 
-// Reconcile validates that the Bookmark's instanceRef resolves to an existing
-// Instance in the same namespace and sets the Available status condition
+// Reconcile validates that the Bookmark's dashboardRef resolves to an existing
+// Dashboard in the same namespace and sets the Available status condition
 // accordingly.
 func (r *BookmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -47,9 +47,9 @@ func (r *BookmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	cond, err := boundInstanceCondition(ctx, r.Client, bookmark.Namespace, bookmark.Spec.InstanceRef.Name)
+	cond, err := boundDashboardCondition(ctx, r.Client, bookmark.Namespace, bookmark.Spec.DashboardRef.Name, bookmark.Generation)
 	if err != nil {
-		log.Error(err, "Failed to get referenced Instance")
+		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
 	}
 	meta.SetStatusCondition(&bookmark.Status.Conditions, cond)
@@ -67,13 +67,13 @@ func (r *BookmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagev1alpha1.Bookmark{}).
 		Named("bookmark").
-		// Watch Instance objects too: see ConfigurationReconciler.SetupWithManager
+		// Watch Dashboard objects too: see DashboardStyleReconciler.SetupWithManager
 		// for why (out-of-order apply self-heals without waiting for the
 		// Bookmark itself to be touched again).
 		Watches(
-			&pagev1alpha1.Instance{},
+			&pagev1alpha1.Dashboard{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				instance, ok := obj.(*pagev1alpha1.Instance)
+				instance, ok := obj.(*pagev1alpha1.Dashboard)
 				if !ok {
 					return nil
 				}
@@ -85,7 +85,7 @@ func (r *BookmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 				var reqs []reconcile.Request
 				for _, b := range bookmarks.Items {
-					if b.Spec.InstanceRef.Name == instance.Name {
+					if b.Spec.DashboardRef.Name == instance.Name {
 						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
 							Name:      b.Name,
 							Namespace: b.Namespace,

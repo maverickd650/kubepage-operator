@@ -36,7 +36,7 @@ func TestParseHtpasswdSkipsUnsupportedAndMalformedLines(t *testing.T) {
 }
 
 // resetAuthCache clears the package-level authCache before a test runs, so
-// tests sharing testNamespace/testInstanceName as their cache key don't leak
+// tests sharing testNamespace/testDashboardName as their cache key don't leak
 // loadBasicAuth results between each other (basicAuthCacheTTL otherwise
 // keeps an earlier test's result around well past that test's lifetime).
 func resetAuthCache(t *testing.T) {
@@ -46,7 +46,7 @@ func resetAuthCache(t *testing.T) {
 	authCache.mu.Unlock()
 }
 
-func newAuthTestServer(t *testing.T, instance *pagev1alpha1.Instance, secret *corev1.Secret) *Server {
+func newAuthTestServer(t *testing.T, instance *pagev1alpha1.Dashboard, secret *corev1.Secret) *Server {
 	t.Helper()
 	resetAuthCache(t)
 	scheme := testScheme(t)
@@ -64,14 +64,14 @@ func newAuthTestServer(t *testing.T, instance *pagev1alpha1.Instance, secret *co
 
 	return &Server{
 		Store: NewStore(), Reader: cl, SecretReader: secretCl,
-		Namespace: testNamespace, InstanceName: testInstanceName,
+		Namespace: testNamespace, DashboardName: testDashboardName,
 	}
 }
 
-func authTestInstance(basicAuthSecret string) *pagev1alpha1.Instance {
-	inst := &pagev1alpha1.Instance{
-		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
-		Spec:       pagev1alpha1.InstanceSpec{ContainerPort: 8080},
+func authTestDashboard(basicAuthSecret string) *pagev1alpha1.Dashboard {
+	inst := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec:       pagev1alpha1.DashboardSpec{ContainerPort: 8080},
 	}
 	if basicAuthSecret != "" {
 		inst.Spec.Auth = &pagev1alpha1.AuthSpec{BasicAuthSecretRef: &corev1.LocalObjectReference{Name: basicAuthSecret}}
@@ -80,7 +80,7 @@ func authTestInstance(basicAuthSecret string) *pagev1alpha1.Instance {
 }
 
 func TestBasicAuthMiddlewareNoAuthConfiguredAllowsRequest(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance(""), nil)
+	srv := newAuthTestServer(t, authTestDashboard(""), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	rec := httptest.NewRecorder()
@@ -91,8 +91,8 @@ func TestBasicAuthMiddlewareNoAuthConfiguredAllowsRequest(t *testing.T) {
 	}
 }
 
-func TestBasicAuthMiddlewareNoInstanceAllowsRequest(t *testing.T) {
-	// No Instance object exists at all — should degrade to "no auth", not 500.
+func TestBasicAuthMiddlewareNoDashboardAllowsRequest(t *testing.T) {
+	// No Dashboard object exists at all — should degrade to "no auth", not 500.
 	srv := newAuthTestServer(t, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
@@ -100,7 +100,7 @@ func TestBasicAuthMiddlewareNoInstanceAllowsRequest(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200 when the Instance doesn't exist", rec.Code)
+		t.Errorf("status = %d, want 200 when the Dashboard doesn't exist", rec.Code)
 	}
 }
 
@@ -118,7 +118,7 @@ func htpasswdSecret() *corev1.Secret {
 }
 
 func TestBasicAuthMiddlewareRejectsMissingCredentials(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret())
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	rec := httptest.NewRecorder()
@@ -133,7 +133,7 @@ func TestBasicAuthMiddlewareRejectsMissingCredentials(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareRejectsWrongPassword(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret())
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("alice", "wrong-password")
@@ -146,7 +146,7 @@ func TestBasicAuthMiddlewareRejectsWrongPassword(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareRejectsUnknownUsername(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret())
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("mallory", "hunter2")
@@ -159,7 +159,7 @@ func TestBasicAuthMiddlewareRejectsUnknownUsername(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareAcceptsCorrectCredentials(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret())
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("alice", "hunter2")
@@ -172,7 +172,7 @@ func TestBasicAuthMiddlewareAcceptsCorrectCredentials(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareHealthzNeverRequiresAuth(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret())
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -186,7 +186,7 @@ func TestBasicAuthMiddlewareHealthzNeverRequiresAuth(t *testing.T) {
 func TestBasicAuthMiddlewareMissingSecretIsInternalError(t *testing.T) {
 	// spec.auth is set but the named Secret doesn't exist: fail closed with
 	// a 500 rather than silently allowing the request through.
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), nil)
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("alice", "hunter2")

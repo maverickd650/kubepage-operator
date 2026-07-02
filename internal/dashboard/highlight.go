@@ -202,7 +202,7 @@ type compiledRegex struct {
 // regexCache caches evaluateRegexRule's compiled patterns across polls,
 // keyed by the literal pattern string (including the "(?i)" prefix
 // evaluateRegexRule may add): the same HighlightRuleSpec is evaluated on
-// every poll cycle for as long as its ServiceEntry/InfoWidget exists, and
+// every poll cycle for as long as its ServiceCard/InfoWidget exists, and
 // regexp.Compile was otherwise re-parsing the identical pattern every time.
 var regexCache sync.Map // pattern string -> compiledRegex
 

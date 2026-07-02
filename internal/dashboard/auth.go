@@ -21,19 +21,19 @@ import (
 )
 
 // htpasswdSecretKey is the Secret key basicAuthMiddleware reads the
-// htpasswd file from, per InstanceSpec.Auth.BasicAuthSecretRef's doc
+// htpasswd file from, per DashboardSpec.Auth.BasicAuthSecretRef's doc
 // comment.
 const htpasswdSecretKey = ".htpasswd"
 
 // basicAuthCacheTTL bounds how long a resolved htpasswd file is cached
 // before being re-fetched. Without this, every request (page load, every
-// htmx poll from every open browser tab) would Get the Instance and Secret
+// htmx poll from every open browser tab) would Get the Dashboard and Secret
 // from the API server before serving anything — this mirrors unifi.go's
 // session-cache pattern (don't hit a backend more than necessary per
 // request) applied to the API server instead of an upstream service.
 const basicAuthCacheTTL = 30 * time.Second
 
-// authCacheEntry caches loadBasicAuth's result for one Instance.
+// authCacheEntry caches loadBasicAuth's result for one Dashboard.
 type authCacheEntry struct {
 	entries map[string][]byte // username -> bcrypt hash
 	enabled bool
@@ -86,37 +86,37 @@ func parseHtpasswd(data []byte) map[string][]byte {
 	return entries
 }
 
-// loadBasicAuth returns the parsed htpasswd entries for the Instance named
-// by namespace/instanceName, and whether spec.auth.basicAuthSecretRef is set
+// loadBasicAuth returns the parsed htpasswd entries for the Dashboard named
+// by namespace/dashboardName, and whether spec.auth.basicAuthSecretRef is set
 // at all (enabled). reader is expected cache-backed (it only reads the
-// Instance); secretReader is expected uncached, per this package's
+// Dashboard); secretReader is expected uncached, per this package's
 // secret-handling rule (see poller.go's resolveSecret) — the htpasswd
 // file's bcrypt hashes are credential material the same as any other
 // Secret this package resolves.
 //
-// An Instance that doesn't exist (yet, e.g. a brief cache-warm-up race right
+// An Dashboard that doesn't exist (yet, e.g. a brief cache-warm-up race right
 // after the dashboard pod starts) is treated the same as spec.auth being
 // unset — enabled=false, no error — rather than failing the request: the
-// dashboard pod only ever exists because its own Instance created it, so
+// dashboard pod only ever exists because its own Dashboard created it, so
 // this is a transient-race case, not a security-relevant "we don't know the
 // policy" case. Any other read error (API server unreachable, RBAC denied)
 // returns an error instead, so basicAuthMiddleware fails closed rather than
 // silently serving unauthenticated on an error it can't attribute to "no
 // auth configured".
-func loadBasicAuth(ctx context.Context, reader, secretReader client.Reader, namespace, instanceName string) (entries map[string][]byte, enabled bool, err error) {
-	var instance pagev1alpha1.Instance
-	if err := reader.Get(ctx, types.NamespacedName{Name: instanceName, Namespace: namespace}, &instance); err != nil {
+func loadBasicAuth(ctx context.Context, reader, secretReader client.Reader, namespace, dashboardName string) (entries map[string][]byte, enabled bool, err error) {
+	var instance pagev1alpha1.Dashboard
+	if err := reader.Get(ctx, types.NamespacedName{Name: dashboardName, Namespace: namespace}, &instance); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("getting Instance: %w", err)
+		return nil, false, fmt.Errorf("getting Dashboard: %w", err)
 	}
 	if instance.Spec.Auth == nil || instance.Spec.Auth.BasicAuthSecretRef == nil {
 		return nil, false, nil
 	}
 	secretName := instance.Spec.Auth.BasicAuthSecretRef.Name
 
-	cacheKey := namespace + "/" + instanceName
+	cacheKey := namespace + "/" + dashboardName
 	authCache.mu.Lock()
 	if cached, ok := authCache.entries[cacheKey]; ok && time.Now().Before(cached.expiry) {
 		authCache.mu.Unlock()
@@ -147,7 +147,7 @@ func loadBasicAuth(ctx context.Context, reader, secretReader client.Reader, name
 const healthzPath = "/healthz"
 
 // basicAuthMiddleware wraps next with HTTP Basic authentication when the
-// Instance's spec.auth.basicAuthSecretRef is set, checked on every request
+// Dashboard's spec.auth.basicAuthSecretRef is set, checked on every request
 // except /healthz. Credential comparison uses
 // bcrypt.CompareHashAndPassword — the standard constant-time-with-respect-
 // to-the-password primitive for this, rather than a hand-rolled comparison
@@ -159,7 +159,7 @@ func (s *Server) basicAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		entries, enabled, err := loadBasicAuth(r.Context(), s.Reader, s.SecretReader, s.Namespace, s.InstanceName)
+		entries, enabled, err := loadBasicAuth(r.Context(), s.Reader, s.SecretReader, s.Namespace, s.DashboardName)
 		if err != nil {
 			http.Error(w, "resolving dashboard authentication", http.StatusInternalServerError)
 			return

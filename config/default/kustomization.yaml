@@ -18,8 +18,13 @@ resources:
 - ../crd
 - ../rbac
 - ../manager
-# ValidatingAdmissionPolicies enforcing CRD field invariants at admission
-# (e.g. SecretValueSource exactly-one). Requires Kubernetes v1.30+.
+# ValidatingAdmissionPolicies for checks that can't be expressed as CRD
+# schema CEL rules: warn-level heuristics flagging credential-shaped inline
+# values (see config/admission/credential_shaped_value_policy.yaml). Schema
+# invariants (e.g. SecretValueSource exactly-one) live in api/v1alpha1's
+# +kubebuilder:validation:XValidation markers instead. Requires Kubernetes
+# v1.30+ (ValidatingAdmissionPolicy is GA from 1.30); the CRDs themselves
+# only require v1.29 (CRD CEL validation GA).
 - ../admission
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml

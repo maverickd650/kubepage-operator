@@ -94,10 +94,10 @@ rules:
   - page.kubepage.dev
   resources:
   - bookmarks
-  - configurations
+  - dashboards
+  - dashboardstyles
   - infowidgets
-  - instances
-  - serviceentries
+  - servicecards
   verbs:
   - create
   - delete
@@ -110,20 +110,20 @@ rules:
   - page.kubepage.dev
   resources:
   - bookmarks/finalizers
-  - configurations/finalizers
+  - dashboards/finalizers
+  - dashboardstyles/finalizers
   - infowidgets/finalizers
-  - instances/finalizers
-  - serviceentries/finalizers
+  - servicecards/finalizers
   verbs:
   - update
 - apiGroups:
   - page.kubepage.dev
   resources:
   - bookmarks/status
-  - configurations/status
+  - dashboards/status
+  - dashboardstyles/status
   - infowidgets/status
-  - instances/status
-  - serviceentries/status
+  - servicecards/status
   verbs:
   - get
   - patch

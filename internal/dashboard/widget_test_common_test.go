@@ -18,7 +18,6 @@ const (
 	testUnreachableAddr = "http://127.0.0.1:1"
 
 	// Shared literals across the look/monitor/header tests.
-	testCfgName       = "cfg"
 	testSvcName       = "svc"
 	testHeaderWeather = "weather"
 	testStatusBasic   = "basic"

@@ -1,10 +1,8 @@
 package controller
 
 import (
-	"path/filepath"
 	"slices"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -17,19 +15,20 @@ import (
 )
 
 // serviceEntryWidgetTypes and infoWidgetPollableTypes must be kept identical
-// to the two CEL allow-lists in config/admission/widget_type_policy.yaml.
+// to the two Enum allow-lists on ServiceWidget.Type/InfoWidgetSpec.Type
+// (api/v1alpha1/servicecard_types.go, api/v1alpha1/infowidget_types.go).
 // TestRegisteredWidgetTypesCoveredByPolicy below fails if a type registered
 // in internal/dashboard is missing from both lists, which is the drift the
-// YAML's own comment promises but the envtest specs in this file (which only
-// probe a handful of fixed type strings) don't actually catch for a type
-// *addition*.
+// enum markers' own comment promises but the envtest specs in this file
+// (which only probe a handful of fixed type strings) don't actually catch
+// for a type *addition*.
 var (
 	serviceEntryWidgetTypes = []string{
 		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
 		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
 		"homeassistant", "mealie", "customapi", "iframe",
 	}
-	// infoWidgetPollableTypes is the subset of config/admission's infowidget-type
+	// infoWidgetPollableTypes is the subset of InfoWidgetSpec.Type's Enum
 	// allow-list that's also a registered dashboard.Widget; "greeting" and
 	// "datetime" are rendered statically by internal/dashboard/server.go and
 	// never go through Register, so they're intentionally excluded here.
@@ -38,47 +37,28 @@ var (
 
 // TestRegisteredWidgetTypesCoveredByPolicy guards against a widget added to
 // internal/dashboard (via Register in some widget's init()) being forgotten
-// in config/admission/widget_type_policy.yaml's CEL allow-lists: every
+// in the ServiceWidget.Type/InfoWidgetSpec.Type Enum markers: every
 // registered type must appear in at least one of the two lists above, or a
 // valid, working widget type would be rejected at admission time.
 func TestRegisteredWidgetTypesCoveredByPolicy(t *testing.T) {
 	allowed := slices.Concat(serviceEntryWidgetTypes, infoWidgetPollableTypes)
 	for _, widgetType := range dashboard.RegisteredTypes() {
 		if !slices.Contains(allowed, widgetType) {
-			t.Errorf("dashboard widget type %q is registered but missing from both serviceEntryWidgetTypes and infoWidgetPollableTypes; add it to config/admission/widget_type_policy.yaml and to one of these lists", widgetType)
+			t.Errorf("dashboard widget type %q is registered but missing from both serviceEntryWidgetTypes and infoWidgetPollableTypes; add it to the Enum markers on ServiceWidget.Type/InfoWidgetSpec.Type and to one of these lists", widgetType)
 		}
 	}
 }
 
-// These specs verify the shipped widget-type ValidatingAdmissionPolicies
-// (config/admission/widget_type_policy.yaml) reject unknown widget types,
-// while admitting the supported ones. Loading the real manifest (rather than
-// reconstructing the CEL in Go) means the allowed lists drifting from the
-// internal/dashboard registry — e.g. a newly-registered widget left out of the
-// policy — fails the build: the policy with failurePolicy: Fail would reject
-// the valid fixture.
-var _ = Describe("Widget-type ValidatingAdmissionPolicies", Ordered, func() {
-	BeforeAll(func() {
-		applyManifest(filepath.Join("..", "..", "config", "admission", "widget_type_policy.yaml"))
-
-		// Policy enforcement isn't instantaneous after the policy/binding are
-		// created; poll a known-invalid object until it's rejected before
-		// asserting individual cases, so the specs don't race the apiserver.
-		Eventually(func() bool {
-			se := serviceEntryWithWidgetType("warmup", "does-not-exist")
-			err := k8sClient.Create(ctx, se)
-			if err == nil {
-				_ = k8sClient.Delete(ctx, se)
-				return false
-			}
-			return apierrors.IsInvalid(err) || apierrors.IsForbidden(err)
-		}, 30*time.Second, time.Second).Should(BeTrue(), "policy should begin rejecting unknown widget types")
-	})
-
-	Describe("ServiceEntry widget type", func() {
+// These specs verify the ServiceWidget.Type/InfoWidgetSpec.Type CRD schema
+// Enum markers reject unknown widget types, while admitting the supported
+// ones.
+var _ = Describe("Widget-type CRD schema validation", func() {
+	Describe("ServiceCard widget type", func() {
 		It("rejects an unknown widget type", func() {
 			se := serviceEntryWithWidgetType("se-bad-type", "plexx")
-			Expect(k8sClient.Create(ctx, se)).NotTo(Succeed())
+			err := k8sClient.Create(ctx, se)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 
 		It("admits a supported service widget type", func() {
@@ -87,7 +67,7 @@ var _ = Describe("Widget-type ValidatingAdmissionPolicies", Ordered, func() {
 			Expect(k8sClient.Delete(ctx, se)).To(Succeed())
 		})
 
-		It("admits a ServiceEntry with no widgets", func() {
+		It("admits a ServiceCard with no widgets", func() {
 			se := serviceEntryWithWidgetType("se-no-widgets", "")
 			Expect(k8sClient.Create(ctx, se)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, se)).To(Succeed())
@@ -95,16 +75,20 @@ var _ = Describe("Widget-type ValidatingAdmissionPolicies", Ordered, func() {
 
 		It("rejects a header-only widget type used as a service card", func() {
 			// kubemetrics is a cluster-only header widget; its Poll errors, so it
-			// must not be accepted as a ServiceEntry card.
+			// must not be accepted as a ServiceCard card.
 			se := serviceEntryWithWidgetType("se-header-type", "kubemetrics")
-			Expect(k8sClient.Create(ctx, se)).NotTo(Succeed())
+			err := k8sClient.Create(ctx, se)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 	})
 
 	Describe("InfoWidget type", func() {
 		It("rejects an unknown type", func() {
 			iw := infoWidgetWithType("iw-bad-type", "weatherz")
-			Expect(k8sClient.Create(ctx, iw)).NotTo(Succeed())
+			err := k8sClient.Create(ctx, iw)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 
 		It("admits a supported header type", func() {
@@ -121,15 +105,15 @@ var _ = Describe("Widget-type ValidatingAdmissionPolicies", Ordered, func() {
 	})
 })
 
-// serviceEntryWithWidgetType builds a minimally-valid ServiceEntry with a
+// serviceEntryWithWidgetType builds a minimally-valid ServiceCard with a
 // single widget of the given type; an empty widgetType means no widgets.
-func serviceEntryWithWidgetType(name, widgetType string) *pagev1alpha1.ServiceEntry {
-	se := &pagev1alpha1.ServiceEntry{
+func serviceEntryWithWidgetType(name, widgetType string) *pagev1alpha1.ServiceCard {
+	se := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
-		Spec: pagev1alpha1.ServiceEntrySpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
-			Group:       policyTestGroup,
-			Name:        name,
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			Group:        policyTestGroup,
+			Name:         name,
 		},
 	}
 	if widgetType != "" {
@@ -143,8 +127,8 @@ func infoWidgetWithType(name, widgetType string) *pagev1alpha1.InfoWidget {
 	return &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
-			Type:        widgetType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			Type:         widgetType,
 		},
 	}
 }

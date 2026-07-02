@@ -91,7 +91,7 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		collector.reset()
 	})
 
-	Describe("ServiceEntry widget secrets", func() {
+	Describe("ServiceCard widget secrets", func() {
 		It("warns when a credential-shaped field name uses an inline value", func() {
 			se := serviceEntryWithSecret("se-cred-shaped", nil)
 			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
@@ -131,8 +131,8 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 			iw := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: "iw-cred-shaped", Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					InstanceRef: pagev1alpha1.InstanceRef{Name: policyInstanceRef},
-					Type:        "openmeteo",
+					DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+					Type:         "openmeteo",
 					Secrets: map[string]pagev1alpha1.SecretValueSource{
 						"password": {Value: ptrString("plaintext-value")},
 					},

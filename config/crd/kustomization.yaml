@@ -2,9 +2,9 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/page.kubepage.dev_instances.yaml
-- bases/page.kubepage.dev_configurations.yaml
-- bases/page.kubepage.dev_serviceentries.yaml
+- bases/page.kubepage.dev_dashboards.yaml
+- bases/page.kubepage.dev_dashboardstyles.yaml
+- bases/page.kubepage.dev_servicecards.yaml
 - bases/page.kubepage.dev_bookmarks.yaml
 - bases/page.kubepage.dev_infowidgets.yaml
 # +kubebuilder:scaffold:crdkustomizeresource

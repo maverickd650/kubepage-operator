@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -27,7 +28,7 @@ const (
 	defaultTarget      = "_blank"
 )
 
-// bookmarksStyleIcons is ConfigurationSpec.BookmarksStyle's one valid value,
+// bookmarksStyleIcons is DashboardStyleSpec.BookmarksStyle's one valid value,
 // matching homepage's `bookmarksStyle: icons`.
 const bookmarksStyleIcons = "icons"
 
@@ -39,7 +40,7 @@ const (
 )
 
 // Site is everything the dashboard's look (6.1) needs beyond the polled
-// widget cards: the Instance's Configuration (theme/color/background/...)
+// widget cards: the Dashboard's DashboardStyle (theme/color/background/...)
 // and its bound Bookmarks, rendered as static link cards.
 type Site struct {
 	Theme       string
@@ -48,7 +49,7 @@ type Site struct {
 	Language    string
 	FullWidth   bool
 
-	// ThemeFixed/ColorFixed report whether Configuration.Spec.Theme/Color
+	// ThemeFixed/ColorFixed report whether DashboardStyle.Spec.Theme/Color
 	// was set, disabling the corresponding client-side switcher control —
 	// homepage's documented "fixed theme/palette" behavior.
 	ThemeFixed bool
@@ -58,7 +59,7 @@ type Site struct {
 	Description string
 	Favicon     string
 	// CardBlur is a CSS length (e.g. "12px") already resolved from the
-	// Configuration's Tailwind keyword, or "" for no card blur.
+	// DashboardStyle's Tailwind keyword, or "" for no card blur.
 	CardBlur string
 	// Target is the default link target for cards/bookmarks ("_blank"/"_self").
 	Target string
@@ -89,7 +90,7 @@ type Site struct {
 	// CustomJS is raw, operator-supplied JavaScript run once on page load.
 	CustomJS string
 
-	// StatusStyle/HideErrors are the site-wide defaults a ServiceEntry falls
+	// StatusStyle/HideErrors are the site-wide defaults a ServiceCard falls
 	// back to when it doesn't set its own StatusStyle/HideErrors (see
 	// poller.go's siteDefaults).
 	StatusStyle string
@@ -110,7 +111,7 @@ type LayoutTab struct {
 }
 
 // LayoutGroup mirrors api/v1alpha1.LayoutGroupSpec, fully resolved (Icon
-// resolved to a URL the same way ServiceEntry/Bookmark Icon is). Header/
+// resolved to a URL the same way ServiceCard/Bookmark Icon is). Header/
 // InitiallyCollapsed/UseEqualHeights stay pointers here (unlike Columns'
 // sibling Style) so layoutTabs (server.go) can tell "unset" apart from an
 // explicit false/true and fall back to the Site-wide default.
@@ -195,12 +196,12 @@ type BookmarkCard struct {
 	Description string
 }
 
-// LoadSite reads the Instance's bound Configuration and Bookmarks directly
+// LoadSite reads the Dashboard's bound DashboardStyle and Bookmarks directly
 // from reader (expected cache-backed) and returns render-ready data. Unlike
 // widget cards, this is read fresh on every request rather than polled on
 // an interval: it's a handful of cheap informer-cache List calls, not a
 // network round-trip to an external upstream.
-func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName string) (Site, error) {
+func LoadSite(ctx context.Context, reader client.Reader, namespace, dashboardName string) (Site, error) {
 	site := Site{
 		Theme:       defaultTheme,
 		Color:       defaultColor,
@@ -212,25 +213,25 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true, SearchDescriptions: true},
 	}
 
-	spec, err := boundConfigurationSpec(ctx, reader, namespace, instanceName)
+	spec, err := boundDashboardStyleSpec(ctx, reader, namespace, dashboardName)
 	if err != nil {
 		return site, err
 	}
 	if spec != nil {
-		applyConfiguration(&site, spec)
+		applyDashboardStyle(&site, spec)
 	}
 
 	var bookmarks pagev1alpha1.BookmarkList
 	if err := reader.List(ctx, &bookmarks, client.InNamespace(namespace)); err != nil {
 		return site, fmt.Errorf("listing Bookmarks: %w", err)
 	}
-	site.BookmarkGroups = groupBookmarks(bookmarks.Items, instanceName, site)
+	site.BookmarkGroups = groupBookmarks(bookmarks.Items, dashboardName, site)
 
 	var infoWidgets pagev1alpha1.InfoWidgetList
 	if err := reader.List(ctx, &infoWidgets, client.InNamespace(namespace)); err != nil {
 		return site, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
-	site.HeaderWidgets = headerWidgets(infoWidgets.Items, instanceName)
+	site.HeaderWidgets = headerWidgets(infoWidgets.Items, dashboardName)
 
 	return site, nil
 }
@@ -240,10 +241,10 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 // Options' passthrough JSON is flattened into a string map; nested/array
 // values are skipped (header widgets only use scalar options like text,
 // latitude, format).
-func headerWidgets(items []pagev1alpha1.InfoWidget, instanceName string) []HeaderWidget {
+func headerWidgets(items []pagev1alpha1.InfoWidget, dashboardName string) []HeaderWidget {
 	var bound []pagev1alpha1.InfoWidget
 	for _, w := range items {
-		if w.Spec.InstanceRef.Name == instanceName {
+		if w.Spec.DashboardRef.Name == dashboardName {
 			bound = append(bound, w)
 		}
 	}
@@ -312,45 +313,34 @@ func scalarOptions(raw *apiextensionsv1.JSON) map[string]string {
 	return opts
 }
 
-// boundConfigurationSpec returns the Spec of the Configuration bound to
-// instanceName (the lexicographically first by name, when more than one
-// references the same Instance), or nil if none is bound. Shared by LoadSite
-// and Poller.siteDefaults so both read the same "which Configuration wins"
-// rule from a single place.
-func boundConfigurationSpec(ctx context.Context, reader client.Reader, namespace, instanceName string) (*pagev1alpha1.ConfigurationSpec, error) {
-	var configs pagev1alpha1.ConfigurationList
-	if err := reader.List(ctx, &configs, client.InNamespace(namespace)); err != nil {
-		return nil, fmt.Errorf("listing Configurations: %w", err)
-	}
-
-	var bound []pagev1alpha1.Configuration
-	for _, c := range configs.Items {
-		if c.Spec.InstanceRef.Name == instanceName {
-			bound = append(bound, c)
+// boundDashboardStyleSpec returns the Spec of the DashboardStyle bound to
+// dashboardName, or nil if none is bound. The DashboardStyle CRD's schema CEL
+// rule requires metadata.name == spec.dashboardRef.name, so the object named
+// after the Dashboard (if it exists) is the only one that can be bound to it
+// — a direct Get, not a List+filter. Shared by LoadSite and
+// Poller.siteDefaults so both read the same lookup from a single place.
+func boundDashboardStyleSpec(ctx context.Context, reader client.Reader, namespace, dashboardName string) (*pagev1alpha1.DashboardStyleSpec, error) {
+	var style pagev1alpha1.DashboardStyle
+	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: dashboardName}, &style); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
+		return nil, fmt.Errorf("getting DashboardStyle: %w", err)
 	}
-	if len(bound) == 0 {
-		return nil, nil
-	}
-	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
-	if len(bound) > 1 {
-		siteLog.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
-			"instance", instanceName, "using", bound[0].Name)
-	}
-	return &bound[0].Spec, nil
+	return &style.Spec, nil
 }
 
-func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
+func applyDashboardStyle(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 	applyLookFields(site, spec)
 	applySearch(site, spec.Search)
 	applyLayout(site, spec.Layout)
 	applyBehaviorFields(site, spec)
 }
 
-// applyLookFields applies the Configuration fields governing the page's
+// applyLookFields applies the DashboardStyle fields governing the page's
 // visual identity: title/description/favicon/card look, theme/color/header
 // style, language, layout width, and background image.
-func applyLookFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
+func applyLookFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 	if spec.Title != nil {
 		site.Title = *spec.Title
 	}
@@ -395,7 +385,7 @@ func applyLookFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	}
 }
 
-// applySearch applies the Configuration's header search box settings, if set.
+// applySearch applies the DashboardStyle's header search box settings, if set.
 func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 	if s == nil {
 		return
@@ -420,15 +410,15 @@ func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 	if s.SearchDescriptions != nil {
 		site.Search.SearchDescriptions = *s.SearchDescriptions == pagev1alpha1.Enabled
 	}
-	if s.HideInternetSearch != nil {
-		site.Search.HideInternetSearch = *s.HideInternetSearch == pagev1alpha1.Enabled
+	if s.InternetSearchEntry != nil {
+		site.Search.HideInternetSearch = *s.InternetSearchEntry == pagev1alpha1.ErrorDisplayHidden
 	}
-	if s.HideVisitURL != nil {
-		site.Search.HideVisitURL = *s.HideVisitURL == pagev1alpha1.Enabled
+	if s.VisitURLEntry != nil {
+		site.Search.HideVisitURL = *s.VisitURLEntry == pagev1alpha1.ErrorDisplayHidden
 	}
 }
 
-// applyLayout resolves the Configuration's Layout tabs/groups, if set.
+// applyLayout resolves the DashboardStyle's Layout tabs/groups, if set.
 func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
 	if layout == nil {
 		return
@@ -452,12 +442,12 @@ func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
 	site.Layout = tabs
 }
 
-// applyBehaviorFields applies the Configuration fields governing dashboard
+// applyBehaviorFields applies the DashboardStyle fields governing dashboard
 // behavior rather than look: collapsibility, bookmark/indexing/PWA
 // settings, injected CSS/JS, and the site-wide status/error/version defaults.
-func applyBehaviorFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
-	if spec.DisableCollapse != nil {
-		site.DisableCollapse = *spec.DisableCollapse == pagev1alpha1.Disabled
+func applyBehaviorFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
+	if spec.Collapse != nil {
+		site.DisableCollapse = *spec.Collapse == pagev1alpha1.Disabled
 	}
 	if spec.GroupsInitiallyCollapsed != nil {
 		site.GroupsInitiallyCollapsed = *spec.GroupsInitiallyCollapsed == pagev1alpha1.CollapseCollapsed
@@ -468,8 +458,8 @@ func applyBehaviorFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.BookmarksStyle != nil {
 		site.BookmarksIconsOnly = *spec.BookmarksStyle == bookmarksStyleIcons
 	}
-	if spec.DisableIndexing != nil {
-		site.DisableIndexing = *spec.DisableIndexing == pagev1alpha1.IndexingNoIndex
+	if spec.Indexing != nil {
+		site.DisableIndexing = *spec.Indexing == pagev1alpha1.IndexingNoIndex
 	}
 	if spec.StartURL != nil {
 		site.StartURL = *spec.StartURL
@@ -483,8 +473,8 @@ func applyBehaviorFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.StatusStyle != nil {
 		site.StatusStyle = *spec.StatusStyle
 	}
-	if spec.HideErrors != nil {
-		site.HideErrors = *spec.HideErrors == pagev1alpha1.StatsHide
+	if spec.ErrorDisplay != nil {
+		site.HideErrors = *spec.ErrorDisplay == pagev1alpha1.ErrorDisplayHidden
 	}
 	if spec.HideVersion != nil {
 		site.HideVersion = *spec.HideVersion == pagev1alpha1.Enabled
@@ -553,12 +543,12 @@ func layoutGroupsByName(layout []LayoutTab) map[string]LayoutGroup {
 	return byName
 }
 
-func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string, site Site) []BookmarkGroup {
+func groupBookmarks(items []pagev1alpha1.Bookmark, dashboardName string, site Site) []BookmarkGroup {
 	layoutByName := layoutGroupsByName(site.Layout)
 
 	var bound []pagev1alpha1.Bookmark
 	for _, b := range items {
-		if b.Spec.InstanceRef.Name == instanceName {
+		if b.Spec.DashboardRef.Name == dashboardName {
 			bound = append(bound, b)
 		}
 	}

@@ -188,9 +188,9 @@ build-installer:
 	mise run build-installer
 MAKEFILE
 
-# config/admission's ValidatingAdmissionPolicy/Binding pairs (secret-source,
-# widget-type, serviceentry-monitor-source) are a custom addition on top of
-# the stock kubebuilder scaffold, hand-translated into Helm templates gated
+# config/admission's ValidatingAdmissionPolicy/Binding pair
+# (credential-shaped-value) is a custom addition on top of the stock
+# kubebuilder scaffold, hand-translated into a Helm template gated
 # on .Values.admissionPolicies.enabled. Confirmed empirically (not just from
 # --help text): the plugin does NOT leave these alone — it emits its own
 # Binding-only, ungated templates under templates/extras/, each with an
@@ -201,7 +201,7 @@ MAKEFILE
 # config/admission gains a new policy, add its chart template by hand
 # (mirroring an existing one in dist/chart/templates/admission/) — this task
 # can't create it for you.
-preserved="dist/chart/templates/admission/secret-source-policy.yaml dist/chart/templates/admission/widget-type-policy.yaml dist/chart/templates/admission/serviceentry-monitor-source-policy.yaml"
+preserved="dist/chart/templates/admission/credential-shaped-value-policy.yaml"
 backup_dir="$(mktemp -d)"
 trap 'rm -f Makefile; rm -rf "$backup_dir"' EXIT
 for f in $preserved; do

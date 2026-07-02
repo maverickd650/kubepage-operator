@@ -1,9 +1,9 @@
 # Example NetworkPolicy for dashboard pods (see docs/security-review.md
-# P1.2/P1.3). This is a template to copy into your own Instance's namespace
+# P1.2/P1.3). This is a template to copy into your own Dashboard's namespace
 # and adjust — it is NOT applied by default and NOT referenced by
 # config/default/kustomization.yaml, the same as allow-metrics-traffic.yaml.
 #
-# Equivalent, operator-managed behavior is also available per-Instance via
+# Equivalent, operator-managed behavior is also available per-Dashboard via
 # spec.networkPolicy (see api/v1alpha1/instance_types.go's NetworkPolicySpec)
 # without hand-maintaining a manifest like this one; use whichever fits your
 # GitOps workflow better.
@@ -11,19 +11,19 @@
 # This policy allows ingress to the dashboard's containerPort only from Pods
 # in namespaces labeled "ingress: allowed" (e.g. your ingress controller's
 # namespace) — adjust podSelector/namespaceSelector/port to match your
-# Instance. Deliberately leaves egress unrestricted: widget URLs are
+# Dashboard. Deliberately leaves egress unrestricted: widget URLs are
 # CRD-supplied by design (see SECURITY.md's explicit non-goals) and a
 # generic example can't know which upstreams your ServiceEntries poll.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dashboard-ingress
-  namespace: default # CHANGE ME: the namespace your Instance runs in
+  namespace: default # CHANGE ME: the namespace your Dashboard runs in
 spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: kubepage-operator
-      app.kubernetes.io/managed-by: InstanceController
+      app.kubernetes.io/managed-by: DashboardController
   policyTypes:
     - Ingress
   ingress:

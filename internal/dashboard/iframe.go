@@ -18,7 +18,7 @@ func init() {
 // this WidgetType to render the embed instead of the usual stats grid.
 //
 // Because the embed itself lives in card.Fields (see iframeSrc/iframeHeight
-// below), a ServiceEntry.Spec.ShowStats="Hide" on an iframe widget's entry
+// below), a ServiceCard.Spec.ShowStats="Hide" on an iframe widget's entry
 // hides the iframe too, not just stat chips — pollWidget only populates
 // card.Fields when ShowStats is on. Don't set ShowStats=Hide on an entry
 // carrying an iframe widget.
