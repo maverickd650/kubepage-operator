@@ -275,6 +275,11 @@ func TestDigestPinnedImage(t *testing.T) {
 			statuses:  managerStatus("docker://a1b2c3d4"),
 			wantOK:    false,
 		},
+		"ImageID under a different repository (e.g. a kind-imported synthetic name) falls back to the spec image": {
+			specImage: taggedImage,
+			statuses:  managerStatus("docker.io/library/import-2026-07-02@" + digest),
+			wantOK:    false,
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
