@@ -97,14 +97,14 @@ func TestCustomAPIWidgetPollMissingURL(t *testing.T) {
 }
 
 func TestCustomAPIWidgetPollMissingConfig(t *testing.T) {
-	if _, err := (customAPIWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: "http://example.invalid"}); err == nil {
+	if _, err := (customAPIWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testExampleURL}); err == nil {
 		t.Fatal("Poll() expected error for empty Config, got nil")
 	}
 }
 
 func TestCustomAPIWidgetPollMalformedConfig(t *testing.T) {
 	_, err := (customAPIWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
-		URL: "http://example.invalid", Config: []byte(`{not valid json`),
+		URL: testExampleURL, Config: []byte(`{not valid json`),
 	})
 	if err == nil {
 		t.Fatal("Poll() expected error for malformed Config JSON, got nil")

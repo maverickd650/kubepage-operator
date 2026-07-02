@@ -256,7 +256,7 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 }
 
 func TestPollerUnsupportedWidgetType(t *testing.T) {
-	url := "http://example.invalid"
+	url := testExampleURL
 	entry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "mystery", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
@@ -649,7 +649,7 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 }
 
 func TestPollerMissingSecret(t *testing.T) {
-	url := "http://example.invalid"
+	url := testExampleURL
 	entry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{

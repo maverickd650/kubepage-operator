@@ -41,6 +41,7 @@ const (
 	testCustomName        = "Custom"
 	testNameOther         = "other"
 	testValueAlpha        = "alpha"
+	testExampleURL        = "http://example.invalid"
 
 	// testDiscoveryEnabledAnnotation is the full annotation key an Ingress
 	// carries to opt into discovery.go's discovery, built from the same
