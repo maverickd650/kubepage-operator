@@ -202,6 +202,36 @@ func TestServerIndexServesShell(t *testing.T) {
 	}
 }
 
+// TestServerIndexEmitsQuickLaunchSearchConfig verifies the Configuration's
+// quick-launch toggles reach the page shell's client-side searchConfig JSON
+// (gap-analysis §4.2), which index.templ's qlRender reads.
+func TestServerIndexEmitsQuickLaunchSearchConfig(t *testing.T) {
+	disabled := pagev1alpha1.Disabled
+	enabled := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Search: &pagev1alpha1.SearchSpec{
+				SearchDescriptions: &disabled,
+				HideInternetSearch: &enabled,
+				HideVisitURL:       &enabled,
+			},
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`"searchDescriptions":false`, `"hideInternetSearch":true`, `"hideVisitURL":true`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q in search-config JSON:\n%s", want, body)
+		}
+	}
+}
+
 func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
 	theme := themeLight
 	color := testColor

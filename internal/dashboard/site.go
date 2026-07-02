@@ -147,6 +147,14 @@ type Search struct {
 	URL         string `json:"url"`
 	Target      string `json:"target"`
 	FilterCards bool   `json:"filterCards"`
+
+	// SearchDescriptions/HideInternetSearch/HideVisitURL are the
+	// quick-launch (Ctrl/Cmd-K) palette's toggles; see SearchSpec's doc
+	// comments. JSON tags match the client-side searchConfig JS's field
+	// names (index.templ).
+	SearchDescriptions bool `json:"searchDescriptions"`
+	HideInternetSearch bool `json:"hideInternetSearch"`
+	HideVisitURL       bool `json:"hideVisitURL"`
 }
 
 // BookmarkGroup is one bookmarks.yaml-style group of static link cards.
@@ -190,7 +198,7 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Target:      defaultTarget,
 		StartURL:    "/",
 		StatusStyle: statusStyleDot,
-		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true},
+		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true, SearchDescriptions: true},
 	}
 
 	spec, err := boundConfigurationSpec(ctx, reader, namespace, instanceName)
@@ -377,6 +385,15 @@ func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 	}
 	if s.FilterCards != nil {
 		site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
+	}
+	if s.SearchDescriptions != nil {
+		site.Search.SearchDescriptions = *s.SearchDescriptions == pagev1alpha1.Enabled
+	}
+	if s.HideInternetSearch != nil {
+		site.Search.HideInternetSearch = *s.HideInternetSearch == pagev1alpha1.Enabled
+	}
+	if s.HideVisitURL != nil {
+		site.Search.HideVisitURL = *s.HideVisitURL == pagev1alpha1.Enabled
 	}
 }
 

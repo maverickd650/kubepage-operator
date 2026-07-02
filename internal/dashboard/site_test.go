@@ -225,6 +225,62 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 	}
 }
 
+// TestLoadSiteAppliesQuickLaunchOptions verifies the quick-launch palette
+// toggles (gap-analysis §4.2): SearchDescriptions defaults to true (the
+// palette's previous always-on behavior) but can be turned off, and
+// HideInternetSearch/HideVisitURL default to false (both entries shown)
+// but can be turned on.
+func TestLoadSiteAppliesQuickLaunchOptions(t *testing.T) {
+	scheme := testScheme(t)
+	disabled := pagev1alpha1.Disabled
+	enabled := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Search: &pagev1alpha1.SearchSpec{
+				SearchDescriptions: &disabled,
+				HideInternetSearch: &enabled,
+				HideVisitURL:       &enabled,
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Search.SearchDescriptions {
+		t.Error("Search.SearchDescriptions = true, want false (Disabled)")
+	}
+	if !site.Search.HideInternetSearch {
+		t.Error("Search.HideInternetSearch = false, want true (Enabled)")
+	}
+	if !site.Search.HideVisitURL {
+		t.Error("Search.HideVisitURL = false, want true (Enabled)")
+	}
+}
+
+func TestLoadSiteQuickLaunchOptionsDefaults(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if !site.Search.SearchDescriptions {
+		t.Error("Search.SearchDescriptions default = false, want true")
+	}
+	if site.Search.HideInternetSearch {
+		t.Error("Search.HideInternetSearch default = true, want false")
+	}
+	if site.Search.HideVisitURL {
+		t.Error("Search.HideVisitURL default = true, want false")
+	}
+}
+
 func TestLoadSiteRejectsNonHTTPSearchURL(t *testing.T) {
 	scheme := testScheme(t)
 	badURL := "javascript:alert(1)"

@@ -347,14 +347,41 @@ templ Index(data indexData) {
 					return a ? a.href : null;
 				}
 
+				// looksLikeURL/normalizeURL back the quick-launch "visit <url>" entry
+				// (hidden via searchConfig.hideVisitURL): a bare domain like
+				// "example.com" counts as a URL too, not just an explicit scheme.
+				function looksLikeURL(q) {
+					if (/^https?:\/\//i.test(q)) return true;
+					return /^[a-z0-9-]+(\.[a-z0-9-]+)+([:/?#].*)?$/i.test(q);
+				}
+				function normalizeURL(q) {
+					return /^https?:\/\//i.test(q) ? q : "https://" + q;
+				}
+
+				function qlAppendItem(text, href) {
+					const a = document.createElement("a");
+					a.className = "ql-item" + (qlResults.children.length === 0 ? " active" : "");
+					a.href = href;
+					a.target = searchConfig.target || "_blank";
+					const querySpan = document.createElement("span");
+					querySpan.textContent = text;
+					a.appendChild(querySpan);
+					const subSpan = document.createElement("span");
+					subSpan.className = "ql-sub";
+					subSpan.textContent = "↵";
+					a.appendChild(subSpan);
+					qlResults.appendChild(a);
+				}
+
 				function qlRender() {
-					const q = qlInput.value.trim().toLowerCase();
+					const raw = qlInput.value.trim();
+					const q = raw.toLowerCase();
 					const items = [];
 					document.querySelectorAll("#cards [data-name]").forEach(function (el) {
 						const name = el.dataset.name || "";
 						const href = qlHref(el);
 						if (!href) return;
-						const hay = (name + " " + (el.dataset.description || "")).toLowerCase();
+						const hay = (searchConfig.searchDescriptions ? (name + " " + (el.dataset.description || "")) : name).toLowerCase();
 						if (q && !hay.includes(q)) return;
 						const icon = el.querySelector("img.icon");
 						items.push({ name: name, href: href, icon: icon ? icon.src : null });
@@ -377,19 +404,11 @@ templ Index(data indexData) {
 						a.appendChild(nameSpan);
 						qlResults.appendChild(a);
 					});
-					if (q) {
-						const ws = document.createElement("a");
-						ws.className = "ql-item" + (qlResults.children.length === 0 ? " active" : "");
-						ws.href = searchURL(qlInput.value.trim());
-						ws.target = searchConfig.target || "_blank";
-						const querySpan = document.createElement("span");
-						querySpan.textContent = "Search the web for “" + qlInput.value.trim() + "”";
-						ws.appendChild(querySpan);
-						const subSpan = document.createElement("span");
-						subSpan.className = "ql-sub";
-						subSpan.textContent = "↵";
-						ws.appendChild(subSpan);
-						qlResults.appendChild(ws);
+					if (raw && !searchConfig.hideVisitURL && looksLikeURL(raw)) {
+						qlAppendItem("Visit " + raw, normalizeURL(raw));
+					}
+					if (raw && !searchConfig.hideInternetSearch) {
+						qlAppendItem("Search the web for “" + raw + "”", searchURL(raw));
 					}
 				}
 

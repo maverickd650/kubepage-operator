@@ -103,6 +103,32 @@ type SearchSpec struct {
 	// +default="Enabled"
 	// +optional
 	FilterCards *string `json:"filterCards,omitempty"`
+
+	// searchDescriptions includes each card's description, not just its
+	// name, when matching the quick-launch (Ctrl/Cmd-K) palette's query
+	// against cards. Independent of FilterCards, which controls the
+	// inline as-you-type card filter instead.
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Enabled"
+	// +optional
+	SearchDescriptions *string `json:"searchDescriptions,omitempty"`
+
+	// hideInternetSearch removes the quick-launch palette's "search the
+	// web" fallthrough entry, leaving only card matches (and, unless
+	// HideVisitURL also hides it, the direct-URL entry).
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Disabled"
+	// +optional
+	HideInternetSearch *string `json:"hideInternetSearch,omitempty"`
+
+	// hideVisitURL removes the quick-launch palette's "visit <url>" entry
+	// that appears when the typed query itself looks like a URL or
+	// domain, letting the query jump there directly instead of running a
+	// web search for it.
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Disabled"
+	// +optional
+	HideVisitURL *string `json:"hideVisitURL,omitempty"`
 }
 
 // LayoutGroupSpec configures one Group's placement and style within a
