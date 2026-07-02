@@ -30,7 +30,12 @@ const (
 	verbList  = "list"
 	verbWatch = "watch"
 
-	resourcePods = "pods"
+	resourcePods    = "pods"
+	resourceSecrets = "secrets"
+
+	// secretAllowWidgetsValue is the value SecretAllowWidgetsLabel must be
+	// set to for filterLabeledSecrets to treat a Secret as widget-readable.
+	secretAllowWidgetsValue = "true"
 )
 
 // clusterMetricsRules are the cluster-scoped permissions the dashboard pod
@@ -140,7 +145,7 @@ func dashboardRoles(secretNames []string, discoveryEnabled, gatewayAPIEnabled bo
 	if len(secretNames) > 0 {
 		rules = append(rules, rbacv1.PolicyRule{
 			APIGroups:     []string{""},
-			Resources:     []string{"secrets"},
+			Resources:     []string{resourceSecrets},
 			Verbs:         []string{verbGet},
 			ResourceNames: secretNames,
 		})
@@ -239,7 +244,7 @@ func (r *InstanceReconciler) filterLabeledSecrets(ctx context.Context, namespace
 		case err != nil:
 			return nil, fmt.Errorf("getting Secret %q to check secretPolicy label: %w", name, err)
 		}
-		if secret.Labels[pagev1alpha1.SecretAllowWidgetsLabel] == "true" {
+		if secret.Labels[pagev1alpha1.SecretAllowWidgetsLabel] == secretAllowWidgetsValue {
 			allowed = append(allowed, name)
 		}
 	}

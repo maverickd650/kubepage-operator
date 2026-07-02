@@ -104,16 +104,19 @@ func TestBasicAuthMiddlewareNoInstanceAllowsRequest(t *testing.T) {
 	}
 }
 
-func htpasswdSecret(username, password string) *corev1.Secret {
+// htpasswdSecret builds a Secret with a single htpasswd entry for username
+// "alice" (the only username these tests exercise; unparameterized so
+// unparam doesn't flag an argument every call site passes identically).
+func htpasswdSecret(password string) *corev1.Secret {
 	hash := mustBcryptHash(password)
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "dashboard-auth", Namespace: testNamespace},
-		Data:       map[string][]byte{htpasswdSecretKey: []byte(username + ":" + string(hash) + "\n")},
+		Data:       map[string][]byte{htpasswdSecretKey: []byte("alice:" + string(hash) + "\n")},
 	}
 }
 
 func TestBasicAuthMiddlewareRejectsMissingCredentials(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("alice", "hunter2"))
+	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("hunter2"))
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	rec := httptest.NewRecorder()
@@ -128,7 +131,7 @@ func TestBasicAuthMiddlewareRejectsMissingCredentials(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareRejectsWrongPassword(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("alice", "hunter2"))
+	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("hunter2"))
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("alice", "wrong-password")
@@ -141,7 +144,7 @@ func TestBasicAuthMiddlewareRejectsWrongPassword(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareRejectsUnknownUsername(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("alice", "hunter2"))
+	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("hunter2"))
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("mallory", "hunter2")
@@ -154,7 +157,7 @@ func TestBasicAuthMiddlewareRejectsUnknownUsername(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareAcceptsCorrectCredentials(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("alice", "hunter2"))
+	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("hunter2"))
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
 	req.SetBasicAuth("alice", "hunter2")
@@ -167,7 +170,7 @@ func TestBasicAuthMiddlewareAcceptsCorrectCredentials(t *testing.T) {
 }
 
 func TestBasicAuthMiddlewareHealthzNeverRequiresAuth(t *testing.T) {
-	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("alice", "hunter2"))
+	srv := newAuthTestServer(t, authTestInstance("dashboard-auth"), htpasswdSecret("hunter2"))
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()

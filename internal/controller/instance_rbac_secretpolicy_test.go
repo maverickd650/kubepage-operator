@@ -13,7 +13,10 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
-const secretPolicyTestNamespace = "secretpolicy-ns"
+const (
+	secretPolicyTestNamespace = "secretpolicy-ns"
+	testAuthSecretRefName     = "htpasswd"
+)
 
 func newSecretPolicyTestInstance(policy *string) *pagev1alpha1.Instance {
 	return &pagev1alpha1.Instance{
@@ -24,17 +27,17 @@ func newSecretPolicyTestInstance(policy *string) *pagev1alpha1.Instance {
 
 func newSecretRefServiceEntry(instance *pagev1alpha1.Instance, secretName string) *pagev1alpha1.ServiceEntry {
 	return &pagev1alpha1.ServiceEntry{
-		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: instance.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testServiceEntryObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: instance.Name},
 			Group:       "g",
-			Name:        "svc",
+			Name:        testServiceEntryObjName,
 			Widgets: []pagev1alpha1.ServiceWidget{{
 				Type: "prometheus",
 				Secrets: map[string]pagev1alpha1.SecretValueSource{
-					"token": {SecretKeyRef: &corev1.SecretKeySelector{
+					secretField: {SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-						Key:                  "token",
+						Key:                  secretField,
 					}},
 				},
 			}},
@@ -84,7 +87,7 @@ func TestReferencedSecretNamesLabeledIncludesLabeledSecret(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "labeled-secret", Namespace: instance.Namespace,
-			Labels: map[string]string{pagev1alpha1.SecretAllowWidgetsLabel: "true"},
+			Labels: map[string]string{pagev1alpha1.SecretAllowWidgetsLabel: testValueTrue},
 		},
 	}
 
@@ -126,10 +129,10 @@ func TestAuthSecretNamesUnsetAuth(t *testing.T) {
 
 func TestAuthSecretNamesSet(t *testing.T) {
 	instance := newSecretPolicyTestInstance(nil)
-	instance.Spec.Auth = &pagev1alpha1.AuthSpec{BasicAuthSecretRef: &corev1.LocalObjectReference{Name: "htpasswd"}}
+	instance.Spec.Auth = &pagev1alpha1.AuthSpec{BasicAuthSecretRef: &corev1.LocalObjectReference{Name: testAuthSecretRefName}}
 	got := authSecretNames(instance)
-	if len(got) != 1 || got[0] != "htpasswd" {
-		t.Errorf("authSecretNames() = %v, want [htpasswd]", got)
+	if len(got) != 1 || got[0] != testAuthSecretRefName {
+		t.Errorf("authSecretNames() = %v, want [%s]", got, testAuthSecretRefName)
 	}
 }
 
@@ -141,8 +144,8 @@ func TestAuthSecretNamesSet(t *testing.T) {
 func TestReconcileRoleIncludesAuthSecretRegardlessOfSecretPolicy(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newSecretPolicyTestInstance(ptr.To(pagev1alpha1.SecretPolicyLabeled))
-	instance.Spec.Auth = &pagev1alpha1.AuthSpec{BasicAuthSecretRef: &corev1.LocalObjectReference{Name: "htpasswd"}}
-	unlabeledSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "htpasswd", Namespace: instance.Namespace}}
+	instance.Spec.Auth = &pagev1alpha1.AuthSpec{BasicAuthSecretRef: &corev1.LocalObjectReference{Name: testAuthSecretRefName}}
+	unlabeledSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: testAuthSecretRefName, Namespace: instance.Namespace}}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, unlabeledSecret).Build()
 	r := &InstanceReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
@@ -157,15 +160,15 @@ func TestReconcileRoleIncludesAuthSecretRegardlessOfSecretPolicy(t *testing.T) {
 	}
 	found := false
 	for _, rule := range role.Rules {
-		if len(rule.Resources) == 1 && rule.Resources[0] == "secrets" {
+		if len(rule.Resources) == 1 && rule.Resources[0] == resourceSecrets {
 			for _, name := range rule.ResourceNames {
-				if name == "htpasswd" {
+				if name == testAuthSecretRefName {
 					found = true
 				}
 			}
 		}
 	}
 	if !found {
-		t.Errorf("reconciled Role rules = %+v, want a secrets rule granting get on %q", role.Rules, "htpasswd")
+		t.Errorf("reconciled Role rules = %+v, want a secrets rule granting get on %q", role.Rules, testAuthSecretRefName)
 	}
 }
