@@ -51,6 +51,10 @@ const (
 	// Shared literals across openmeteo/openweathermap tests.
 	testCoordsConfig = `{"latitude":1,"longitude":1}`
 	testAPIKey       = "abc123"
+
+	// Shared literals across iframe widget/render tests.
+	testIframeURL    = "https://grafana.example.com/d/abc"
+	testIframeHeight = "40vh"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.

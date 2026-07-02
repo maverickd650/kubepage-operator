@@ -27,7 +27,7 @@ var (
 	serviceEntryWidgetTypes = []string{
 		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
 		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
-		"homeassistant", "mealie", "customapi",
+		"homeassistant", "mealie", "customapi", "iframe",
 	}
 	// infoWidgetPollableTypes is the subset of config/admission's infowidget-type
 	// allow-list that's also a registered dashboard.Widget; "greeting" and

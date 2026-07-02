@@ -113,6 +113,39 @@ func TestServerFragmentRendersStatsRow(t *testing.T) {
 	}
 }
 
+// TestServerFragmentRendersIframeWidget verifies a Card whose WidgetType is
+// "iframe" renders an actual <iframe> (sandboxed, sized per the widget's
+// Fields) instead of the usual stats grid — cards.templ's special case for
+// widgetTypeIframe.
+func TestServerFragmentRendersIframeWidget(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/dash/0", Group: testGroup, ServiceName: testServiceName,
+		WidgetType: widgetTypeIframe,
+		Fields: []Field{
+			{Label: labelIframeSrc, Value: testIframeURL},
+			{Label: labelIframeHeight, Value: testIframeHeight},
+		},
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`class="card-iframe"`, `src="` + testIframeURL + `"`,
+		`sandbox="` + iframeSandbox + `"`, `height: ` + testIframeHeight,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `class="stats"`) {
+		t.Errorf("fragment body rendered a stats grid for an iframe widget:\n%s", body)
+	}
+}
+
 // TestServerMetricsRouteNotExposed asserts /metrics is not reachable on the
 // Server's own router: it's served on a separate listener (dashboard.go's
 // Run, on Options.MetricsAddr) specifically so it can't be exposed through
