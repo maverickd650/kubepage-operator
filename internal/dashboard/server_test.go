@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"compress/gzip"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -116,6 +117,40 @@ func TestServerFragmentGzipsWhenAccepted(t *testing.T) {
 	}
 }
 
+// failingResponseWriter fails every Write, simulating a client that
+// disconnects mid-response — used to exercise writeCachedHTML's gzip
+// error-handling branch, which a well-behaved recorder never triggers.
+type failingResponseWriter struct {
+	header http.Header
+	code   int
+}
+
+func (w *failingResponseWriter) Header() http.Header        { return w.header }
+func (w *failingResponseWriter) WriteHeader(statusCode int) { w.code = statusCode }
+func (w *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errTestWrite
+}
+
+var errTestWrite = errors.New("simulated write failure")
+
+// TestServerFragmentGzipWriteErrorIsPropagated verifies writeCachedHTML
+// surfaces (rather than silently swallows) a failure to write the
+// gzip-compressed body, still closing the gzip writer on that path.
+func TestServerFragmentGzipWriteErrorIsPropagated(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := &failingResponseWriter{header: http.Header{}}
+	srv.Routes().ServeHTTP(w, req)
+
+	if w.code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 after a write failure", w.code)
+	}
+}
+
 func TestServerAssetServesEmbeddedFont(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/assets/manrope-400.woff2", nil)
@@ -223,6 +258,7 @@ func TestServerFragmentRendersIframeWidget(t *testing.T) {
 	for _, want := range []string{
 		`class="card-iframe"`, `src="` + testIframeURL + `"`,
 		`sandbox="` + iframeSandbox + `"`, `height: ` + testIframeHeight,
+		`id="iframe-ns/dash/0"`, `hx-preserve="true"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
@@ -321,6 +357,52 @@ func TestIndexEmbedsNonceOnInlineScriptTags(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, `nonce="`+nonce+`"`) {
 		t.Errorf("rendered page does not contain nonce=%q from its own CSP header:\n%s", nonce, body)
+	}
+}
+
+// TestIndexPollingStopsInBackgroundTab verifies the #cards and #header
+// hx-trigger attributes carry a document.visibilityState guard, so a
+// backgrounded browser tab stops firing poll requests. The header's load
+// trigger is deliberately left unguarded (it must still fire once even in a
+// background tab), so only its "every Ns" half is checked.
+func TestIndexPollingStopsInBackgroundTab(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`id="cards" hx-get="/fragment" hx-trigger="every 10s[document.visibilityState === &#39;visible&#39;]"`,
+		`hx-get="/header" hx-trigger="load, every 10s[document.visibilityState === &#39;visible&#39;]"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestIndexReferencesVendoredHTMX verifies the page shell loads the
+// vendored htmx build shipped under assets/, and that it's actually
+// servable — a stale script src (e.g. left pointing at a since-removed
+// version) would silently break every htmx-polled interaction.
+func TestIndexReferencesVendoredHTMX(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	const script = "/assets/htmx-2.0.10.min.js"
+	if !strings.Contains(body, `<script src="`+script+`">`) {
+		t.Errorf("index body missing htmx script tag for %q:\n%s", script, body)
+	}
+
+	assetReq := httptest.NewRequest(http.MethodGet, script, nil)
+	assetRec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(assetRec, assetReq)
+	if assetRec.Code != http.StatusOK {
+		t.Errorf("GET %s status = %d, want 200", script, assetRec.Code)
 	}
 }
 
