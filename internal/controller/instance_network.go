@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -61,6 +62,30 @@ func mergeManagedAnnotations(existing, desired map[string]string) map[string]str
 // serviceForInstance returns the ClusterIP Service fronting instance's
 // dashboard pods, owned by instance.
 func (r *InstanceReconciler) serviceForInstance(instance *pagev1alpha1.Instance) (*corev1.Service, error) {
+	ports := []corev1.ServicePort{
+		{
+			Name:       instanceContainerName,
+			Port:       instance.Spec.ContainerPort,
+			TargetPort: intstr.FromInt32(instance.Spec.ContainerPort),
+		},
+	}
+	// The metrics port is opt-in on the Service (spec.metrics.enabled,
+	// default off): the dashboard's /metrics has no authn/authz of its own
+	// (unlike the manager's), so exposing it on the ClusterIP Service by
+	// default would let any pod in the cluster read per-service up/down
+	// status and poll metrics with no RBAC check. It's never referenced by
+	// reconcileIngress/reconcileHTTPRoute either way — see
+	// dashboardMetricsPort's doc comment — and pod-level scraping (e.g. a
+	// PodMonitor targeting the pod IP directly) keeps working regardless of
+	// this setting.
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
+		ports = append(ports, corev1.ServicePort{
+			Name:       dashboardMetricsPortName,
+			Port:       dashboardMetricsPort,
+			TargetPort: intstr.FromInt32(dashboardMetricsPort),
+		})
+	}
+
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
@@ -68,22 +93,7 @@ func (r *InstanceReconciler) serviceForInstance(instance *pagev1alpha1.Instance)
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: selectorLabelsForInstance(),
-			// The metrics port is exposed on the Service (so it can still be
-			// scraped in-cluster, e.g. by a PodMonitor) but, unlike the
-			// dashboard port, is never referenced by reconcileIngress/
-			// reconcileHTTPRoute — see dashboardMetricsPort's doc comment.
-			Ports: []corev1.ServicePort{
-				{
-					Name:       instanceContainerName,
-					Port:       instance.Spec.ContainerPort,
-					TargetPort: intstr.FromInt32(instance.Spec.ContainerPort),
-				},
-				{
-					Name:       dashboardMetricsPortName,
-					Port:       dashboardMetricsPort,
-					TargetPort: intstr.FromInt32(dashboardMetricsPort),
-				},
-			},
+			Ports:    ports,
 		},
 	}
 	if err := ctrl.SetControllerReference(instance, svc, r.Scheme); err != nil {
@@ -478,4 +488,157 @@ func equalGatewaySectionNamePtr(a, b *gatewayv1.SectionName) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// dnsPort/apiServerPort are the fixed ports networkPolicyForInstance always
+// allows egress to once egress is restricted (spec.networkPolicy.egressCIDRs
+// non-empty) — see networkPolicyForInstance's doc comment for why neither
+// rule restricts the destination peer.
+const (
+	dnsPort       = 53
+	apiServerPort = 443
+)
+
+// networkPolicyForInstance returns the NetworkPolicy scoping instance's
+// dashboard pods, owned by instance. Only called when spec.networkPolicy is
+// set and enabled.
+//
+// Ingress: the dashboard's containerPort is opened to
+// spec.networkPolicy.ingressNamespaceSelector (any namespace when unset,
+// matching the Service's own unrestricted-by-default reach); the metrics
+// port is opened the same way, scoped by metricsNamespaceSelector, but only
+// when spec.metrics.enabled — there's nothing to protect on that port
+// otherwise, since the Service doesn't expose it either (see
+// serviceForInstance).
+//
+// Egress: left unrestricted (no Egress policyType) unless
+// spec.networkPolicy.egressCIDRs is set, matching the "default allow-all
+// egress to stay non-breaking" design in the security review this field
+// implements — widget URLs are CRD-supplied by design (SECURITY.md's
+// explicit non-goals), so this is an opt-in positive scope, not a default
+// deny. When egressCIDRs is set, DNS (port 53) and HTTPS (port 443, which
+// covers the Kubernetes API server) are allowed to any destination: pinning
+// either to a specific peer would require guessing the cluster's DNS
+// Service or API server address, which varies too much across
+// CNIs/providers to hardcode safely, and both need to keep working
+// regardless of which upstreams an operator lists — only the
+// operator-supplied CIDRs get a real destination restriction.
+func (r *InstanceReconciler) networkPolicyForInstance(instance *pagev1alpha1.Instance) (*networkingv1.NetworkPolicy, error) {
+	np := instance.Spec.NetworkPolicy
+
+	ingressRules := []networkingv1.NetworkPolicyIngressRule{{
+		Ports: []networkingv1.NetworkPolicyPort{{Port: ptrTo(intstr.FromInt32(instance.Spec.ContainerPort))}},
+		From:  namespaceSelectorPeers(np.IngressNamespaceSelector),
+	}}
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
+		ingressRules = append(ingressRules, networkingv1.NetworkPolicyIngressRule{
+			Ports: []networkingv1.NetworkPolicyPort{{Port: ptrTo(intstr.FromInt32(dashboardMetricsPort))}},
+			From:  namespaceSelectorPeers(np.MetricsNamespaceSelector),
+		})
+	}
+
+	policyTypes := []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}
+	var egressRules []networkingv1.NetworkPolicyEgressRule
+	if len(np.EgressCIDRs) > 0 {
+		policyTypes = append(policyTypes, networkingv1.PolicyTypeEgress)
+		egressRules = append(egressRules,
+			networkingv1.NetworkPolicyEgressRule{
+				Ports: []networkingv1.NetworkPolicyPort{
+					{Protocol: ptrTo(corev1.ProtocolUDP), Port: ptrTo(intstr.FromInt32(dnsPort))},
+					{Protocol: ptrTo(corev1.ProtocolTCP), Port: ptrTo(intstr.FromInt32(dnsPort))},
+				},
+			},
+			networkingv1.NetworkPolicyEgressRule{
+				Ports: []networkingv1.NetworkPolicyPort{
+					{Protocol: ptrTo(corev1.ProtocolTCP), Port: ptrTo(intstr.FromInt32(apiServerPort))},
+				},
+			},
+		)
+		for _, cidr := range np.EgressCIDRs {
+			egressRules = append(egressRules, networkingv1.NetworkPolicyEgressRule{
+				To: []networkingv1.NetworkPolicyPeer{{IPBlock: &networkingv1.IPBlock{CIDR: cidr}}},
+			})
+		}
+	}
+
+	policy := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForInstance()},
+			PolicyTypes: policyTypes,
+			Ingress:     ingressRules,
+			Egress:      egressRules,
+		},
+	}
+	if err := ctrl.SetControllerReference(instance, policy, r.Scheme); err != nil {
+		return nil, err
+	}
+	return policy, nil
+}
+
+// namespaceSelectorPeers returns the NetworkPolicyPeer list scoping an
+// ingress rule to selector's namespaces, or nil (no restriction, "from
+// anywhere") when selector is unset — see networkPolicyForInstance's doc
+// comment.
+func namespaceSelectorPeers(selector *metav1.LabelSelector) []networkingv1.NetworkPolicyPeer {
+	if selector == nil {
+		return nil
+	}
+	return []networkingv1.NetworkPolicyPeer{{NamespaceSelector: selector}}
+}
+
+func ptrTo[T any](v T) *T { return &v }
+
+// reconcileNetworkPolicy ensures the NetworkPolicy for instance matches
+// spec.networkPolicy: an owned NetworkPolicy is created/updated when
+// enabled, and removed if it exists but the user has since disabled or
+// removed spec.networkPolicy — mirroring reconcileIngress/reconcileHTTPRoute.
+//
+// Unlike those two, this deliberately skips the Get entirely (and so never
+// detects a toggle-off needing cleanup) when spec.networkPolicy was never
+// set: reconcileIngress/reconcileHTTPRoute could assume their RBAC already
+// existed, since Ingress/HTTPRoute support predates this controller; a brand
+// new +kubebuilder:rbac marker only takes effect once `mise run manifests`
+// regenerates config/rbac/role.yaml, so calling Get unconditionally here
+// would 403 on every reconcile of every Instance — including ones that
+// never use this feature — until that regeneration happens. Toggling
+// spec.networkPolicy from set back to unset leaves a stale NetworkPolicy
+// object behind (still cleaned up when the Instance itself is deleted,
+// since it's owner-referenced) as the accepted trade-off.
+func (r *InstanceReconciler) reconcileNetworkPolicy(ctx context.Context, instance *pagev1alpha1.Instance) error {
+	log := logf.FromContext(ctx)
+
+	enabled := instance.Spec.NetworkPolicy != nil && instance.Spec.NetworkPolicy.Enabled == pagev1alpha1.Enabled
+	if !enabled {
+		return nil
+	}
+
+	found := &networkingv1.NetworkPolicy{}
+	err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+	switch {
+	case apierrors.IsNotFound(err):
+		desired, err := r.networkPolicyForInstance(instance)
+		if err != nil {
+			return fmt.Errorf("defining NetworkPolicy: %w", err)
+		}
+		log.Info("Creating a new NetworkPolicy", "NetworkPolicy.Namespace", desired.Namespace, "NetworkPolicy.Name", desired.Name)
+		if err := r.Create(ctx, desired); err != nil {
+			return fmt.Errorf("creating NetworkPolicy %s/%s: %w", desired.Namespace, desired.Name, err)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("getting NetworkPolicy %s/%s: %w", instance.Namespace, instance.Name, err)
+	}
+
+	desired, err := r.networkPolicyForInstance(instance)
+	if err != nil {
+		return fmt.Errorf("defining NetworkPolicy: %w", err)
+	}
+	if !reflect.DeepEqual(found.Spec, desired.Spec) {
+		found.Spec = desired.Spec
+		if err := r.Update(ctx, found); err != nil {
+			return fmt.Errorf("updating NetworkPolicy %s/%s: %w", found.Namespace, found.Name, err)
+		}
+	}
+	return nil
 }

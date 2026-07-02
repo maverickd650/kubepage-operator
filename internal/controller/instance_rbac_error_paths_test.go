@@ -116,7 +116,7 @@ func TestReferencedSecretNamesIgnoresOtherInstancesAndCollectsKeyRefs(t *testing
 
 	wantSecret := "creds"
 	matchingEntry := &pagev1alpha1.ServiceEntry{
-		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: instance.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testServiceEntryObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: instance.Name},
 			Group:       "G", Name: "N",

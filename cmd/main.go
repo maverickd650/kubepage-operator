@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -21,6 +22,7 @@ import (
 	"k8s.io/client-go/rest"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -83,9 +85,14 @@ func runManager() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var watchNamespaces string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+	flag.StringVar(&watchNamespaces, "watch-namespaces", "", "Comma-separated list of namespaces to watch. "+
+		"Empty (default) watches all namespaces cluster-wide. Set this for a namespace-scoped install "+
+		"(see config/namespace-scoped/) so the manager's cache and RBAC needs are limited to specific "+
+		"namespaces instead of cluster-wide — see SECURITY.md's P2.3 trade-off note.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -176,7 +183,7 @@ func runManager() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
@@ -194,7 +201,13 @@ func runManager() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
-	})
+	}
+	if namespaces := parseWatchNamespaces(watchNamespaces); len(namespaces) > 0 {
+		setupLog.Info("Restricting manager cache to specific namespaces", "namespaces", namespaces)
+		mgrOptions.Cache = cache.Options{DefaultNamespaces: namespaceCacheConfigs(namespaces)}
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOptions)
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
 		os.Exit(1)
@@ -209,7 +222,13 @@ func runManager() {
 	// POD_NAME/POD_NAMESPACE downward-API env vars set in
 	// config/manager/manager.yaml. A direct (uncached) client is used since
 	// this runs once before mgr.Start() brings up the cache.
-	dashboardImage, err := ownDashboardImage(context.Background(), mgr.GetConfig(), scheme)
+	directClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "Failed to build direct (uncached) client")
+		os.Exit(1)
+	}
+
+	dashboardImage, err := ownDashboardImage(context.Background(), directClient)
 	if err != nil {
 		setupLog.Error(err, "Failed to determine the manager's own image for the dashboard Deployment")
 		os.Exit(1)
@@ -231,6 +250,7 @@ func runManager() {
 		Recorder:          mgr.GetEventRecorder("instance-controller"),
 		DashboardImage:    dashboardImage,
 		GatewayAPIEnabled: gatewayAPIEnabled,
+		DirectReader:      directClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "instance")
 		os.Exit(1)
@@ -281,11 +301,50 @@ func runManager() {
 	}
 }
 
+// parseWatchNamespaces splits s (the --watch-namespaces flag value) on
+// commas, trims whitespace, and drops empty entries — so "" (the default),
+// ",", and " " all yield no namespaces (cluster-wide watch), matching the
+// flag's documented default.
+func parseWatchNamespaces(s string) []string {
+	var namespaces []string
+	for ns := range strings.SplitSeq(s, ",") {
+		ns = strings.TrimSpace(ns)
+		if ns != "" {
+			namespaces = append(namespaces, ns)
+		}
+	}
+	return namespaces
+}
+
+// namespaceCacheConfigs builds the cache.Options.DefaultNamespaces map
+// ctrl.Options.Cache expects from parseWatchNamespaces' output — every
+// listed namespace gets the zero-value cache.Config (no further per-
+// namespace restriction, e.g. label/field selectors).
+func namespaceCacheConfigs(namespaces []string) map[string]cache.Config {
+	configs := make(map[string]cache.Config, len(namespaces))
+	for _, ns := range namespaces {
+		configs[ns] = cache.Config{}
+	}
+	return configs
+}
+
 // ownDashboardImage looks up the running manager Pod (named by the
-// POD_NAME/POD_NAMESPACE downward-API env vars) and returns its
-// managerContainerName container's image, for InstanceReconciler to reuse
-// when it builds each Instance's dashboard Deployment.
-func ownDashboardImage(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme) (string, error) {
+// POD_NAME/POD_NAMESPACE downward-API env vars) and returns the image
+// reference for InstanceReconciler to reuse when it builds each Instance's
+// dashboard Deployment: c is expected to be a direct (uncached) client, used
+// once before mgr.Start() brings up the cache.
+//
+// Prefers the container's running digest (status.containerStatuses[].imageID,
+// e.g. "registry/repo@sha256:...") over its spec image (typically a mutable
+// tag): on a multi-node cluster, a tag that's since been repointed or a
+// locally-loaded image can otherwise cause dashboard pods to run different
+// bits than the manager itself, even though both reference "the same"
+// image string. Falls back to the spec image when the runtime hasn't
+// populated a usable digest yet (e.g. a container reporting no imageID, or a
+// locally-loaded kind/minikube image whose imageID isn't a resolvable
+// pull reference) — nothing else to fall back to, and refusing to start the
+// manager over it would make image-less-digest environments unusable.
+func ownDashboardImage(ctx context.Context, c client.Reader) (string, error) {
 	podName := os.Getenv("POD_NAME")
 	podNamespace := os.Getenv("POD_NAMESPACE")
 	if podName == "" || podNamespace == "" {
@@ -293,22 +352,76 @@ func ownDashboardImage(ctx context.Context, cfg *rest.Config, scheme *runtime.Sc
 			"to determine the manager's own image")
 	}
 
-	c, err := client.New(cfg, client.Options{Scheme: scheme})
-	if err != nil {
-		return "", fmt.Errorf("building direct client: %w", err)
-	}
-
 	pod := &corev1.Pod{}
 	if err := c.Get(ctx, client.ObjectKey{Name: podName, Namespace: podNamespace}, pod); err != nil {
 		return "", fmt.Errorf("getting own Pod %s/%s: %w", podNamespace, podName, err)
 	}
 
+	var specImage string
 	for _, container := range pod.Spec.Containers {
 		if container.Name == managerContainerName {
-			return container.Image, nil
+			specImage = container.Image
+			break
 		}
 	}
-	return "", fmt.Errorf("container %q not found in own Pod %s/%s", managerContainerName, podNamespace, podName)
+	if specImage == "" {
+		return "", fmt.Errorf("container %q not found in own Pod %s/%s", managerContainerName, podNamespace, podName)
+	}
+
+	if digestImage, ok := digestPinnedImage(specImage, pod.Status.ContainerStatuses); ok {
+		return digestImage, nil
+	}
+	return specImage, nil
+}
+
+// digestPinnedImage returns specImage repointed at its running digest, taken
+// from statuses' entry for managerContainerName's ImageID (e.g.
+// "docker.io/library/registry@sha256:abcd..." or, on some runtimes, a bare
+// "sha256:abcd..."). ok is false when no usable digest is available (no
+// matching status yet, an empty ImageID, one that doesn't carry a
+// "sha256:..." digest, or one whose repository doesn't match specImage's —
+// see below) — see ownDashboardImage's doc comment for why that's an
+// accepted fallback rather than an error.
+//
+// The repository match check matters because ImageID's repository isn't
+// always specImage's: an image loaded locally without a real registry pull
+// (e.g. `kind load docker-image`, common for self-built/self-hosted
+// deployments and this project's own e2e tests) gets reported under a
+// synthetic repository the runtime invents for the import, distinct from
+// the repo the Deployment spec actually names. Pairing that digest with
+// specImage's repo would construct a reference the runtime can't resolve
+// (that exact repo@digest was never itself pulled/tagged), so such cases
+// fall back to the plain tag reference instead.
+func digestPinnedImage(specImage string, statuses []corev1.ContainerStatus) (image string, ok bool) {
+	repo := imageRepo(specImage)
+	for _, status := range statuses {
+		if status.Name != managerContainerName {
+			continue
+		}
+		idx := strings.Index(status.ImageID, "@sha256:")
+		if idx == -1 {
+			return "", false
+		}
+		if status.ImageID[:idx] != repo {
+			return "", false
+		}
+		digest := status.ImageID[idx+1:]
+		return repo + "@" + digest, true
+	}
+	return "", false
+}
+
+// imageRepo strips the tag or digest suffix from an image reference, e.g.
+// "example.com/foo:v1" and "example.com/foo@sha256:abcd" both become
+// "example.com/foo".
+func imageRepo(image string) string {
+	if at := strings.LastIndex(image, "@"); at != -1 {
+		return image[:at]
+	}
+	if colon := strings.LastIndex(image, ":"); colon != -1 && !strings.Contains(image[colon:], "/") {
+		return image[:colon]
+	}
+	return image
 }
 
 // gatewayAPIAvailable reports whether the cluster has Gateway API's HTTPRoute

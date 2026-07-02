@@ -106,7 +106,7 @@ func TestReconcileServiceUpdateError(t *testing.T) {
 	drifted := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
 		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{"stale": "true"},
+			Selector: map[string]string{"stale": testValueTrue},
 			Ports:    []corev1.ServicePort{{Name: "old", Port: 1234}},
 		},
 	}

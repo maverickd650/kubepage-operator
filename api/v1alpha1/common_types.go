@@ -15,6 +15,19 @@ const (
 	Disabled = "Disabled"
 )
 
+// SecretPolicySpec.SecretPolicy enum values; see that field's doc comment.
+const (
+	SecretPolicyUnrestricted = "Unrestricted"
+	SecretPolicyLabeled      = "Labeled"
+)
+
+// SecretAllowWidgetsLabel is the label a Secret must carry (value "true") to
+// be readable by a ServiceEntry/InfoWidget widget when the owning Instance
+// sets spec.secretPolicy: Labeled. Ignored under the default "Unrestricted"
+// policy. See instance_types.go's InstanceSpec.SecretPolicy doc comment for
+// the full trust-model rationale.
+const SecretAllowWidgetsLabel = "page.kubepage.dev/allow-widgets"
+
 // InstanceRef binds a config object (Configuration, ServiceEntry, Bookmark,
 // InfoWidget) to the Instance it should be rendered into. The referenced
 // Instance must exist in the same namespace as the object carrying this ref.
