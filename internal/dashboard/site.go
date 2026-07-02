@@ -150,9 +150,21 @@ type Search struct {
 }
 
 // BookmarkGroup is one bookmarks.yaml-style group of static link cards.
+// Columns/Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights mirror
+// cardGroup's resolved (non-pointer) fields: a LayoutGroupSpec whose Name
+// matches this group's Name styles it exactly like a service group's
+// (server.go's layoutTabs), already resolved against the Site-wide
+// defaults by groupBookmarks. A bookmark group doesn't move into a tab —
+// only its look is shared with the Layout config.
 type BookmarkGroup struct {
-	Name      string
-	Bookmarks []BookmarkCard
+	Name               string
+	Bookmarks          []BookmarkCard
+	Columns            *int32
+	Style              string
+	IconURL            string
+	Header             bool
+	InitiallyCollapsed bool
+	UseEqualHeights    bool
 }
 
 // BookmarkCard is one render-ready bookmark.
@@ -193,7 +205,7 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 	if err := reader.List(ctx, &bookmarks, client.InNamespace(namespace)); err != nil {
 		return site, fmt.Errorf("listing Bookmarks: %w", err)
 	}
-	site.BookmarkGroups = groupBookmarks(bookmarks.Items, instanceName)
+	site.BookmarkGroups = groupBookmarks(bookmarks.Items, instanceName, site)
 
 	var infoWidgets pagev1alpha1.InfoWidgetList
 	if err := reader.List(ctx, &infoWidgets, client.InNamespace(namespace)); err != nil {
@@ -476,7 +488,26 @@ func blurPx(keyword string) string {
 	}
 }
 
-func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string) []BookmarkGroup {
+// layoutGroupsByName flattens every LayoutGroup across every tab into a
+// lookup by Name, for groupBookmarks to style a bookmark group the same way
+// as a service group sharing its name. A name placed in more than one tab
+// (already an edge case layoutTabs also just takes the first for) resolves
+// to whichever tab's Groups slice was flattened first.
+func layoutGroupsByName(layout []LayoutTab) map[string]LayoutGroup {
+	byName := map[string]LayoutGroup{}
+	for _, t := range layout {
+		for _, g := range t.Groups {
+			if _, ok := byName[g.Name]; !ok {
+				byName[g.Name] = g
+			}
+		}
+	}
+	return byName
+}
+
+func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string, site Site) []BookmarkGroup {
+	layoutByName := layoutGroupsByName(site.Layout)
+
 	var bound []pagev1alpha1.Bookmark
 	for _, b := range items {
 		if b.Spec.InstanceRef.Name == instanceName {
@@ -524,7 +555,29 @@ func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string) []Bookma
 			}
 			cards = append(cards, card)
 		}
-		groups = append(groups, BookmarkGroup{Name: name, Bookmarks: cards})
+
+		bg := BookmarkGroup{
+			Name:               name,
+			Bookmarks:          cards,
+			Header:             true,
+			InitiallyCollapsed: site.GroupsInitiallyCollapsed,
+			UseEqualHeights:    site.UseEqualHeights,
+		}
+		if lg, ok := layoutByName[name]; ok {
+			bg.Columns = lg.Columns
+			bg.Style = lg.Style
+			bg.IconURL = lg.IconURL
+			if lg.Header != nil {
+				bg.Header = *lg.Header
+			}
+			if lg.InitiallyCollapsed != nil {
+				bg.InitiallyCollapsed = *lg.InitiallyCollapsed
+			}
+			if lg.UseEqualHeights != nil {
+				bg.UseEqualHeights = *lg.UseEqualHeights
+			}
+		}
+		groups = append(groups, bg)
 	}
 	return groups
 }

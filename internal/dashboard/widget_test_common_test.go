@@ -55,6 +55,9 @@ const (
 	// Shared literals across iframe widget/render tests.
 	testIframeURL    = "https://grafana.example.com/d/abc"
 	testIframeHeight = "40vh"
+
+	// Shared literal across bookmark fixtures.
+	testBookmarkHrefA = "https://example.invalid/a"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.

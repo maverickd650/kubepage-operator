@@ -824,13 +824,54 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{`class="abbr"`, "W2", "<h2>" + testBookmarkGroup + "</h2>"} {
+	for _, want := range []string{`class="abbr"`, "W2", "<h2>", testBookmarkGroup} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
 	}
 	if strings.Contains(body, `data-group-name="bookmark:`) {
 		t.Errorf("fragment body rendered a collapsible bookmark group with DisableCollapse=true:\n%s", body)
+	}
+}
+
+// TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup is the
+// end-to-end version of TestGroupBookmarksAppliesMatchingLayoutGroup: a
+// LayoutGroupSpec sharing a bookmark group's name renders that group with
+// the matching grid-row/grid-template-columns styling, exactly like it
+// would a service group of the same name.
+func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "wiki3", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Group:       testBookmarkGroup,
+			Name:        "Wiki",
+			Href:        "https://example.invalid/wiki3",
+		},
+	}
+	style := testStyleRow
+	columns := int32(3)
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{Groups: []pagev1alpha1.LayoutGroupSpec{{
+					Name: testBookmarkGroup, Style: &style, Columns: &columns,
+				}}},
+			},
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmark, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"grid-row", "grid-template-columns: repeat(3, 1fr)"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q, want it applied from the matching LayoutGroupSpec:\n%s", want, body)
+		}
 	}
 }
 
@@ -1077,7 +1118,7 @@ func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: "ns/row/0", Group: testGroup, ServiceName: testServiceName})
 
-	style := "row"
+	style := testStyleRow
 	equalHeights := pagev1alpha1.HeightsEqual
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},

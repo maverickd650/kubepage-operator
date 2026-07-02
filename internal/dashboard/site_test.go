@@ -479,7 +479,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testBookmarkGroup, Name: "A", Href: "https://example.invalid/a", Order: &order1,
+				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA, Order: &order1,
 				Abbr: &abbr, Description: &desc,
 			},
 		},
@@ -491,7 +491,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		},
 	}
 
-	groups := groupBookmarks(items, testInstanceName)
+	groups := groupBookmarks(items, testInstanceName, Site{})
 
 	if len(groups) != 2 || groups[0].Name != testBookmarkGroup {
 		t.Fatalf("groupBookmarks() groups = %+v, want %s first (lower effective Order after the second entry improves it)", groups, testBookmarkGroup)
@@ -502,6 +502,85 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	}
 	if bms[0].Abbr != abbr || bms[0].Description != desc {
 		t.Errorf("groupBookmarks() first bookmark = %+v, want Abbr=%q Description=%q", bms[0], abbr, desc)
+	}
+}
+
+// TestGroupBookmarksAppliesMatchingLayoutGroup verifies a LayoutGroupSpec
+// sharing a bookmark group's name styles it the same way it would a service
+// group sharing that name (gap-analysis §4.1): Columns/Style/Icon/Header all
+// carry over.
+func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
+	items := []pagev1alpha1.Bookmark{
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+			},
+		},
+	}
+	site := Site{
+		Layout: []LayoutTab{{
+			Name: testTab1,
+			Groups: []LayoutGroup{{
+				Name:    testBookmarkGroup,
+				Columns: ptr(int32(3)),
+				Style:   testStyleRow,
+				IconURL: testExampleURL,
+				Header:  ptr(false),
+			}},
+		}},
+	}
+
+	groups := groupBookmarks(items, testInstanceName, site)
+	if len(groups) != 1 {
+		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
+	}
+	g := groups[0]
+	if g.Columns == nil || *g.Columns != 3 {
+		t.Errorf("g.Columns = %v, want 3", g.Columns)
+	}
+	if g.Style != testStyleRow {
+		t.Errorf("g.Style = %q, want %q", g.Style, testStyleRow)
+	}
+	if g.IconURL != testExampleURL {
+		t.Errorf("g.IconURL = %q, want %q", g.IconURL, testExampleURL)
+	}
+	if g.Header {
+		t.Error("g.Header = true, want false (LayoutGroupSpec.Header=Hidden)")
+	}
+}
+
+// TestGroupBookmarksUnmatchedGroupUsesSiteDefaults verifies a bookmark group
+// with no matching LayoutGroupSpec falls back to the Site-wide
+// InitiallyCollapsed/UseEqualHeights defaults and a shown header, exactly
+// like groupCards does for service groups.
+func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
+	items := []pagev1alpha1.Bookmark{
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+			},
+		},
+	}
+	site := Site{GroupsInitiallyCollapsed: true, UseEqualHeights: true}
+
+	groups := groupBookmarks(items, testInstanceName, site)
+	if len(groups) != 1 {
+		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
+	}
+	g := groups[0]
+	if !g.Header {
+		t.Error("g.Header = false, want true (default)")
+	}
+	if !g.InitiallyCollapsed {
+		t.Error("g.InitiallyCollapsed = false, want true (from Site.GroupsInitiallyCollapsed)")
+	}
+	if !g.UseEqualHeights {
+		t.Error("g.UseEqualHeights = false, want true (from Site.UseEqualHeights)")
+	}
+	if g.Columns != nil || g.Style != "" || g.IconURL != "" {
+		t.Errorf("g = %+v, want zero Columns/Style/IconURL (no matching LayoutGroupSpec)", g)
 	}
 }
 

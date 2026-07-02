@@ -94,11 +94,11 @@ type fragmentData struct {
 	// DisableCollapse disables the collapsible control on every group
 	// header (service and bookmark groups alike).
 	DisableCollapse bool
-	// BookmarksInitiallyCollapsed/BookmarksIconsOnly are the Site-wide
-	// bookmark-group settings; bookmark groups have no per-group override
-	// (they don't go through LayoutGroupSpec).
-	BookmarksInitiallyCollapsed bool
-	BookmarksIconsOnly          bool
+	// BookmarksIconsOnly is the Site-wide bookmark card style; unlike
+	// InitiallyCollapsed/Columns/Style/Icon (resolved per bookmark group by
+	// groupBookmarks, see BookmarkGroup's doc comment), homepage has no
+	// per-group icons-only override to mirror.
+	BookmarksIconsOnly bool
 }
 
 // headerWidgetView is one rendered header widget: a static definition joined
@@ -282,12 +282,11 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 // htmx poll), so the two never drift apart.
 func (s *Server) buildFragmentData(site Site) fragmentData {
 	return fragmentData{
-		Tabs:                        layoutTabs(serviceCards(s.Store.Snapshot()), site),
-		BookmarkGroups:              site.BookmarkGroups,
-		SiteTarget:                  site.Target,
-		DisableCollapse:             site.DisableCollapse,
-		BookmarksInitiallyCollapsed: site.GroupsInitiallyCollapsed,
-		BookmarksIconsOnly:          site.BookmarksIconsOnly,
+		Tabs:               layoutTabs(serviceCards(s.Store.Snapshot()), site),
+		BookmarkGroups:     site.BookmarkGroups,
+		SiteTarget:         site.Target,
+		DisableCollapse:    site.DisableCollapse,
+		BookmarksIconsOnly: site.BookmarksIconsOnly,
 	}
 }
 
