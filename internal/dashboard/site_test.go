@@ -17,7 +17,7 @@ func TestLoadSiteDefaults(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -35,11 +35,15 @@ func TestLoadSiteDefaults(t *testing.T) {
 func TestLoadSiteListError(t *testing.T) {
 	tests := map[string]struct {
 		failList func(list client.ObjectList) bool
+		failGet  func(key client.ObjectKey, obj client.Object) bool
 		wantErr  string
 	}{
-		"Configurations list fails": {
-			failList: func(list client.ObjectList) bool { _, ok := list.(*pagev1alpha1.ConfigurationList); return ok },
-			wantErr:  "listing Configurations",
+		"DashboardStyle get fails": {
+			failGet: func(_ client.ObjectKey, obj client.Object) bool {
+				_, ok := obj.(*pagev1alpha1.DashboardStyle)
+				return ok
+			},
+			wantErr: "getting DashboardStyle",
 		},
 		"Bookmarks list fails": {
 			failList: func(list client.ObjectList) bool { _, ok := list.(*pagev1alpha1.BookmarkList); return ok },
@@ -54,9 +58,9 @@ func TestLoadSiteListError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			scheme := testScheme(t)
 			cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-			reader := errInjectingReader{Reader: cl, failList: tc.failList}
+			reader := errInjectingReader{Reader: cl, failList: tc.failList, failGet: tc.failGet}
 
-			_, err := LoadSite(t.Context(), reader, testNamespace, testInstanceName)
+			_, err := LoadSite(t.Context(), reader, testNamespace, testDashboardName)
 			if err == nil {
 				t.Fatal("LoadSite() error = nil, want non-nil")
 			}
@@ -70,26 +74,29 @@ func TestLoadSiteListError(t *testing.T) {
 	}
 }
 
-func TestLoadSitePicksLexicographicallyFirstConfiguration(t *testing.T) {
+func TestLoadSiteGetsDashboardStyleNamedAfterDashboard(t *testing.T) {
 	scheme := testScheme(t)
-	themeB := themeLight
-	themeA := defaultTheme
-	cfgB := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: "z-cfg", Namespace: testNamespace},
-		Spec:       pagev1alpha1.ConfigurationSpec{InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Theme: &themeB},
+	theme := themeLight
+	// The DashboardStyle CRD schema requires metadata.name ==
+	// spec.dashboardRef.name, so LoadSite fetches by that name directly;
+	// an object with any other name, even if its dashboardRef matches,
+	// is never looked at.
+	wrongName := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: "wrong-name", Namespace: testNamespace},
+		Spec:       pagev1alpha1.DashboardStyleSpec{DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Theme: &theme},
 	}
-	cfgA := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: "a-cfg", Namespace: testNamespace},
-		Spec:       pagev1alpha1.ConfigurationSpec{InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Theme: &themeA},
+	rightName := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec:       pagev1alpha1.DashboardStyleSpec{DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Theme: &theme},
 	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfgB, cfgA).Build()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(wrongName, rightName).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
-	if site.Theme != defaultTheme {
-		t.Errorf("Theme = %q, want %q (lexicographically-first Configuration by name)", site.Theme, defaultTheme)
+	if site.Theme != themeLight {
+		t.Errorf("Theme = %q, want %q (the DashboardStyle named after the Dashboard)", site.Theme, themeLight)
 	}
 }
 
@@ -100,20 +107,20 @@ func TestLoadSiteAppliesLookFields(t *testing.T) {
 	favicon := "https://example.invalid/favicon.ico"
 	cardBlur := "md"
 	target := targetSelf
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Title:       &title,
-			Description: &desc,
-			Favicon:     &favicon,
-			CardBlur:    &cardBlur,
-			Target:      &target,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Title:        &title,
+			Description:  &desc,
+			Favicon:      &favicon,
+			CardBlur:     &cardBlur,
+			Target:       &target,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -131,19 +138,19 @@ func TestLoadSiteAppliesColorHeaderLanguageFullWidth(t *testing.T) {
 	headerStyle := "boxed"
 	language := "fr"
 	fullWidth := pagev1alpha1.FullWidthFull
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Color:       &color,
-			HeaderStyle: &headerStyle,
-			Language:    &language,
-			FullWidth:   &fullWidth,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Color:        &color,
+			HeaderStyle:  &headerStyle,
+			Language:     &language,
+			FullWidth:    &fullWidth,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -157,7 +164,7 @@ func TestLoadSiteAppliesColorHeaderLanguageFullWidth(t *testing.T) {
 		t.Errorf("Language = %q, want %q", site.Language, language)
 	}
 	if !site.FullWidth {
-		t.Error("FullWidth = false, want true when Configuration.FullWidth is \"Full\"")
+		t.Error("FullWidth = false, want true when DashboardStyle.FullWidth is \"Full\"")
 	}
 }
 
@@ -168,10 +175,10 @@ func TestLoadSiteAppliesBackground(t *testing.T) {
 	saturate := int32(50)
 	brightness := int32(75)
 	opacity := int32(80)
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Background: &pagev1alpha1.BackgroundSpec{
 				Image:      &image,
 				Blur:       &blur,
@@ -183,7 +190,7 @@ func TestLoadSiteAppliesBackground(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -202,10 +209,10 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 	url := "https://search.invalid/q"
 	target := targetSelf
 	filterCards := pagev1alpha1.Disabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Search: &pagev1alpha1.SearchSpec{
 				Provider:    &provider,
 				URL:         &url,
@@ -216,7 +223,7 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -228,26 +235,26 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 // TestLoadSiteAppliesQuickLaunchOptions verifies the quick-launch palette
 // toggles (gap-analysis §4.2): SearchDescriptions defaults to true (the
 // palette's previous always-on behavior) but can be turned off, and
-// HideInternetSearch/HideVisitURL default to false (both entries shown)
-// but can be turned on.
+// InternetSearchEntry/VisitURLEntry default to "Shown" (both entries shown)
+// but can be turned off with "Hidden".
 func TestLoadSiteAppliesQuickLaunchOptions(t *testing.T) {
 	scheme := testScheme(t)
 	disabled := pagev1alpha1.Disabled
-	enabled := pagev1alpha1.Enabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	hidden := pagev1alpha1.ErrorDisplayHidden
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Search: &pagev1alpha1.SearchSpec{
-				SearchDescriptions: &disabled,
-				HideInternetSearch: &enabled,
-				HideVisitURL:       &enabled,
+				SearchDescriptions:  &disabled,
+				InternetSearchEntry: &hidden,
+				VisitURLEntry:       &hidden,
 			},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -255,10 +262,10 @@ func TestLoadSiteAppliesQuickLaunchOptions(t *testing.T) {
 		t.Error("Search.SearchDescriptions = true, want false (Disabled)")
 	}
 	if !site.Search.HideInternetSearch {
-		t.Error("Search.HideInternetSearch = false, want true (Enabled)")
+		t.Error("Search.HideInternetSearch = false, want true (Hidden)")
 	}
 	if !site.Search.HideVisitURL {
-		t.Error("Search.HideVisitURL = false, want true (Enabled)")
+		t.Error("Search.HideVisitURL = false, want true (Hidden)")
 	}
 }
 
@@ -266,7 +273,7 @@ func TestLoadSiteQuickLaunchOptionsDefaults(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -284,16 +291,16 @@ func TestLoadSiteQuickLaunchOptionsDefaults(t *testing.T) {
 func TestLoadSiteRejectsNonHTTPSearchURL(t *testing.T) {
 	scheme := testScheme(t)
 	badURL := testJSSchemeURL
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Search:      &pagev1alpha1.SearchSpec{URL: &badURL},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Search:       &pagev1alpha1.SearchSpec{URL: &badURL},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -309,30 +316,30 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	greeting := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeGreeting,
-			Order:       &order2,
-			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeGreeting,
+			Order:        &order2,
+			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
 		},
 	}
 	clock := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeDatetime,
-			Order:       &order1,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeDatetime,
+			Order:        &order1,
 		},
 	}
 	other := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testDiscoverySkipKey, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-" + testInstanceName},
-			Type:        headerTypeGreeting,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
+			Type:         headerTypeGreeting,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(greeting, clock, other).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -354,17 +361,17 @@ func TestHeaderWidgetsResolvesAlign(t *testing.T) {
 	explicitLeft := pagev1alpha1.AlignLeft
 	items := []pagev1alpha1.InfoWidget{
 		{ObjectMeta: metav1.ObjectMeta{Name: testGreetName}, Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: headerTypeGreeting,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Type: headerTypeGreeting,
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather}, Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: testOpenMeteoType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Type: testOpenMeteoType,
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: testCPUName}, Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: testKubeMetricsType, Align: &explicitLeft,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Type: testKubeMetricsType, Align: &explicitLeft,
 		}},
 	}
 
-	out := headerWidgets(items, testInstanceName)
+	out := headerWidgets(items, testDashboardName)
 	got := map[string]string{}
 	for _, w := range out {
 		got[w.Name] = w.Align
@@ -385,10 +392,10 @@ func TestLoadSiteAppliesLayout(t *testing.T) {
 	cols := int32(4)
 	style := testStyleRow
 	icon := testGrafanaIconSlug
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
 				{
 					Name: testInfraTab,
@@ -401,7 +408,7 @@ func TestLoadSiteAppliesLayout(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -425,27 +432,27 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	bm1 := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm1", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup, Name: "Second", Href: "https://example.invalid/2", Order: &order2,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup, Name: "Second", Href: "https://example.invalid/2", Order: &order2,
 		},
 	}
 	bm2 := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm2", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup, Name: testLabelFirst, Href: "https://example.invalid/1", Order: &order1,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup, Name: testLabelFirst, Href: "https://example.invalid/1", Order: &order1,
 		},
 	}
 	other := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm3", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-" + testInstanceName},
-			Group:       testBookmarkGroup, Name: "Skip me", Href: "https://example.invalid/skip",
+			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
+			Group:        testBookmarkGroup, Name: "Skip me", Href: "https://example.invalid/skip",
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bm1, bm2, other).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -461,24 +468,24 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 func TestLoadSiteThemeFixedAndColorFixed(t *testing.T) {
 	scheme := testScheme(t)
 	theme := themeLight
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Theme:       &theme,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Theme:        &theme,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
 	if !site.ThemeFixed {
-		t.Error("ThemeFixed = false, want true when Configuration.Theme is set")
+		t.Error("ThemeFixed = false, want true when DashboardStyle.Theme is set")
 	}
 	if site.ColorFixed {
-		t.Error("ColorFixed = true, want false when Configuration.Color is unset")
+		t.Error("ColorFixed = true, want false when DashboardStyle.Color is unset")
 	}
 }
 
@@ -491,22 +498,22 @@ func TestLoadSiteAppliesNewLookFields(t *testing.T) {
 	disableIndexing := pagev1alpha1.IndexingNoIndex
 	startURL := "/dash"
 	customCSS := "body{color:red}"
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef:              pagev1alpha1.InstanceRef{Name: testInstanceName},
-			DisableCollapse:          &disableCollapse,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef:             pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Collapse:                 &disableCollapse,
 			GroupsInitiallyCollapsed: &groupsCollapsed,
 			UseEqualHeights:          &equalHeights,
 			BookmarksStyle:           &bookmarksStyle,
-			DisableIndexing:          &disableIndexing,
+			Indexing:                 &disableIndexing,
 			StartURL:                 &startURL,
 			CustomCSS:                &customCSS,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -521,10 +528,10 @@ func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
 	header := pagev1alpha1.HeaderHidden
 	initiallyCollapsed := pagev1alpha1.CollapseCollapsed
 	equalHeights := pagev1alpha1.HeightsEqual
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
 				{
 					Name: testInfraTab,
@@ -537,7 +544,7 @@ func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -561,26 +568,26 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testBookmarkGroup, Name: "Z", Href: "https://example.invalid/z", Order: &order5,
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testBookmarkGroup, Name: "Z", Href: "https://example.invalid/z", Order: &order5,
 			},
 		},
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA, Order: &order1,
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testBookmarkGroup, Name: "A", Href: testBookmarkHrefA, Order: &order1,
 				Abbr: &abbr, Description: &desc,
 			},
 		},
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testOtherGroup, Name: "Only", Href: "https://example.invalid/only",
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testOtherGroup, Name: "Only", Href: "https://example.invalid/only",
 			},
 		},
 	}
 
-	groups := groupBookmarks(items, testInstanceName, Site{})
+	groups := groupBookmarks(items, testDashboardName, Site{})
 
 	if len(groups) != 2 || groups[0].Name != testBookmarkGroup {
 		t.Fatalf("groupBookmarks() groups = %+v, want %s first (lower effective Order after the second entry improves it)", groups, testBookmarkGroup)
@@ -602,8 +609,8 @@ func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
 			},
 		},
 	}
@@ -620,7 +627,7 @@ func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
 		}},
 	}
 
-	groups := groupBookmarks(items, testInstanceName, site)
+	groups := groupBookmarks(items, testDashboardName, site)
 	if len(groups) != 1 {
 		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
 	}
@@ -647,14 +654,14 @@ func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
 			},
 		},
 	}
 	site := Site{GroupsInitiallyCollapsed: true, UseEqualHeights: true}
 
-	groups := groupBookmarks(items, testInstanceName, site)
+	groups := groupBookmarks(items, testDashboardName, site)
 	if len(groups) != 1 {
 		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
 	}
@@ -712,21 +719,21 @@ func TestLoadSiteAppliesCustomJSStatusStyleHideErrorsHideVersion(t *testing.T) {
 	scheme := testScheme(t)
 	customJS := "console.log('hi')"
 	statusStyle := testStatusBasic
-	hideErrors := pagev1alpha1.StatsHide
+	hideErrors := pagev1alpha1.ErrorDisplayHidden
 	hideVersion := pagev1alpha1.Enabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			CustomJS:    &customJS,
-			StatusStyle: &statusStyle,
-			HideErrors:  &hideErrors,
-			HideVersion: &hideVersion,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			CustomJS:     &customJS,
+			StatusStyle:  &statusStyle,
+			ErrorDisplay: &hideErrors,
+			HideVersion:  &hideVersion,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}
@@ -748,7 +755,7 @@ func TestLoadSiteStatusStyleDefaultsToDot(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatalf("LoadSite() error = %v", err)
 	}

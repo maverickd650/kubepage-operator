@@ -17,7 +17,7 @@ const iconifyBaseURL = "https://api.iconify.design/"
 // icon source from both dashboard-icons and Iconify.
 const selfhstIconsBaseURL = "https://cdn.jsdelivr.net/gh/selfhst/icons/"
 
-// IconURL resolves a ServiceEntry/Bookmark/LayoutGroup Icon field to a
+// IconURL resolves a ServiceCard/Bookmark/LayoutGroup Icon field to a
 // renderable image URL, following homepage's icon prefix conventions
 // (https://gethomepage.dev/configs/services/#icons):
 //

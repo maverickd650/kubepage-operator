@@ -62,12 +62,12 @@ func TestRunStopsAllGoroutinesOnContextCancel(t *testing.T) {
 	runErr := make(chan error, 1)
 	go func() {
 		runErr <- Run(ctx, Options{
-			RestConfig:   cfg,
-			Scheme:       scheme,
-			Namespace:    ns.Name,
-			InstanceName: "main",
-			Addr:         addr,
-			PollInterval: 50 * time.Millisecond,
+			RestConfig:    cfg,
+			Scheme:        scheme,
+			Namespace:     ns.Name,
+			DashboardName: "main",
+			Addr:          addr,
+			PollInterval:  50 * time.Millisecond,
 		})
 	}()
 

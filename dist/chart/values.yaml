@@ -30,7 +30,7 @@ manager:
   ## Environment variables
   ##
   ## Used to look up this Pod's own container image at startup, so the
-  ## dashboard Deployment created per Instance (D11 / Phase 6.4) always runs
+  ## dashboard Deployment created per Dashboard (D11 / Phase 6.4) always runs
   ## the exact same image as the manager itself.
   env:
     - name: POD_NAME

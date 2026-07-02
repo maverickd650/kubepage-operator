@@ -20,8 +20,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Available')].status
       name: Ready
       type: string
-    - jsonPath: .spec.instanceRef.name
-      name: Instance
+    - jsonPath: .spec.dashboardRef.name
+      name: Dashboard
       type: string
     - jsonPath: .spec.type
       name: Type
@@ -105,31 +105,47 @@ spec:
                     minLength: 1
                     type: string
                 type: object
-              icon:
-                description: |-
-                  icon shown to the left of this widget's value(s) in the header strip,
-                  matching homepage's Resource component. Resolved the same way as
-                  ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
-                  anything else is treated as a dashboard-icons slug. Ignored by the
-                  "greeting" and "datetime" widget types, which homepage renders without
-                  an icon.
-                maxLength: 256
-                minLength: 1
-                type: string
-              instanceRef:
-                description: instanceRef names the Instance this InfoWidget belongs
+                x-kubernetes-validations:
+                - message: exactly one of value or secretKeyRef must be set
+                  rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1 :
+                    0) == 1'
+              dashboardRef:
+                description: dashboardRef names the Dashboard this InfoWidget belongs
                   to.
                 properties:
                   name:
-                    description: name of the Instance this object belongs to.
+                    description: name of the Dashboard this object belongs to.
                     maxLength: 253
                     minLength: 1
                     type: string
                 required:
                 - name
                 type: object
+              icon:
+                description: |-
+                  icon shown to the left of this widget's value(s) in the header strip,
+                  matching homepage's Resource component. Resolved the same way as
+                  ServiceCard/Bookmark Icon: a full URL passes through unchanged,
+                  anything else is treated as a dashboard-icons slug. Ignored by the
+                  "greeting" and "datetime" widget types, which homepage renders without
+                  an icon.
+                maxLength: 256
+                minLength: 1
+                type: string
               options:
-                description: options holds every widget-type-specific field.
+                description: |-
+                  options holds every widget-type-specific field; unrecognized keys are
+                  silently ignored rather than rejected (see internal/dashboard's
+                  per-widget source for the authoritative shape). Known keys by type:
+                    - greeting: text (the message shown)
+                    - datetime: format (a JSON-encoded Intl.DateTimeFormat options
+                      object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
+                      to medium/medium)
+                    - openmeteo, openweathermap: latitude, longitude (both required),
+                      units ("metric"/"imperial"), label
+                    - kubemetrics: cpuLabel, memoryLabel
+                    - glances: apiVersion ("3" or "4"; defaults to "4")
+                  logo and longhorn take no options.
                 x-kubernetes-preserve-unknown-fields: true
               order:
                 description: |-
@@ -151,10 +167,10 @@ spec:
                   description: |-
                     SecretValueSource is an inline value or a reference to a key in a Secret,
                     used for any config field that may hold a credential (e.g. a widget API
-                    key). Exactly one of Value or SecretKeyRef must be set; this is enforced at
-                    admission by a ValidatingAdmissionPolicy (config/admission), so neither a
-                    secret that sets both nor one that sets neither reaches the dashboard, which
-                    resolves whichever is set in-process at poll time.
+                    key). Exactly one of Value or SecretKeyRef must be set; this is enforced by
+                    the CRD schema's CEL rule below, so neither a secret that sets both nor one
+                    that sets neither reaches the dashboard, which resolves whichever is set
+                    in-process at poll time.
                   properties:
                     secretKeyRef:
                       description: secretKeyRef selects a key of a Secret in the same
@@ -189,11 +205,15 @@ spec:
                       minLength: 1
                       type: string
                   type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of value or secretKeyRef must be set
+                    rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1
+                      : 0) == 1'
                 description: |-
                   secrets are secret-bearing option fields. Merged into Options under the
                   same field names once a renderer for this CRD exists.
 
-                  RBAC note: the same caveat as ServiceEntry's widgets.secrets applies
+                  RBAC note: the same caveat as ServiceCard's widgets.secrets applies
                   here — see ServiceWidget.Secrets' doc comment. Anyone who can create
                   an InfoWidget in this namespace can read any Secret in it by
                   referencing it via secretKeyRef and pointing this widget's options at
@@ -201,13 +221,24 @@ spec:
                 minProperties: 1
                 type: object
               type:
-                description: type is the widget type, e.g. "resources", "search",
-                  "datetime".
-                maxLength: 64
-                minLength: 1
+                description: |-
+                  type is the widget type: "greeting"/"datetime" render statically
+                  (internal/dashboard/server.go); the rest are polled header widgets
+                  (openmeteo, openweathermap, glances, longhorn) or cluster-sourced
+                  (kubemetrics). internal/controller/widget_type_policy_test.go asserts
+                  this enum stays in sync with the internal/dashboard widget registry.
+                enum:
+                - greeting
+                - datetime
+                - logo
+                - openmeteo
+                - kubemetrics
+                - glances
+                - longhorn
+                - openweathermap
                 type: string
             required:
-            - instanceRef
+            - dashboardRef
             - type
             type: object
           status:

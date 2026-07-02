@@ -13,44 +13,47 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
-func TestBoundInstanceCondition(t *testing.T) {
+func TestBoundDashboardCondition(t *testing.T) {
 	scheme := networkTestScheme(t)
 	const ns = "cond-ns"
 
-	t.Run("empty instanceRef.name", func(t *testing.T) {
+	t.Run("empty dashboardRef.name", func(t *testing.T) {
 		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-		cond, err := boundInstanceCondition(t.Context(), cl, ns, "")
+		cond, err := boundDashboardCondition(t.Context(), cl, ns, "", 3)
 		if err != nil {
-			t.Fatalf("boundInstanceCondition() unexpected error: %v", err)
+			t.Fatalf("boundDashboardCondition() unexpected error: %v", err)
 		}
-		if cond.Status != metav1.ConditionFalse || cond.Reason != reasonInstanceNotFound {
-			t.Errorf("cond = %+v, want False/%s", cond, reasonInstanceNotFound)
+		if cond.Status != metav1.ConditionFalse || cond.Reason != reasonDashboardNotFound {
+			t.Errorf("cond = %+v, want False/%s", cond, reasonDashboardNotFound)
 		}
 	})
 
-	t.Run("referenced Instance does not exist", func(t *testing.T) {
+	t.Run("referenced Dashboard does not exist", func(t *testing.T) {
 		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-		cond, err := boundInstanceCondition(t.Context(), cl, ns, testRefInstanceName)
+		cond, err := boundDashboardCondition(t.Context(), cl, ns, testRefDashboardName, 3)
 		if err != nil {
-			t.Fatalf("boundInstanceCondition() unexpected error: %v", err)
+			t.Fatalf("boundDashboardCondition() unexpected error: %v", err)
 		}
-		if cond.Status != metav1.ConditionFalse || cond.Reason != reasonInstanceNotFound {
-			t.Errorf("cond = %+v, want False/%s", cond, reasonInstanceNotFound)
+		if cond.Status != metav1.ConditionFalse || cond.Reason != reasonDashboardNotFound {
+			t.Errorf("cond = %+v, want False/%s", cond, reasonDashboardNotFound)
 		}
 	})
 
-	t.Run("referenced Instance exists", func(t *testing.T) {
-		instance := &pagev1alpha1.Instance{
-			ObjectMeta: metav1.ObjectMeta{Name: testRefInstanceName, Namespace: ns},
-			Spec:       pagev1alpha1.InstanceSpec{ContainerPort: 8080},
+	t.Run("referenced Dashboard exists", func(t *testing.T) {
+		instance := &pagev1alpha1.Dashboard{
+			ObjectMeta: metav1.ObjectMeta{Name: testRefDashboardName, Namespace: ns},
+			Spec:       pagev1alpha1.DashboardSpec{ContainerPort: 8080},
 		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
-		cond, err := boundInstanceCondition(t.Context(), cl, ns, testRefInstanceName)
+		cond, err := boundDashboardCondition(t.Context(), cl, ns, testRefDashboardName, 3)
 		if err != nil {
-			t.Fatalf("boundInstanceCondition() unexpected error: %v", err)
+			t.Fatalf("boundDashboardCondition() unexpected error: %v", err)
 		}
 		if cond.Status != metav1.ConditionTrue || cond.Reason != reasonBound {
 			t.Errorf("cond = %+v, want True/%s", cond, reasonBound)
+		}
+		if cond.ObservedGeneration != 3 {
+			t.Errorf("cond.ObservedGeneration = %d, want 3", cond.ObservedGeneration)
 		}
 	})
 
@@ -59,14 +62,14 @@ func TestBoundInstanceCondition(t *testing.T) {
 		base := fake.NewClientBuilder().WithScheme(scheme).Build()
 		cl := interceptor.NewClient(base, interceptor.Funcs{
 			Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
-				if _, ok := o.(*pagev1alpha1.Instance); ok {
+				if _, ok := o.(*pagev1alpha1.Dashboard); ok {
 					return wantErr
 				}
 				return c.Get(ctx, key, o, opts...)
 			},
 		})
-		if _, err := boundInstanceCondition(t.Context(), cl, ns, testRefInstanceName); !errors.Is(err, wantErr) {
-			t.Errorf("boundInstanceCondition() error = %v, want %v", err, wantErr)
+		if _, err := boundDashboardCondition(t.Context(), cl, ns, testRefDashboardName, 3); !errors.Is(err, wantErr) {
+			t.Errorf("boundDashboardCondition() error = %v, want %v", err, wantErr)
 		}
 	})
 }

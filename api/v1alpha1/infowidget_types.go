@@ -22,15 +22,18 @@ const (
 // units), and "kubemetrics" (cluster-wide CPU/memory usage from
 // metrics-server; optional Options.cpuLabel/memoryLabel). Has no Group field
 // since header widgets are a flat, ordered list rather than grouped like
-// ServiceEntry/Bookmark.
+// ServiceCard/Bookmark.
 type InfoWidgetSpec struct {
-	// instanceRef names the Instance this InfoWidget belongs to.
+	// dashboardRef names the Dashboard this InfoWidget belongs to.
 	// +required
-	InstanceRef InstanceRef `json:"instanceRef"`
+	DashboardRef DashboardRef `json:"dashboardRef"`
 
-	// type is the widget type, e.g. "resources", "search", "datetime".
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=64
+	// type is the widget type: "greeting"/"datetime" render statically
+	// (internal/dashboard/server.go); the rest are polled header widgets
+	// (openmeteo, openweathermap, glances, longhorn) or cluster-sourced
+	// (kubemetrics). internal/controller/widget_type_policy_test.go asserts
+	// this enum stays in sync with the internal/dashboard widget registry.
+	// +kubebuilder:validation:Enum=greeting;datetime;logo;openmeteo;kubemetrics;glances;longhorn;openweathermap
 	// +required
 	Type string `json:"type"`
 
@@ -42,7 +45,7 @@ type InfoWidgetSpec struct {
 
 	// icon shown to the left of this widget's value(s) in the header strip,
 	// matching homepage's Resource component. Resolved the same way as
-	// ServiceEntry/Bookmark Icon: a full URL passes through unchanged,
+	// ServiceCard/Bookmark Icon: a full URL passes through unchanged,
 	// anything else is treated as a dashboard-icons slug. Ignored by the
 	// "greeting" and "datetime" widget types, which homepage renders without
 	// an icon.
@@ -63,7 +66,7 @@ type InfoWidgetSpec struct {
 	// secrets are secret-bearing option fields. Merged into Options under the
 	// same field names once a renderer for this CRD exists.
 	//
-	// RBAC note: the same caveat as ServiceEntry's widgets.secrets applies
+	// RBAC note: the same caveat as ServiceCard's widgets.secrets applies
 	// here — see ServiceWidget.Secrets' doc comment. Anyone who can create
 	// an InfoWidget in this namespace can read any Secret in it by
 	// referencing it via secretKeyRef and pointing this widget's options at
@@ -79,7 +82,18 @@ type InfoWidgetSpec struct {
 	// +optional
 	CACert *SecretValueSource `json:"caCert,omitempty"`
 
-	// options holds every widget-type-specific field.
+	// options holds every widget-type-specific field; unrecognized keys are
+	// silently ignored rather than rejected (see internal/dashboard's
+	// per-widget source for the authoritative shape). Known keys by type:
+	//   - greeting: text (the message shown)
+	//   - datetime: format (a JSON-encoded Intl.DateTimeFormat options
+	//     object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
+	//     to medium/medium)
+	//   - openmeteo, openweathermap: latitude, longitude (both required),
+	//     units ("metric"/"imperial"), label
+	//   - kubemetrics: cpuLabel, memoryLabel
+	//   - glances: apiVersion ("3" or "4"; defaults to "4")
+	// logo and longhorn take no options.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Options *apiextensionsv1.JSON `json:"options,omitempty"`
@@ -108,7 +122,7 @@ type InfoWidgetStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=piw
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
-// +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=".spec.instanceRef.name"
+// +kubebuilder:printcolumn:name="Dashboard",type=string,JSONPath=".spec.dashboardRef.name"
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 

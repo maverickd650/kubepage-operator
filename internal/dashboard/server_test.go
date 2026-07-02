@@ -21,7 +21,7 @@ func newTestServer(t *testing.T, store *Store, objs ...client.Object) *Server {
 	t.Helper()
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	return &Server{Store: store, Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+	return &Server{Store: store, Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 }
 
 func TestServerFragmentRendersCards(t *testing.T) {
@@ -177,11 +177,11 @@ func TestServerAssetServesEmbeddedFont(t *testing.T) {
 
 func TestServerIndexEmitsPaletteRamp(t *testing.T) {
 	color := testColor
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Color:       &color,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Color:        &color,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -426,10 +426,10 @@ func TestServerFragmentRendersBookmarks(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "docs", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup,
-			Name:        "Docs",
-			Href:        "https://example.invalid/docs",
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Name:         "Docs",
+			Href:         "https://example.invalid/docs",
 		},
 	}
 	srv := newTestServer(t, NewStore(), bookmark)
@@ -462,20 +462,20 @@ func TestServerIndexServesShell(t *testing.T) {
 	}
 }
 
-// TestServerIndexEmitsQuickLaunchSearchConfig verifies the Configuration's
+// TestServerIndexEmitsQuickLaunchSearchConfig verifies the DashboardStyle's
 // quick-launch toggles reach the page shell's client-side searchConfig JSON
 // (gap-analysis §4.2), which index.templ's qlRender reads.
 func TestServerIndexEmitsQuickLaunchSearchConfig(t *testing.T) {
 	disabled := pagev1alpha1.Disabled
-	enabled := pagev1alpha1.Enabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	hidden := pagev1alpha1.ErrorDisplayHidden
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Search: &pagev1alpha1.SearchSpec{
-				SearchDescriptions: &disabled,
-				HideInternetSearch: &enabled,
-				HideVisitURL:       &enabled,
+				SearchDescriptions:  &disabled,
+				InternetSearchEntry: &hidden,
+				VisitURLEntry:       &hidden,
 			},
 		},
 	}
@@ -492,15 +492,15 @@ func TestServerIndexEmitsQuickLaunchSearchConfig(t *testing.T) {
 	}
 }
 
-func TestServerIndexAppliesConfigurationTheme(t *testing.T) {
+func TestServerIndexAppliesDashboardStyleTheme(t *testing.T) {
 	theme := themeLight
 	color := testColor
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Theme:       &theme,
-			Color:       &color,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Theme:        &theme,
+			Color:        &color,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -536,11 +536,11 @@ func TestServerFragmentDisableCollapseRendersPlainHeaders(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testGroup, ServiceName: testSvcAName})
 	disable := pagev1alpha1.Disabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
-			DisableCollapse: &disable,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Collapse:     &disable,
 		},
 	}
 	srv := newTestServer(t, store, cfg)
@@ -561,16 +561,16 @@ func TestServerFragmentBookmarksIconsOnly(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "wiki", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup,
-			Name:        "Wiki",
-			Href:        "https://example.invalid/wiki",
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Name:         "Wiki",
+			Href:         "https://example.invalid/wiki",
 		},
 	}
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef:    pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef:   pagev1alpha1.DashboardRef{Name: testDashboardName},
 			BookmarksStyle: new(bookmarksStyleIcons),
 		},
 	}
@@ -591,12 +591,12 @@ func TestServerFragmentBookmarksIconsOnly(t *testing.T) {
 func TestServerManifestRoute(t *testing.T) {
 	title := "My Lab"
 	startURL := "/dashboard"
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Title:       &title,
-			StartURL:    &startURL,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Title:        &title,
+			StartURL:     &startURL,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -637,11 +637,11 @@ func TestServerAssetServesSVGIcon(t *testing.T) {
 
 func TestServerRobotsRoute(t *testing.T) {
 	disable := pagev1alpha1.IndexingNoIndex
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
-			DisableIndexing: &disable,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Indexing:     &disable,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -672,13 +672,13 @@ func TestServerIndexAppliesLookFields(t *testing.T) {
 	title := "My Lab"
 	favicon := "https://example.invalid/fav.ico"
 	cardBlur := "lg"
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Title:       &title,
-			Favicon:     &favicon,
-			CardBlur:    &cardBlur,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Title:        &title,
+			Favicon:      &favicon,
+			CardBlur:     &cardBlur,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -735,10 +735,10 @@ func TestServerFragmentNewTabLinksCarryNoopenerNoreferrer(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup,
-			Name:        "Handbook",
-			Href:        "https://docs.invalid",
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Name:         "Handbook",
+			Href:         "https://docs.invalid",
 		},
 	}
 
@@ -791,16 +791,16 @@ func TestServerHeaderRendersWidgets(t *testing.T) {
 	greeting := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testGreetName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeGreeting,
-			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"text":"Welcome"}`)},
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeGreeting,
+			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"text":"Welcome"}`)},
 		},
 	}
 	weather := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        testOpenMeteoType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testOpenMeteoType,
 		},
 	}
 	srv := newTestServer(t, store, greeting, weather)
@@ -914,7 +914,7 @@ func TestServerHealthzRoute(t *testing.T) {
 	}
 }
 
-// failingConfigListServer wraps a fake client so the ConfigurationList read
+// failingConfigListServer wraps a fake client so the DashboardStyleList read
 // LoadSite issues first fails, exercising every handler's LoadSite-error
 // branch without needing a real apiserver.
 func failingConfigListServer(t *testing.T, store *Store) *Server {
@@ -923,12 +923,12 @@ func failingConfigListServer(t *testing.T, store *Store) *Server {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	failing := errInjectingReader{
 		Reader: cl,
-		failList: func(list client.ObjectList) bool {
-			_, ok := list.(*pagev1alpha1.ConfigurationList)
+		failGet: func(_ client.ObjectKey, obj client.Object) bool {
+			_, ok := obj.(*pagev1alpha1.DashboardStyle)
 			return ok
 		},
 	}
-	return &Server{Store: store, Reader: failing, Namespace: testNamespace, InstanceName: testInstanceName}
+	return &Server{Store: store, Reader: failing, Namespace: testNamespace, DashboardName: testDashboardName}
 }
 
 func TestServerHandlersReturn500OnLoadSiteError(t *testing.T) {
@@ -959,12 +959,12 @@ func TestServerHandlersReturn500OnLoadSiteError(t *testing.T) {
 func TestServerManifestLightThemeUsesC50Background(t *testing.T) {
 	theme := themeLight
 	color := testColor
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Theme:       &theme,
-			Color:       &color,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Theme:        &theme,
+			Color:        &color,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1045,10 +1045,10 @@ func TestServerFragmentRendersTabs(t *testing.T) {
 	store.Set(Card{Key: "ns/b/0", Group: testDiscoveryGroup, ServiceName: "Svc B"})
 
 	cols := int32(2)
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
 				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testInfraGroup, Columns: &cols}}},
 			},
@@ -1113,10 +1113,10 @@ func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
 	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
 
 	header := pagev1alpha1.HeaderHidden
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
 				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testInfraGroup, Header: &header}}},
 			},
@@ -1141,19 +1141,19 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "wiki2", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup,
-			Name:        "Wiki Two",
-			Href:        "https://example.invalid/wiki2",
-			Abbr:        &abbr,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Name:         "Wiki Two",
+			Href:         "https://example.invalid/wiki2",
+			Abbr:         &abbr,
 		},
 	}
 	disable := pagev1alpha1.Disabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
-			DisableCollapse: &disable,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Collapse:     &disable,
 		},
 	}
 	srv := newTestServer(t, NewStore(), bookmark, cfg)
@@ -1181,18 +1181,18 @@ func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "wiki3", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup,
-			Name:        "Wiki",
-			Href:        "https://example.invalid/wiki3",
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Name:         "Wiki",
+			Href:         "https://example.invalid/wiki3",
 		},
 	}
 	style := testStyleRow
 	columns := int32(3)
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
 				{Groups: []pagev1alpha1.LayoutGroupSpec{{
 					Name: testBookmarkGroup, Style: &style, Columns: &columns,
@@ -1223,16 +1223,16 @@ func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 	clock := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeDatetime,
-			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeDatetime,
+			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
 		},
 	}
 	weather := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        testOpenMeteoType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testOpenMeteoType,
 		},
 	}
 	srv := newTestServer(t, store, clock, weather)
@@ -1251,12 +1251,12 @@ func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 func TestServerIndexRendersBackgroundAndCustomCSS(t *testing.T) {
 	img := "https://example.invalid/bg.png"
 	css := "body { color: red; }"
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Background:  &pagev1alpha1.BackgroundSpec{Image: &img},
-			CustomCSS:   &css,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Background:   &pagev1alpha1.BackgroundSpec{Image: &img},
+			CustomCSS:    &css,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1275,12 +1275,12 @@ func TestServerIndexRendersBackgroundAndCustomCSS(t *testing.T) {
 func TestServerIndexHidesSwitcherWhenThemeAndColorFixed(t *testing.T) {
 	theme := themeLight
 	color := testColor
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Theme:       &theme,
-			Color:       &color,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Theme:        &theme,
+			Color:        &color,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1313,11 +1313,11 @@ func TestServerIndexDefaultTitleOmitsHeadingNoDescription(t *testing.T) {
 
 func TestServerIndexRendersDescriptionMetaAndParagraph(t *testing.T) {
 	desc := "Everything self-hosted, in one place."
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Description: &desc,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Description:  &desc,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1335,11 +1335,11 @@ func TestServerIndexRendersDescriptionMetaAndParagraph(t *testing.T) {
 
 func TestServerIndexAppliesDisableIndexingMetaRobots(t *testing.T) {
 	disable := pagev1alpha1.IndexingNoIndex
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef:     pagev1alpha1.InstanceRef{Name: testInstanceName},
-			DisableIndexing: &disable,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Indexing:     &disable,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1355,11 +1355,11 @@ func TestServerIndexAppliesDisableIndexingMetaRobots(t *testing.T) {
 
 func TestServerIndexShowsOnlyColorSwitcherWhenThemeFixed(t *testing.T) {
 	theme := themeLight
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Theme:       &theme,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Theme:        &theme,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1378,11 +1378,11 @@ func TestServerIndexShowsOnlyColorSwitcherWhenThemeFixed(t *testing.T) {
 
 func TestServerIndexShowsOnlyThemeSwitcherWhenColorFixed(t *testing.T) {
 	color := testColor
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Color:       &color,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Color:        &color,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1435,8 +1435,8 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 	weather := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        testOpenMeteoType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testOpenMeteoType,
 		},
 	}
 	srv := newTestServer(t, store, weather)
@@ -1458,10 +1458,10 @@ func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
 
 	style := testStyleRow
 	equalHeights := pagev1alpha1.HeightsEqual
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Layout: []pagev1alpha1.LayoutTabSpec{
 				{Groups: []pagev1alpha1.LayoutGroupSpec{{
 					Name: testGroup, Style: &style, UseEqualHeights: &equalHeights,
@@ -1514,11 +1514,11 @@ func TestServerIndexRendersVersionFooter(t *testing.T) {
 
 func TestServerIndexHidesVersionFooterWhenConfigured(t *testing.T) {
 	hide := pagev1alpha1.Enabled
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			HideVersion: &hide,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			HideVersion:  &hide,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1534,11 +1534,11 @@ func TestServerIndexHidesVersionFooterWhenConfigured(t *testing.T) {
 
 func TestServerIndexRendersCustomJS(t *testing.T) {
 	js := "console.log('hi'); // </script> attempt"
-	cfg := &pagev1alpha1.Configuration{
-		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
-		Spec: pagev1alpha1.ConfigurationSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			CustomJS:    &js,
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			CustomJS:     &js,
 		},
 	}
 	srv := newTestServer(t, NewStore(), cfg)
@@ -1580,10 +1580,10 @@ func TestServerHeaderRendersLogoWidget(t *testing.T) {
 	logo := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeLogo,
-			Icon:        strPtr("https://example.invalid/logo.png"),
-			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeLogo,
+			Icon:         strPtr("https://example.invalid/logo.png"),
+			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
 		},
 	}
 	srv := newTestServer(t, NewStore(), logo)
@@ -1603,9 +1603,9 @@ func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
 	logo := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        headerTypeLogo,
-			Icon:        strPtr("https://example.invalid/logo.png"),
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         headerTypeLogo,
+			Icon:         strPtr("https://example.invalid/logo.png"),
 		},
 	}
 	srv := newTestServer(t, NewStore(), logo)
@@ -1650,13 +1650,13 @@ func TestServerFragmentRendersBookmarkIconTakesPrecedenceOverAbbr(t *testing.T) 
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "wiki", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup,
-			Name:        "Wiki Three",
-			Href:        "https://example.invalid/wiki3",
-			Icon:        &icon,
-			Abbr:        &abbr,
-			Description: &desc,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Name:         "Wiki Three",
+			Href:         "https://example.invalid/wiki3",
+			Icon:         &icon,
+			Abbr:         &abbr,
+			Description:  &desc,
 		},
 	}
 	srv := newTestServer(t, NewStore(), bookmark)

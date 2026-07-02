@@ -56,7 +56,7 @@ type unifiSession struct {
 
 	// lastUsed drives unifiSessionCache's TTL eviction (see
 	// pruneUnifiSessions): unlike Store, this package-level cache has no
-	// per-poll-cycle Prune to remove an entry whose ServiceEntry was
+	// per-poll-cycle Prune to remove an entry whose ServiceCard was
 	// deleted or had its URL/username edited, so it would otherwise grow
 	// forever.
 	lastUsed time.Time
@@ -80,7 +80,7 @@ func unifiSessionKey(url, username string) string {
 }
 
 // pruneUnifiSessions evicts any cached session unused for longer than
-// unifiSessionTTL, called once per Poll so a ServiceEntry that's deleted or
+// unifiSessionTTL, called once per Poll so a ServiceCard that's deleted or
 // changes URL/username doesn't leave its old session cached indefinitely.
 func pruneUnifiSessions(now time.Time) {
 	unifiSessionCache.mu.Lock()

@@ -39,10 +39,10 @@ var _ = Describe("Bookmark Controller", func() {
 						Namespace: resourceNamespace,
 					},
 					Spec: pagev1alpha1.BookmarkSpec{
-						InstanceRef: pagev1alpha1.InstanceRef{Name: testDoesNotExistInstanceName},
-						Group:       "Group",
-						Name:        "Name",
-						Href:        "https://example.com",
+						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+						Group:        "Group",
+						Name:         "Name",
+						Href:         "https://example.com",
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

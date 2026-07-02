@@ -9,7 +9,7 @@ dashboard (Go + htmx, single binary, no Node/React build) for self-hosted
 services (Plex, Stash, Paperless-ngx, Grafana, Prometheus, UniFi, TrueNAS,
 Cloudflared, Linkwarden, Home Assistant, Mealie), entirely driven by CRDs.
 The manager binary doubles as the dashboard process: `cmd/main.go` dispatches
-on `os.Args[1] == "dashboard"` to run the per-Instance dashboard server
+on `os.Args[1] == "dashboard"` to run the per-`Dashboard` dashboard server
 instead of the controller manager — there is no separate operand image.
 
 Secret-backed widget config (API keys, etc.) is resolved by the dashboard
@@ -50,7 +50,7 @@ above, target a package or use Ginkgo focus:
 ```sh
 go test ./internal/controller/... -run TestControllers -v          # whole controller suite
 go test ./internal/dashboard/... -run TestGrafana -v                 # one Go test func
-KUBEBUILDER_ASSETS="$(setup-envtest use <ver> -p path)" go test ./internal/controller/... --ginkgo.focus="Instance Controller"
+KUBEBUILDER_ASSETS="$(setup-envtest use <ver> -p path)" go test ./internal/controller/... --ginkgo.focus="Dashboard Controller"
 ```
 
 `internal/controller` tests need `KUBEBUILDER_ASSETS` set (envtest binaries) —
@@ -69,8 +69,8 @@ committed, like the CRD YAML).
 `cmd/main.go` is the single entrypoint for both modes:
 - **Manager mode** (default): the standard Kubebuilder controller-runtime
   manager — reconciles CRDs, creates/owns Deployments/Services/Ingresses/RBAC.
-- **Dashboard mode** (`<binary> dashboard --namespace=... --instance-name=...`):
-  serves the actual dashboard UI. One dashboard Deployment per `Instance`,
+- **Dashboard mode** (`<binary> dashboard --namespace=... --dashboard-name=...`):
+  serves the actual dashboard UI. One dashboard Deployment per `Dashboard`,
   running the *same image* the manager is running (resolved at manager
   startup by reading the manager's own Pod spec via the `POD_NAME`/
   `POD_NAMESPACE` downward-API env vars — see `ownDashboardImage` in
@@ -81,51 +81,59 @@ committed, like the CRD YAML).
 
 | Kind | Short name | Purpose |
 |------|-----------|---------|
-| `Instance` | `pageinst` | Owns the dashboard Deployment, Service, optional Ingress/HTTPRoute, and the per-Instance ServiceAccount/Role/RoleBinding the dashboard pod runs as. |
-| `Configuration` | `pcfg` | Site-wide look (title, theme, color, background, header style, search box) and optional tab `layout`. One per Instance. |
-| `ServiceEntry` | `psvc` | One service card, optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
+| `Dashboard` | `pdash` | Owns the dashboard Deployment, Service, optional Ingress/HTTPRoute, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. |
+| `DashboardStyle` | `pstyle` | Site-wide look (title, theme, color, background, header style, search box) and optional tab `layout`. Exactly one per Dashboard, enforced by naming the object after the Dashboard it styles (`metadata.name == spec.dashboardRef.name`). |
+| `ServiceCard` | `pcard` | One service card, optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
 | `Bookmark` | `pbmk` | One static bookmark link. |
 | `InfoWidget` | `piw` | One header-strip widget: `datetime`, `greeting`, or `openmeteo`. |
 
-Every config CRD (`Configuration`/`ServiceEntry`/`Bookmark`/`InfoWidget`)
-carries `spec.instanceRef.name` pointing at the `Instance` it belongs to, and
-must live in the same namespace as that `Instance` (no cross-namespace refs).
+Every config CRD (`DashboardStyle`/`ServiceCard`/`Bookmark`/`InfoWidget`)
+carries `spec.dashboardRef.name` pointing at the `Dashboard` it belongs to, and
+must live in the same namespace as that `Dashboard` (no cross-namespace refs).
 
-`InstanceReconciler` (`internal/controller/instance_controller.go`) watches
-all of these (via `Watches(...)` + a `mapToInstance` helper) purely to keep
-`Instance.status.bound{Configurations,ServiceEntries,Bookmarks,InfoWidgets}`
+`DashboardReconciler` (`internal/controller/dashboard_controller.go`) watches
+all of these (via `Watches(...)` + a `mapToDashboard` helper) purely to keep
+`Dashboard.status.bound{DashboardStyles,ServiceCards,Bookmarks,InfoWidgets}`
 counts current for `kubectl get`/`describe` — it does **not** trigger any
 re-render or rollout. The dashboard pod reads the config CRDs live through
 its own controller-runtime cache, so a CRD change takes effect on the next
-poll cycle with no Instance-mediated round-trip.
+poll cycle with no Dashboard-mediated round-trip.
 
-Admission-time validation is done with CEL `ValidatingAdmissionPolicies`
-(`config/admission/secret_source_policy.yaml`, K8s 1.30+ required, no webhook
-server/certs) rather than a validating webhook: e.g. enforcing that every
-`SecretValueSource` sets exactly one of `value`/`secretKeyRef`.
+Cross-field schema invariants (e.g. `SecretValueSource` sets exactly one of
+`value`/`secretKeyRef`; a `ServiceCard` sets at most one of `ping`/
+`siteMonitor`/`podSelector`; widget `type` is one of the registered set) are
+enforced as CEL `+kubebuilder:validation:XValidation` markers directly on the
+`api/v1alpha1` types (K8s 1.29+, no webhook server/certs) rather than as
+separate `ValidatingAdmissionPolicy` objects — the rules travel with the CRD
+and show up in `kubectl explain`. The one thing that *is* still a
+`ValidatingAdmissionPolicy` (`config/admission/credential_shaped_value_policy.yaml`,
+K8s 1.30+) is a `Warn`-action heuristic — flagging a credential-shaped field
+name (`token`, `apiKey`, ...) that uses an inline `value` instead of
+`secretKeyRef` — that can't be expressed as a hard schema rule since it's a
+naming heuristic, not an invariant.
 
 ### Controller package (`internal/controller`)
 
-Each CRD has its own reconciler file (`instance_controller.go`,
-`configuration_controller.go`, `serviceentry_controller.go`,
+Each CRD has its own reconciler file (`dashboard_controller.go`,
+`dashboardstyle_controller.go`, `servicecard_controller.go`,
 `bookmark_controller.go`, `infowidget_controller.go`) following the standard
 Kubebuilder pattern: fetch → finalizer handling → reconcile owned resources →
 update status conditions (`metav1.Condition`, see `conditions.go` for shared
-reason constants). `instance_controller.go` is the most complex: it builds
-the dashboard Deployment (`deploymentForInstance`), and delegates RBAC/
-networking specifics to `instance_rbac.go` (per-Instance ServiceAccount/
+reason constants). `dashboard_controller.go` is the most complex: it builds
+the dashboard Deployment (`deploymentForDashboard`), and delegates RBAC/
+networking specifics to `dashboard_rbac.go` (per-Dashboard ServiceAccount/
 Role/RoleBinding, plus a cluster-scoped Role for the kubemetrics InfoWidget —
-the only resource without an owner reference, since a namespaced `Instance`
+the only resource without an owner reference, since a namespaced `Dashboard`
 can't own a cluster-scoped object, so it's cleaned up explicitly in the
-finalizer) and `instance_network.go` (Service/Ingress/HTTPRoute). Gateway API
+finalizer) and `dashboard_network.go` (Service/Ingress/HTTPRoute). Gateway API
 support is conditional: `cmd/main.go` checks once at startup via discovery
 whether `HTTPRoute` is actually installed, and only then does
-`InstanceReconciler` watch/manage it — an `Instance` with `spec.gateway.enabled`
+`DashboardReconciler` watch/manage it — a `Dashboard` with `spec.gateway.enabled`
 on a cluster without Gateway API gets a clear `Available=False` condition
 instead of crashing the manager.
 
 Deployment drift detection (`reconcileDeployment`) deliberately compares only
-the specific fields it derives from the `Instance` spec (image, args, ports,
+the specific fields it derives from the `Dashboard` spec (image, args, ports,
 env, probes, resources, security context, labels/annotations) rather than
 `reflect.DeepEqual`-ing the whole pod spec — the API server's own defaulting
 on the stored object would otherwise look like permanent drift.
@@ -134,7 +142,7 @@ on the stored object would otherwise look like permanent drift.
 
 Wired together by `Run()` in `dashboard.go`:
 - A namespace-scoped, **cached** controller-runtime client (`cluster.New`)
-  reads the bound CRDs (`Configuration`, `ServiceEntry`, `Bookmark`,
+  reads the bound CRDs (`DashboardStyle`, `ServiceCard`, `Bookmark`,
   `InfoWidget`).
 - A separate **uncached** `client.New` reads `Secret`s directly — secret
   contents must never sit in an informer's long-lived cache.
@@ -142,7 +150,7 @@ Wired together by `Run()` in `dashboard.go`:
   reads (nodes, `metrics.k8s.io`) that don't fit the namespace-scoped cache.
 - `Poller` (`poller.go`) runs on its own ticker (`--poll-interval`, default
   15s), independent of HTTP requests, so a slow/unreachable upstream never
-  blocks a page load. Each cycle it lists `ServiceEntry`/`InfoWidget`,
+  blocks a page load. Each cycle it lists `ServiceCard`/`InfoWidget`,
   resolves secrets, and polls every bound widget concurrently (bounded by
   `maxConcurrentPolls = 8`), writing results into `Store` (`store.go`) and
   pruning anything no longer bound.
@@ -176,6 +184,7 @@ rather than hand-writing files in `api/` or `internal/controller/` from scratch.
 ## Conventions
 
 - **Status conditions**: use `metav1.Condition` (via `meta.SetStatusCondition`), not ad-hoc string fields.
+- **CRD enum field naming**: field names are affirmative nouns for the thing being controlled (`collapse`, `errorDisplay`, `indexing`), never a negated verb (`disableX`, `hideX`); enum values are states of that thing (`Enabled`/`Disabled`, `Shown`/`Hidden`), and a value never repeats the field name. Avoids double negatives like `disableCollapse: Enabled` (reads as "disabling is enabled"). Operator-native toggles use PascalCase enum values; enums mirroring homepage's own YAML vocabulary (`dot`, `basic`, `light`, `dark`, `row`, ...) stay lowercase.
 - **Logging**: Kubernetes message-style — capitalized, no trailing period, past tense, active voice, balanced key-value pairs (`log.Info("Created Deployment", "name", deploy.Name)`); enforced by the `logcheck` golangci-lint plugin (`.custom-gcl.yml`).
 - **Reconciliation**: idempotent; re-`Get` before `Update` to avoid "object has been modified" conflicts; owner references for GC of anything that *can* have one; explicit finalizer cleanup only for cluster-scoped resources a namespaced CR can't own.
 - **Commit messages / PR titles**: strictly [Conventional Commits](https://www.conventionalcommits.org/) — `type(scope)!: description`, enforced by CI (`commitlint.yml`) on every PR title and non-merge commit. PRs merge with a merge commit (not squashed), so every individual commit message matters for `release-please`'s changelog/version bump. Allowed types: `feat`, `fix`, `chore`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `revert`.

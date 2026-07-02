@@ -8,7 +8,7 @@ every decision below — read them before exposing a dashboard beyond a
 trusted network:
 
 1. **CRD authors are fully trusted within their namespace.** Anyone who can
-   create a `ServiceEntry`/`InfoWidget` in a namespace can name *any* Secret
+   create a `ServiceCard`/`InfoWidget` in a namespace can name *any* Secret
    in that namespace via `secretKeyRef` and point the widget's own URL at a
    server they control — an effective read of that Secret's plaintext
    without ever needing `get secrets` RBAC directly (see the trust-model note
@@ -42,7 +42,7 @@ defaults alone:
   `HTTPRoute` filter for `spec.gateway`). The dashboard's own `/healthz`
   endpoint should stay excluded from any auth gate so liveness/readiness
   probes keep working.
-- Alternatively, set `spec.auth.basicAuthSecretRef` on the `Instance` for a
+- Alternatively, set `spec.auth.basicAuthSecretRef` on the `Dashboard` for a
   minimal built-in gate (see [Optional built-in
   authentication](#optional-built-in-authentication) below) — a bcrypt
   htpasswd Secret checked on every route except `/healthz`. This is
@@ -75,7 +75,7 @@ non-goals](#explicit-non-goals)).
 
 ### Optional built-in authentication
 
-Setting `spec.auth.basicAuthSecretRef` on an `Instance` names a Secret
+Setting `spec.auth.basicAuthSecretRef` on a `Dashboard` names a Secret
 holding an [Apache htpasswd](https://httpd.apache.org/docs/current/programs/htpasswd.html)
 file (bcrypt-hashed entries) under its `.htpasswd` key. When set, every
 dashboard route except `/healthz` requires HTTP Basic credentials matching an
@@ -129,7 +129,7 @@ reports:
   [`CLAUDE.md`](CLAUDE.md) for the full design rationale.
 - Outbound SSRF surface: every widget implementation under
   `internal/dashboard/` (`grafana.go`, `plex.go`, `prometheus.go`, `unifi.go`,
-  etc.) polls a URL taken from a `ServiceEntry`/`InfoWidget` CRD. Whoever can
+  etc.) polls a URL taken from a `ServiceCard`/`InfoWidget` CRD. Whoever can
   create those CRDs in a namespace can direct the dashboard pod's outbound
   requests anywhere reachable from it — this is expected admin-managed
   behavior, not multi-tenant self-service, but RBAC misconfigurations that let

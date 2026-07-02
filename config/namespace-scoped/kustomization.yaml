@@ -6,20 +6,20 @@
 # ClusterRoleBinding config/default installs by default — so operators who
 # don't want the manager holding "secrets get" (and everything else in
 # manager-role) cluster-wide can scope it down to only the namespace(s) they
-# actually run Instances in. Pair this with the manager's own
+# actually run Dashboards in. Pair this with the manager's own
 # --watch-namespaces flag (cmd/main.go) so its controller-runtime cache is
 # scoped the same way, not just its RBAC.
 #
 # Trade-off: the kubemetrics InfoWidget's cluster-scoped RBAC provisioning
 # (nodes, metrics.k8s.io, and the ClusterRole/ClusterRoleBinding pair it
-# creates per Instance — see internal/controller/instance_rbac.go's
+# creates per Dashboard — see internal/controller/dashboard_rbac.go's
 # reconcileClusterMetricsRBAC) still needs cluster-scoped access: a
 # namespaced RoleBinding can never grant access to cluster-scoped resources,
 # no matter what its ClusterRole contains. This overlay does not attempt to
 # preserve that — if you use it, kubemetrics InfoWidgets won't work
 # (they'll fail RBAC checks, surfaced as a card error, not a crash).
 # Everything else (Deployments, Services, Ingresses, NetworkPolicies, the
-# per-Instance ServiceAccount/Secret/Role/RoleBinding provisioning, ...)
+# per-Dashboard ServiceAccount/Secret/Role/RoleBinding provisioning, ...)
 # works the same, scoped to the namespace(s) below.
 #
 # Usage:

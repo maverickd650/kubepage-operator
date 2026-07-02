@@ -47,13 +47,13 @@ func isBlockedMetadataAddress(ip net.IP) bool {
 // to a blocked address (including via DNS rebinding) is caught the same as a
 // literal one.
 //
-// ServiceEntry ping/siteMonitor/widget URLs are deliberately trusted to
+// ServiceCard ping/siteMonitor/widget URLs are deliberately trusted to
 // reach cluster-internal addresses (ClusterIP/pod-CIDR ranges, typically
 // RFC1918) — that's the whole point of those fields — so this does not
 // attempt broad SSRF prevention. It only closes the gaps with no legitimate
 // use for this feature: a widget URL pointed at the node's own cloud
 // metadata endpoint would hand back cloud IAM credentials to whoever set the
-// ServiceEntry, which is a strictly worse outcome than anything reachable
+// ServiceCard, which is a strictly worse outcome than anything reachable
 // via a normal cluster address.
 func guardedDialControl(_, address string, _ syscall.RawConn) error {
 	host, _, err := net.SplitHostPort(address)
@@ -91,7 +91,7 @@ func newGuardedTransport(base *http.Transport) *http.Transport {
 
 // newGuardedHTTPClient returns an *http.Client with timeout and the
 // link-local dial guard (see newGuardedTransport), for polling user-supplied
-// ServiceEntry/widget URLs.
+// ServiceCard/widget URLs.
 func newGuardedHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: newGuardedTransport(nil)}
 }

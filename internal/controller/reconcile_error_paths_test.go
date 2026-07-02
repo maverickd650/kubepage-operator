@@ -16,9 +16,9 @@ import (
 )
 
 // reconcilerErrorPathCase describes one of the four thin config-CRD
-// controllers (Bookmark/Configuration/InfoWidget/ServiceEntry), which all
-// share the same Reconcile shape: Get the CRD, resolve its InstanceRef via
-// boundInstanceCondition, then Status().Update. The table-driven tests below
+// controllers (Bookmark/DashboardStyle/InfoWidget/ServiceCard), which all
+// share the same Reconcile shape: Get the CRD, resolve its DashboardRef via
+// boundDashboardCondition, then Status().Update. The table-driven tests below
 // exercise each of those three error returns once per controller, since
 // envtest's real apiserver (used by the Ginkgo specs in this package) can't
 // be made to fail Get/Update on demand the way a fake client with
@@ -40,24 +40,24 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 				return &pagev1alpha1.Bookmark{
 					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
 					Spec: pagev1alpha1.BookmarkSpec{
-						InstanceRef: pagev1alpha1.InstanceRef{Name: ref},
-						Group:       "G",
-						Name:        "N",
-						Href:        "https://example.com",
+						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
+						Group:        "G",
+						Name:         "N",
+						Href:         "https://example.com",
 					},
 				}
 			},
 		},
 		{
-			name: "Configuration",
+			name: "DashboardStyle",
 			newReconciler: func(c client.Client) reconcile.Reconciler {
-				return &ConfigurationReconciler{Client: c, Scheme: c.Scheme()}
+				return &DashboardStyleReconciler{Client: c, Scheme: c.Scheme()}
 			},
 			newObject: func(ns, name, ref string) client.Object {
-				return &pagev1alpha1.Configuration{
+				return &pagev1alpha1.DashboardStyle{
 					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-					Spec: pagev1alpha1.ConfigurationSpec{
-						InstanceRef: pagev1alpha1.InstanceRef{Name: ref},
+					Spec: pagev1alpha1.DashboardStyleSpec{
+						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
 					},
 				}
 			},
@@ -71,24 +71,24 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 				return &pagev1alpha1.InfoWidget{
 					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
 					Spec: pagev1alpha1.InfoWidgetSpec{
-						InstanceRef: pagev1alpha1.InstanceRef{Name: ref},
-						Type:        "datetime",
+						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
+						Type:         "datetime",
 					},
 				}
 			},
 		},
 		{
-			name: "ServiceEntry",
+			name: "ServiceCard",
 			newReconciler: func(c client.Client) reconcile.Reconciler {
-				return &ServiceEntryReconciler{Client: c, Scheme: c.Scheme()}
+				return &ServiceCardReconciler{Client: c, Scheme: c.Scheme()}
 			},
 			newObject: func(ns, name, ref string) client.Object {
-				return &pagev1alpha1.ServiceEntry{
+				return &pagev1alpha1.ServiceCard{
 					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-					Spec: pagev1alpha1.ServiceEntrySpec{
-						InstanceRef: pagev1alpha1.InstanceRef{Name: ref},
-						Group:       "G",
-						Name:        "N",
+					Spec: pagev1alpha1.ServiceCardSpec{
+						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
+						Group:        "G",
+						Name:         "N",
 					},
 				}
 			},
@@ -96,8 +96,8 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 	}
 }
 
-func isInstanceObject(o client.Object) bool {
-	_, ok := o.(*pagev1alpha1.Instance)
+func isDashboardObject(o client.Object) bool {
+	_, ok := o.(*pagev1alpha1.Dashboard)
 	return ok
 }
 
@@ -131,13 +131,13 @@ func TestReconcileGetError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			const ns, name = "ns", "obj"
 			scheme := networkTestScheme(t)
-			obj := tc.newObject(ns, name, testRefInstanceName)
+			obj := tc.newObject(ns, name, testRefDashboardName)
 			wantErr := errors.New("get boom")
 
 			base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()
 			cl := interceptor.NewClient(base, interceptor.Funcs{
 				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
-					if !isInstanceObject(o) {
+					if !isDashboardObject(o) {
 						return wantErr
 					}
 					return c.Get(ctx, key, o, opts...)
@@ -152,21 +152,21 @@ func TestReconcileGetError(t *testing.T) {
 	}
 }
 
-// TestReconcileBoundInstanceConditionError covers the branch where
-// boundInstanceCondition's Get of the referenced Instance fails for a
+// TestReconcileBoundDashboardConditionError covers the branch where
+// boundDashboardCondition's Get of the referenced Dashboard fails for a
 // reason other than NotFound.
-func TestReconcileBoundInstanceConditionError(t *testing.T) {
+func TestReconcileBoundDashboardConditionError(t *testing.T) {
 	for _, tc := range reconcilerErrorPathCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			const ns, name = "ns", "obj"
 			scheme := networkTestScheme(t)
-			obj := tc.newObject(ns, name, testRefInstanceName)
+			obj := tc.newObject(ns, name, testRefDashboardName)
 			wantErr := errors.New("instance get boom")
 
 			base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()
 			cl := interceptor.NewClient(base, interceptor.Funcs{
 				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
-					if isInstanceObject(o) {
+					if isDashboardObject(o) {
 						return wantErr
 					}
 					return c.Get(ctx, key, o, opts...)
@@ -182,15 +182,15 @@ func TestReconcileBoundInstanceConditionError(t *testing.T) {
 }
 
 // TestReconcileStatusUpdateError covers the branch where Status().Update
-// fails. No Instance object is created, so instanceRefName resolves to a
-// not-found condition (boundInstanceCondition returns no error for that
+// fails. No Dashboard object is created, so instanceRefName resolves to a
+// not-found condition (boundDashboardCondition returns no error for that
 // case) and Status().Update is reached.
 func TestReconcileStatusUpdateError(t *testing.T) {
 	for _, tc := range reconcilerErrorPathCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			const ns, name = "ns", "obj"
 			scheme := networkTestScheme(t)
-			obj := tc.newObject(ns, name, testRefInstanceName)
+			obj := tc.newObject(ns, name, testRefDashboardName)
 			wantErr := errors.New("status update boom")
 
 			base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()

@@ -25,15 +25,15 @@ type Options struct {
 	RestConfig *rest.Config
 	Scheme     *runtime.Scheme
 
-	// Namespace and InstanceName select the single Instance this process
-	// serves a dashboard for (D11: one dashboard Deployment per Instance).
-	Namespace    string
-	InstanceName string
+	// Namespace and DashboardName select the single Dashboard this process
+	// serves a dashboard for (D11: one dashboard Deployment per Dashboard).
+	Namespace     string
+	DashboardName string
 
 	Addr string
 	// MetricsAddr is the address /metrics is served on, deliberately a
 	// separate listener from Addr: the dashboard's main port is commonly
-	// exposed via the Instance's Ingress/HTTPRoute, and Prometheus metrics
+	// exposed via the Dashboard's Ingress/HTTPRoute, and Prometheus metrics
 	// (per-widget-type poll counts/latencies, per-service up/down) shouldn't
 	// be reachable by anyone who can reach the dashboard's public URL.
 	// instance_controller.go's Deployment/Service expose this port
@@ -44,7 +44,7 @@ type Options struct {
 
 	// Version/Commit are stamped at build time (cmd/main.go's ldflags-set
 	// package vars), shown in the page shell's footer unless the bound
-	// Configuration sets HideVersion.
+	// DashboardStyle sets HideVersion.
 	Version string
 	Commit  string
 
@@ -53,7 +53,7 @@ type Options struct {
 	// gatewayAPIAvailable, the same helper the manager uses for
 	// spec.gateway) — this is a separate pod from the manager, so it can't
 	// just read the manager's own in-memory result. Gates whether the
-	// Poller attempts HTTPRoute discovery at all: the per-Instance Role
+	// Poller attempts HTTPRoute discovery at all: the per-Dashboard Role
 	// only grants httproutes RBAC when discovery is enabled and the
 	// controller made this same determination (instance_rbac.go), so
 	// without it a List would just fail on missing RBAC or, if Gateway API
@@ -103,7 +103,7 @@ func Run(ctx context.Context, opts Options) error {
 		SecretReader:      secretClient,
 		KubeReader:        kubeClient,
 		Namespace:         opts.Namespace,
-		InstanceName:      opts.InstanceName,
+		DashboardName:     opts.DashboardName,
 		Interval:          opts.PollInterval,
 		HTTPClient:        newGuardedHTTPClient(10 * time.Second),
 		Store:             store,
@@ -116,7 +116,7 @@ func Run(ctx context.Context, opts Options) error {
 		Reader:         clu.GetClient(),
 		SecretReader:   secretClient,
 		Namespace:      opts.Namespace,
-		InstanceName:   opts.InstanceName,
+		DashboardName:  opts.DashboardName,
 		RefreshSeconds: int(opts.PollInterval.Seconds()),
 		Version:        opts.Version,
 		Commit:         opts.Commit,
@@ -159,7 +159,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
-	setupLog.Info("Starting dashboard", "addr", opts.Addr, "namespace", opts.Namespace, "instance", opts.InstanceName)
+	setupLog.Info("Starting dashboard", "addr", opts.Addr, "namespace", opts.Namespace, "instance", opts.DashboardName)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}

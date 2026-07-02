@@ -67,7 +67,7 @@ spec:
         name: manager
         env:
         # Used to look up this Pod's own container image at startup, so the
-        # dashboard Deployment InstanceReconciler creates per Instance always
+        # dashboard Deployment DashboardReconciler creates per Dashboard always
         # runs the exact same image as the manager itself (D11 / Phase 6.4).
         - name: POD_NAME
           valueFrom:

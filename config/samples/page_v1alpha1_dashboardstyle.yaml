@@ -1,0 +1,28 @@
+apiVersion: page.kubepage.dev/v1alpha1
+kind: DashboardStyle
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: dashboard-sample
+spec:
+  dashboardRef:
+    name: dashboard-sample
+  title: Home Lab
+  description: Self-hosted services
+  favicon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png
+  theme: dark
+  color: slate
+  headerStyle: boxed
+  cardBlur: md
+  target: _blank
+  layout:
+    - name: Infrastructure
+      groups:
+        - name: Monitoring
+          columns: 3
+          icon: grafana
+    - name: Apps
+      groups:
+        - name: Media
+          style: row

@@ -1,0 +1,29 @@
+apiVersion: page.kubepage.dev/v1alpha1
+kind: ServiceCard
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: servicecard-sample
+spec:
+  dashboardRef:
+    name: dashboard-sample
+  group: Media
+  name: Plex
+  href: http://plex.example.com
+  target: _blank
+  icon: plex.png
+  description: Media server
+  # HTTP reachability probe shown as an up/down status dot on the card.
+  siteMonitor: http://plex.example.com
+  statusStyle: dot
+  showStats: Show
+  errorDisplay: Shown
+  widgets:
+    - type: plex
+      url: http://plex.example.com
+      secrets:
+        token:
+          secretKeyRef:
+            name: plex-credentials
+            key: token

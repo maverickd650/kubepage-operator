@@ -6,8 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: infowidget-greeting
 spec:
-  instanceRef:
-    name: instance-sample
+  dashboardRef:
+    name: dashboard-sample
   type: greeting
   order: 1
   options:
@@ -21,8 +21,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: infowidget-datetime
 spec:
-  instanceRef:
-    name: instance-sample
+  dashboardRef:
+    name: dashboard-sample
   type: datetime
   order: 2
 ---
@@ -34,8 +34,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: infowidget-weather
 spec:
-  instanceRef:
-    name: instance-sample
+  dashboardRef:
+    name: dashboard-sample
   type: openmeteo
   order: 3
   options:
@@ -52,8 +52,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: infowidget-kubemetrics
 spec:
-  instanceRef:
-    name: instance-sample
+  dashboardRef:
+    name: dashboard-sample
   # Cluster-wide CPU/memory usage from metrics-server (metrics.k8s.io).
   # Requires metrics-server installed in the cluster; the operator grants the
   # dashboard pod cluster-scoped node/metrics read access on demand.

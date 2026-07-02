@@ -18,9 +18,9 @@ import (
 
 // InfoWidgetReconciler reconciles a InfoWidget object.
 //
-// Thin, like ConfigurationReconciler, ServiceEntryReconciler, and
-// BookmarkReconciler: it only validates that instanceRef resolves to an
-// existing Instance and reflects that in status. Actually polling and
+// Thin, like DashboardStyleReconciler, ServiceCardReconciler, and
+// BookmarkReconciler: it only validates that dashboardRef resolves to an
+// existing Dashboard and reflects that in status. Actually polling and
 // rendering an InfoWidget (datetime, greeting, openmeteo, kubemetrics)
 // happens in the native dashboard's poller (internal/dashboard/poller.go),
 // which reads InfoWidgets directly through its own namespace-scoped cache.
@@ -32,10 +32,10 @@ type InfoWidgetReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets/finalizers,verbs=update
-// +kubebuilder:rbac:groups=page.kubepage.dev,resources=instances,verbs=get;list;watch
+// +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards,verbs=get;list;watch
 
-// Reconcile validates that the InfoWidget's instanceRef resolves to an
-// existing Instance in the same namespace and sets the Available status
+// Reconcile validates that the InfoWidget's dashboardRef resolves to an
+// existing Dashboard in the same namespace and sets the Available status
 // condition accordingly.
 func (r *InfoWidgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -49,9 +49,9 @@ func (r *InfoWidgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	cond, err := boundInstanceCondition(ctx, r.Client, widget.Namespace, widget.Spec.InstanceRef.Name)
+	cond, err := boundDashboardCondition(ctx, r.Client, widget.Namespace, widget.Spec.DashboardRef.Name, widget.Generation)
 	if err != nil {
-		log.Error(err, "Failed to get referenced Instance")
+		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
 	}
 	meta.SetStatusCondition(&widget.Status.Conditions, cond)
@@ -69,13 +69,13 @@ func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagev1alpha1.InfoWidget{}).
 		Named("infowidget").
-		// Watch Instance objects too: see ConfigurationReconciler.SetupWithManager
+		// Watch Dashboard objects too: see DashboardStyleReconciler.SetupWithManager
 		// for why (out-of-order apply self-heals without waiting for the
 		// InfoWidget itself to be touched again).
 		Watches(
-			&pagev1alpha1.Instance{},
+			&pagev1alpha1.Dashboard{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				instance, ok := obj.(*pagev1alpha1.Instance)
+				instance, ok := obj.(*pagev1alpha1.Dashboard)
 				if !ok {
 					return nil
 				}
@@ -87,7 +87,7 @@ func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 				var reqs []reconcile.Request
 				for _, w := range widgets.Items {
-					if w.Spec.InstanceRef.Name == instance.Name {
+					if w.Spec.DashboardRef.Name == instance.Name {
 						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
 							Name:      w.Name,
 							Namespace: w.Namespace,

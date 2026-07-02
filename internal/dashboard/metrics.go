@@ -23,7 +23,7 @@ var (
 
 	monitorUp = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubepage_monitor_up",
-		Help: "Whether a ServiceEntry's ping/siteMonitor probe last succeeded (1) or failed (0).",
+		Help: "Whether a ServiceCard's ping/siteMonitor probe last succeeded (1) or failed (0).",
 	}, []string{"service"})
 )
 

@@ -10,15 +10,15 @@ import (
 
 // BookmarkSpec defines one static link card rendered by the native
 // dashboard, in the group named by Group. Bookmarks are much simpler than
-// ServiceEntry's service cards: just a link, with an optional
+// ServiceCard's service cards: just a link, with an optional
 // abbreviation/icon and override description.
 //
 // Nested groups (a group inside another group) are not supported in this
 // version of the operator; Group always names a top-level group.
 type BookmarkSpec struct {
-	// instanceRef names the Instance this Bookmark belongs to.
+	// dashboardRef names the Dashboard this Bookmark belongs to.
 	// +required
-	InstanceRef InstanceRef `json:"instanceRef"`
+	DashboardRef DashboardRef `json:"dashboardRef"`
 
 	// group is the name of the (top-level) bookmarks.yaml group this entry
 	// belongs to. Entries sharing a Group are rendered together.
@@ -84,7 +84,7 @@ type BookmarkStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=pbmk
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
-// +kubebuilder:printcolumn:name="Instance",type=string,JSONPath=".spec.instanceRef.name"
+// +kubebuilder:printcolumn:name="Dashboard",type=string,JSONPath=".spec.dashboardRef.name"
 // +kubebuilder:printcolumn:name="Group",type=string,JSONPath=".spec.group"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 

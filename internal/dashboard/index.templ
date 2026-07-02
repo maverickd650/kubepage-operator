@@ -184,7 +184,7 @@ templ Index(data indexData) {
 				<script nonce={ templ.GetNonce(ctx) }>
 					// Apply any stored theme/color override before first paint
 					// (standard dark-mode-FOUC-avoidance pattern), only for the axis
-					// that isn't fixed by Configuration. window.__paletteRamps is also
+					// that isn't fixed by DashboardStyle. window.__paletteRamps is also
 					// read by the switcher click handlers further down the page.
 					(function () {
 						var cfg = JSON.parse(document.getElementById("switcher-config").textContent);
@@ -448,7 +448,7 @@ templ Index(data indexData) {
 
 				// Theme/color switcher: only present when index.templ's FOUC-avoidance
 				// script ran (window.__paletteRamps set), i.e. at least one axis isn't
-				// fixed by Configuration — each button is itself only rendered for the
+				// fixed by DashboardStyle — each button is itself only rendered for the
 				// axis that applies, so these listeners no-op via the null checks below
 				// when a button is absent.
 				const themeBtn = document.getElementById("theme-switcher-btn");

@@ -10,14 +10,14 @@ single binary, no Node/React build step) for a curated set of self-hosted
 services — Plex, Stash, Paperless-ngx, Grafana, Prometheus, UniFi, TrueNAS,
 Cloudflared, Linkwarden, Home Assistant, Mealie — driven entirely by CRDs.
 Define services, bookmarks, and dashboard look/settings as Kubernetes
-objects, and the operator runs a per-Instance dashboard Deployment that reads
-those CRDs directly and polls each service's API on an interval. The
+objects, and the operator runs a per-`Dashboard` dashboard Deployment that
+reads those CRDs directly and polls each service's API on an interval. The
 dashboard also ships a homepage-style quick-launch palette (`Ctrl`/`Cmd`+`K`,
 or `/`) that fuzzy-jumps to any service or bookmark card, falling back to a
 web search — built client-side from the same cards already on the page, so
 it needs no extra CRD configuration.
 
-The dashboard process resolves any Secret-backed credentials (a `ServiceEntry`
+The dashboard process resolves any Secret-backed credentials (a `ServiceCard`
 widget's API key, etc.) itself, in-process — the plaintext value never
 appears in pod env, a ConfigMap, or a projected file; it only ever exists in
 the dashboard pod's memory for the duration of the poll. See
@@ -28,33 +28,41 @@ rationale (kept local-only; ask in-repo if you need a copy).
 
 | Kind | Purpose |
 |------|---------|
-| `Instance` (`pageinst`) | The dashboard Deployment, Service, optional Ingress, and the per-Instance ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `instanceRef`. |
-| `Configuration` (`pcfg`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. One per Instance. |
-| `ServiceEntry` (`psvc`) | One service card (with optional widgets polling that service's API) in a named group. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`hideErrors` toggles. |
+| `Dashboard` (`pdash`) | The dashboard Deployment, Service, optional Ingress, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `dashboardRef`. |
+| `DashboardStyle` (`pstyle`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. Exactly one per Dashboard — the object's name must match the Dashboard's name. |
+| `ServiceCard` (`pcard`) | One service card (with optional widgets polling that service's API) in a named group. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`errorDisplay` toggles. |
 | `Bookmark` (`pbmk`) | One static bookmark link in a named group. |
 | `InfoWidget` (`piw`) | One header-strip widget: `datetime` (client-side clock), `greeting` (static text), `openmeteo` (current weather), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
-Every config CRD (`Configuration`, `ServiceEntry`, `Bookmark`, `InfoWidget`)
-carries an `instanceRef.name` naming the `Instance` it belongs to, and any
+Every config CRD (`DashboardStyle`, `ServiceCard`, `Bookmark`, `InfoWidget`)
+carries a `dashboardRef.name` naming the `Dashboard` it belongs to, and any
 namespace-matching is implicit: they must live in the same namespace as that
-`Instance`.
+`Dashboard`.
 
 ### Admission validation
 
-Beyond the CRD schemas, the operator ships
-[`ValidatingAdmissionPolicies`](config/admission/secret_source_policy.yaml)
-(CEL, no webhook server or certificates to manage) that reject invalid configs
-at apply time. Currently they enforce that every secret-bearing field
-(`SecretValueSource`) sets exactly one of `value` or `secretKeyRef`, so a
-missing or ambiguous credential surfaces as a `kubectl apply` error rather than
-a broken widget card at poll time. These require **Kubernetes v1.30+**
-(`ValidatingAdmissionPolicy` is GA from 1.30); on the Helm chart they can be
-turned off with `--set admissionPolicies.enabled=false`.
+Cross-field invariants — every secret-bearing field (`SecretValueSource`)
+sets exactly one of `value` or `secretKeyRef`, a `ServiceCard` sets at most
+one of `ping`/`siteMonitor`/`podSelector`, widget `type` is one of the
+supported set — are enforced by CEL rules baked directly into the CRD
+schemas (**Kubernetes v1.29+**), so a bad config is rejected as a `kubectl
+apply` error rather than a broken widget card at poll time. Beyond the
+schemas, the operator additionally ships one
+[`ValidatingAdmissionPolicy`](config/admission/credential_shaped_value_policy.yaml)
+(CEL, no webhook server or certificates to manage) that *warns* (doesn't
+reject) when a credential-shaped field name (`token`, `apiKey`, ...) uses an
+inline `value` instead of `secretKeyRef` — a naming heuristic rather than a
+hard invariant, so it can't live in the schema. This requires **Kubernetes
+v1.30+** (`ValidatingAdmissionPolicy` is GA from 1.30); on the Helm chart it
+can be turned off with `--set admissionPolicies.enabled=false`.
 
 ### Exposing the dashboard
 
-Every `Instance` always gets a ClusterIP `Service`. To expose it beyond the
-cluster, set one of:
+Every `Dashboard` always gets a `Service` (`ClusterIP` by default). Set
+`spec.service.type: LoadBalancer` (e.g. for MetalLB) or `NodePort`, and
+`spec.service.annotations` for anything the Service type needs (a MetalLB IP
+pool, an external-dns hostname, a Tailscale annotation, ...). To expose it
+beyond the cluster via a hostname instead, set one of:
 
 - `spec.ingress` — a classic `networking.k8s.io/v1` `Ingress` (`enabled`,
   `host`, `ingressClassName`, `annotations`, `tls.secretName`).
@@ -62,7 +70,7 @@ cluster, set one of:
   `parentRef.{name,namespace,sectionName}`, `annotations`), attached to a
   `Gateway` you manage separately. Only takes effect if the cluster actually
   has Gateway API CRDs installed; the manager checks once at startup
-  (`kubectl logs` shows `Gateway API support enabled=...`), and an `Instance`
+  (`kubectl logs` shows `Gateway API support enabled=...`), and a `Dashboard`
   with `spec.gateway.enabled: true` on a cluster without them reports a clear
   `Available=False` condition rather than the manager crashing.
 
@@ -79,8 +87,8 @@ anything more than a homelab.
 
 ### Hardening opt-ins
 
-Several `Instance` spec fields harden the default (single-admin homelab)
-trust model further, all off by default so existing `Instance`s keep working
+Several `Dashboard` spec fields harden the default (single-admin homelab)
+trust model further, all off by default so existing `Dashboard`s keep working
 unchanged:
 
 | Field | Default | Effect |
@@ -88,12 +96,23 @@ unchanged:
 | `spec.auth.basicAuthSecretRef` | unset (no auth) | Gates every dashboard route except `/healthz` behind HTTP Basic, checked against a bcrypt htpasswd Secret. See [SECURITY.md](SECURITY.md#optional-built-in-authentication). |
 | `spec.metrics.enabled` | `Disabled` | Exposes the dashboard's `/metrics` port (9090) on its Service. Off by default since, unlike the manager's own metrics, the dashboard's has no authn/authz — any pod that can reach the Service port would otherwise read per-service up/down status and poll metrics. |
 | `spec.networkPolicy.enabled` | `Disabled` | Creates an owner-referenced `NetworkPolicy` scoping which pods may reach the dashboard/metrics ports (`ingressNamespaceSelector`/`metricsNamespaceSelector`) and, when `egressCIDRs` is set, which addresses its pods may reach. |
-| `spec.secretPolicy` | `Unrestricted` | Set to `Labeled` to restrict which Secrets a `ServiceEntry`/`InfoWidget` widget may reference via `secretKeyRef`/`caCert` to only those carrying the `page.kubepage.dev/allow-widgets: "true"` label — see [SECURITY.md](SECURITY.md#trust-model) for the exfiltration path this closes. |
+| `spec.secretPolicy` | `Unrestricted` | Set to `Labeled` to restrict which Secrets a `ServiceCard`/`InfoWidget` widget may reference via `secretKeyRef`/`caCert` to only those carrying the `page.kubepage.dev/allow-widgets: "true"` label — see [SECURITY.md](SECURITY.md#trust-model) for the exfiltration path this closes. |
 
 Per-widget, `ServiceWidget`/`InfoWidget`'s `caCert` field supplies a
 PEM-encoded CA certificate (resolved the same way as any other secret-bearing
 field) so a self-hosted upstream with a private CA can be verified instead of
 falling back to a widget's own `insecureTLS` escape hatch (e.g. `unifi.go`).
+
+### Scheduling
+
+`spec.nodeSelector`, `spec.tolerations`, `spec.affinity`,
+`spec.topologySpreadConstraints`, `spec.imagePullSecrets`, and
+`spec.priorityClassName` all pass straight through to the dashboard pod
+template — useful for mixed-arch homelab nodes, tainted Raspberry Pis, or a
+single-node control plane. `spec.replicas` and `spec.containerPort` both
+default (`1`, `8080`), so a minimal `Dashboard` needs neither set; see
+`spec.replicas`'s doc comment for why scaling past 1 replica isn't a
+supported operation given the per-replica polling behavior.
 
 ## Quickstart
 
@@ -104,20 +123,20 @@ mise run install
 # Deploy the controller (build/push your own image, or use an already-published one)
 IMG=<some-registry>/kubepage-operator:tag mise run deploy
 
-# Apply the sample Instance plus one of every config CRD
+# Apply the sample Dashboard plus one of every config CRD
 kubectl apply -k config/samples/
 ```
 
 The samples under [`config/samples/`](config/samples/) show the minimal shape
-of every CRD: [`Instance`](config/samples/page_v1alpha1_instance.yaml),
-[`Configuration`](config/samples/page_v1alpha1_configuration.yaml),
-[`ServiceEntry`](config/samples/page_v1alpha1_serviceentry.yaml),
+of every CRD: [`Dashboard`](config/samples/page_v1alpha1_dashboard.yaml),
+[`DashboardStyle`](config/samples/page_v1alpha1_dashboardstyle.yaml),
+[`ServiceCard`](config/samples/page_v1alpha1_servicecard.yaml),
 [`Bookmark`](config/samples/page_v1alpha1_bookmark.yaml), and
 [`InfoWidget`](config/samples/page_v1alpha1_infowidget.yaml). Once applied,
-`kubectl get pageinst,pcfg,psvc,pbmk,piw` shows their `Ready` status and
+`kubectl get pdash,pstyle,pcard,pbmk,piw` shows their `Ready` status and
 bound counts; the dashboard Service is reachable by port-forwarding it
-(`kubectl port-forward svc/instance-sample 8080:8080`) or by setting
-`spec.ingress.enabled: true` on the `Instance` to expose it via an Ingress.
+(`kubectl port-forward svc/dashboard-sample 8080:8080`) or by setting
+`spec.ingress.enabled: true` on the `Dashboard` to expose it via an Ingress.
 
 ### To Uninstall
 
@@ -133,8 +152,9 @@ Tooling is managed by [mise](https://mise.jdx.dev) — it pins every tool versio
 (Go, golangci-lint, controller-gen, kustomize, helm, kind, etc.) in
 [`.mise/config.toml`](.mise/config.toml), so local development matches CI
 exactly. Docker and access to a Kubernetes cluster are the only other
-prerequisites — v1.30+ to get the `ValidatingAdmissionPolicy`-based admission
-checks (see [Admission validation](#admission-validation)); older clusters
+prerequisites — v1.29+ for the CRDs' own CEL schema validation, v1.30+ to
+additionally get the `ValidatingAdmissionPolicy`-based credential-shaped-value
+warning (see [Admission validation](#admission-validation)); older clusters
 work too with `--set admissionPolicies.enabled=false` on the Helm chart.
 
 ```sh
@@ -172,7 +192,7 @@ relationships).
 ### Namespace-scoped install (optional)
 
 By default the manager holds its RBAC (including `secrets get`, needed to
-provision each Instance's own scoped Secret access — see
+provision each Dashboard's own scoped Secret access — see
 [SECURITY.md](SECURITY.md#supply-chain)) cluster-wide via a `ClusterRole`/
 `ClusterRoleBinding`. [`config/namespace-scoped/`](config/namespace-scoped)
 is an overlay that instead binds the same `ClusterRole` via a namespaced

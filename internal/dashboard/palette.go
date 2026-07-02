@@ -1,6 +1,6 @@
 package dashboard
 
-// Ramp is a Tailwind color's 50–900 shades. The chosen Configuration.Color
+// Ramp is a Tailwind color's 50–900 shades. The chosen DashboardStyle.Color
 // tints the *whole* UI from this ramp (bg/panel/text/muted/border) the way
 // homepage does, rather than only colouring an accent. The template wires
 // these into CSS variables and the data-theme block selects which steps map
@@ -14,7 +14,7 @@ type Ramp struct {
 // asserts a ramp's 500 step equals its accent).
 const blue500 = "#3b82f6"
 
-// colorRamps maps a Configuration.Color value (homepage's documented palette
+// colorRamps maps a DashboardStyle.Color value (homepage's documented palette
 // enum) to that Tailwind color's full 50–900 ramp. Lifted from the Tailwind v3
 // palette (D11: "close enough" fidelity for the no-build native renderer).
 // "white" reuses the slate ramp for structural theming; its accent stays the
@@ -44,7 +44,7 @@ var colorRamps = map[string]Ramp{
 	"rose":       {"#fff1f2", "#ffe4e6", "#fecdd3", "#fda4af", "#fb7185", "#f43f5e", "#e11d48", "#be123c", "#9f1239", "#881337"},
 }
 
-// accentPalette maps a Configuration.Color value to that Tailwind color's
+// accentPalette maps a DashboardStyle.Color value to that Tailwind color's
 // 500-shade hex, used as the dashboard's --accent CSS variable.
 var accentPalette = map[string]string{
 	defaultColor: "#64748b",
@@ -74,7 +74,7 @@ var accentPalette = map[string]string{
 
 const defaultAccentHex = "#64748b"
 
-// AccentHex returns the hex color for a Configuration.Color value, falling
+// AccentHex returns the hex color for a DashboardStyle.Color value, falling
 // back to the slate default for an empty or unrecognized value (e.g. a
 // color added to homepage's enum after this palette was written).
 func AccentHex(color string) string {
@@ -84,7 +84,7 @@ func AccentHex(color string) string {
 	return defaultAccentHex
 }
 
-// PaletteRamp returns the full 50–900 ramp for a Configuration.Color value,
+// PaletteRamp returns the full 50–900 ramp for a DashboardStyle.Color value,
 // falling back to the slate default for an empty or unrecognized value (and
 // for "white", which has no chromatic ramp of its own).
 func PaletteRamp(color string) Ramp {
@@ -104,9 +104,9 @@ type switcherConfig struct {
 }
 
 // AllPalettes returns every color accentPalette has an entry for — the same
-// set ConfigurationSpec.Color's kubebuilder enum accepts, plus "orange"
+// set DashboardStyleSpec.Color's kubebuilder enum accepts, plus "orange"
 // (defined here but not part of that enum; a harmless switcher-only bonus
-// since it's never written back to a Configuration) — keyed by name, with
+// since it's never written back to a DashboardStyle) — keyed by name, with
 // its ramp + accent, JSON-shaped for the client-side color switcher
 // (index.templ): rather than reloading the page to pick a different
 // palette, the switcher ships every palette to the browser once and flips
