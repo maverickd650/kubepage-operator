@@ -38,11 +38,16 @@ func (w *warningCollector) reset() {
 	w.messages = nil
 }
 
-func (w *warningCollector) contains(substr string) bool {
+// containsCredentialShapedWarning reports whether any collected warning
+// mentions the credential-shaped-value policy's message. Only ever checked
+// against that one substring in this file, so it takes no parameter (an
+// unused substr parameter here would just be unparam-flagged dead
+// flexibility).
+func (w *warningCollector) containsCredentialShapedWarning() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, m := range w.messages {
-		if strings.Contains(m, substr) {
+		if strings.Contains(m, "credential-shaped") {
 			return true
 		}
 	}
@@ -72,13 +77,13 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 			collector.reset()
 			se := serviceEntryWithSecret("warn-warmup", &pagev1alpha1.SecretValueSource{Value: ptrString("x")})
 			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				"token": {Value: ptrString("plaintext-value")},
+				secretField: {Value: ptrString("plaintext-value")},
 			}
 			if err := warningClient.Create(ctx, se); err != nil {
 				return false
 			}
 			_ = warningClient.Delete(ctx, se)
-			return collector.contains("credential-shaped")
+			return collector.containsCredentialShapedWarning()
 		}, 30*time.Second, time.Second).Should(BeTrue(), "policy should begin warning on credential-shaped inline values")
 	})
 
@@ -94,7 +99,7 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed(), "Warn actions must not block the request")
 			defer func() { _ = warningClient.Delete(ctx, se) }()
-			Expect(collector.contains("credential-shaped")).To(BeTrue())
+			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
 		})
 
 		It("does not warn for a non-credential-shaped field name using an inline value", func() {
@@ -104,20 +109,20 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed())
 			defer func() { _ = warningClient.Delete(ctx, se) }()
-			Expect(collector.contains("credential-shaped")).To(BeFalse())
+			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
 		})
 
 		It("does not warn when the credential-shaped field uses secretKeyRef", func() {
 			se := serviceEntryWithSecret("se-cred-shaped-ref", nil)
 			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
 				"apiKey": {SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "api-secret"},
-					Key:                  "token",
+					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
+					Key:                  secretField,
 				}},
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed())
 			defer func() { _ = warningClient.Delete(ctx, se) }()
-			Expect(collector.contains("credential-shaped")).To(BeFalse())
+			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
 		})
 	})
 
@@ -135,7 +140,7 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 			}
 			Expect(warningClient.Create(ctx, iw)).To(Succeed())
 			defer func() { _ = warningClient.Delete(ctx, iw) }()
-			Expect(collector.contains("credential-shaped")).To(BeTrue())
+			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
 		})
 	})
 })

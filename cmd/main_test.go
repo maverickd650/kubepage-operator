@@ -10,6 +10,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
+// Shared literals across this file's table-driven tests, pulled out so
+// goconst doesn't flag them as repeated string constants.
+const (
+	testSidecarContainerName = "sidecar"
+	testImageRepo            = "registry.example.invalid/kubepage-operator"
+	testImageRepoWithPort    = "registry.example.invalid:5000/kubepage-operator"
+	testNamespaceTeamA       = "team-a"
+	testNamespaceTeamB       = "team-b"
+)
+
 func TestOwnDashboardImageMissingEnvVars(t *testing.T) {
 	tests := map[string]struct {
 		podName, podNamespace string
@@ -60,14 +70,14 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 		t.Fatalf("creating namespace: %v", err)
 	}
 
-	const wantImage = "registry.example.invalid/kubepage-operator:test"
+	const wantImage = testImageRepo + ":test"
 
 	t.Run("manager container found", func(t *testing.T) {
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: "manager-pod", Namespace: ns.Name},
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
-					{Name: "sidecar", Image: "sidecar:latest"},
+					{Name: testSidecarContainerName, Image: testSidecarContainerName + ":latest"},
 					{Name: managerContainerName, Image: wantImage},
 				},
 			},
@@ -102,7 +112,7 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 			t.Fatalf("creating pod: %v", err)
 		}
 		pod.Status.ContainerStatuses = []corev1.ContainerStatus{
-			{Name: managerContainerName, ImageID: "registry.example.invalid/kubepage-operator@" + wantDigest},
+			{Name: managerContainerName, ImageID: testImageRepo + "@" + wantDigest},
 		}
 		if err := setupClient.Status().Update(t.Context(), pod); err != nil {
 			t.Fatalf("updating pod status: %v", err)
@@ -115,7 +125,7 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ownDashboardImage() error = %v", err)
 		}
-		want := "registry.example.invalid/kubepage-operator@" + wantDigest
+		want := testImageRepo + "@" + wantDigest
 		if got != want {
 			t.Errorf("ownDashboardImage() = %q, want %q", got, want)
 		}
@@ -125,7 +135,7 @@ func TestOwnDashboardImageAgainstRealAPIServer(t *testing.T) {
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: "no-manager-pod", Namespace: ns.Name},
 			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "sidecar", Image: "sidecar:latest"}},
+				Containers: []corev1.Container{{Name: testSidecarContainerName, Image: testSidecarContainerName + ":latest"}},
 			},
 		}
 		if err := setupClient.Create(t.Context(), pod); err != nil {
@@ -165,9 +175,15 @@ func TestParseWatchNamespaces(t *testing.T) {
 	}{
 		"empty string yields no namespaces":    {in: "", want: nil},
 		"whitespace-only yields no namespaces": {in: "   ", want: nil},
-		"single namespace":                     {in: "team-a", want: []string{"team-a"}},
-		"multiple namespaces trimmed":          {in: " team-a , team-b ,team-c", want: []string{"team-a", "team-b", "team-c"}},
-		"empty entries dropped":                {in: "team-a,,team-b,", want: []string{"team-a", "team-b"}},
+		"single namespace":                     {in: testNamespaceTeamA, want: []string{testNamespaceTeamA}},
+		"multiple namespaces trimmed": {
+			in:   " " + testNamespaceTeamA + " , " + testNamespaceTeamB + " ,team-c",
+			want: []string{testNamespaceTeamA, testNamespaceTeamB, "team-c"},
+		},
+		"empty entries dropped": {
+			in:   testNamespaceTeamA + ",," + testNamespaceTeamB + ",",
+			want: []string{testNamespaceTeamA, testNamespaceTeamB},
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -185,20 +201,34 @@ func TestParseWatchNamespaces(t *testing.T) {
 }
 
 func TestNamespaceCacheConfigs(t *testing.T) {
-	got := namespaceCacheConfigs([]string{"team-a", "team-b"})
+	got := namespaceCacheConfigs([]string{testNamespaceTeamA, testNamespaceTeamB})
 	if len(got) != 2 {
 		t.Fatalf("namespaceCacheConfigs() = %v, want 2 entries", got)
 	}
-	if _, ok := got["team-a"]; !ok {
+	if _, ok := got[testNamespaceTeamA]; !ok {
 		t.Error("namespaceCacheConfigs() missing team-a")
 	}
-	if _, ok := got["team-b"]; !ok {
+	if _, ok := got[testNamespaceTeamB]; !ok {
 		t.Error("namespaceCacheConfigs() missing team-b")
 	}
 }
 
+// managerStatus/sidecarStatus build a single-element ContainerStatus slice,
+// pulled out so TestDigestPinnedImage's table entries stay under the
+// line-length limit.
+func managerStatus(imageID string) []corev1.ContainerStatus {
+	return []corev1.ContainerStatus{{Name: managerContainerName, ImageID: imageID}}
+}
+
+func sidecarStatus(imageID string) []corev1.ContainerStatus {
+	return []corev1.ContainerStatus{{Name: testSidecarContainerName, ImageID: imageID}}
+}
+
 func TestDigestPinnedImage(t *testing.T) {
 	const digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	const zeroDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	taggedImage := testImageRepo + ":v1.2.3"
+	digestImage := testImageRepo + "@" + digest
 
 	tests := map[string]struct {
 		specImage string
@@ -207,42 +237,42 @@ func TestDigestPinnedImage(t *testing.T) {
 		wantOK    bool
 	}{
 		"tagged image gets its tag replaced by the running digest": {
-			specImage: "registry.example.invalid/kubepage-operator:v1.2.3",
-			statuses:  []corev1.ContainerStatus{{Name: managerContainerName, ImageID: "registry.example.invalid/kubepage-operator@" + digest}},
-			wantImage: "registry.example.invalid/kubepage-operator@" + digest,
+			specImage: taggedImage,
+			statuses:  managerStatus(digestImage),
+			wantImage: digestImage,
 			wantOK:    true,
 		},
 		"image with a registry port keeps the port, not mistaking it for a tag separator": {
-			specImage: "registry.example.invalid:5000/kubepage-operator:v1.2.3",
-			statuses:  []corev1.ContainerStatus{{Name: managerContainerName, ImageID: "registry.example.invalid:5000/kubepage-operator@" + digest}},
-			wantImage: "registry.example.invalid:5000/kubepage-operator@" + digest,
+			specImage: testImageRepoWithPort + ":v1.2.3",
+			statuses:  managerStatus(testImageRepoWithPort + "@" + digest),
+			wantImage: testImageRepoWithPort + "@" + digest,
 			wantOK:    true,
 		},
 		"already-digest spec image is repointed at the running digest": {
-			specImage: "registry.example.invalid/kubepage-operator@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-			statuses:  []corev1.ContainerStatus{{Name: managerContainerName, ImageID: "registry.example.invalid/kubepage-operator@" + digest}},
-			wantImage: "registry.example.invalid/kubepage-operator@" + digest,
+			specImage: testImageRepo + "@" + zeroDigest,
+			statuses:  managerStatus(digestImage),
+			wantImage: digestImage,
 			wantOK:    true,
 		},
 		"untagged image gets a digest appended": {
-			specImage: "registry.example.invalid/kubepage-operator",
-			statuses:  []corev1.ContainerStatus{{Name: managerContainerName, ImageID: "registry.example.invalid/kubepage-operator@" + digest}},
-			wantImage: "registry.example.invalid/kubepage-operator@" + digest,
+			specImage: testImageRepo,
+			statuses:  managerStatus(digestImage),
+			wantImage: digestImage,
 			wantOK:    true,
 		},
 		"no matching container status falls back to the spec image": {
-			specImage: "registry.example.invalid/kubepage-operator:v1.2.3",
-			statuses:  []corev1.ContainerStatus{{Name: "sidecar", ImageID: "sidecar@" + digest}},
+			specImage: taggedImage,
+			statuses:  sidecarStatus(testSidecarContainerName + "@" + digest),
 			wantOK:    false,
 		},
 		"empty ImageID falls back to the spec image": {
-			specImage: "registry.example.invalid/kubepage-operator:v1.2.3",
-			statuses:  []corev1.ContainerStatus{{Name: managerContainerName, ImageID: ""}},
+			specImage: taggedImage,
+			statuses:  managerStatus(""),
 			wantOK:    false,
 		},
 		"ImageID without a resolvable digest falls back to the spec image": {
-			specImage: "registry.example.invalid/kubepage-operator:v1.2.3",
-			statuses:  []corev1.ContainerStatus{{Name: managerContainerName, ImageID: "docker://a1b2c3d4"}},
+			specImage: taggedImage,
+			statuses:  managerStatus("docker://a1b2c3d4"),
 			wantOK:    false,
 		},
 	}

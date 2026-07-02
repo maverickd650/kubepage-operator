@@ -42,7 +42,7 @@ var _ = Describe("Secret-source ValidatingAdmissionPolicies", Ordered, func() {
 	secretKeyRef := func() *pagev1alpha1.SecretValueSource {
 		return &pagev1alpha1.SecretValueSource{
 			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: "api-secret"},
+				LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 				Key:                  secretField,
 			},
 		}
@@ -76,7 +76,7 @@ var _ = Describe("Secret-source ValidatingAdmissionPolicies", Ordered, func() {
 			both := &pagev1alpha1.SecretValueSource{
 				Value: ptrString("inline"),
 				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "api-secret"},
+					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 					Key:                  secretField,
 				},
 			}
