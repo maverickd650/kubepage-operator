@@ -378,10 +378,22 @@ func ownDashboardImage(ctx context.Context, c client.Reader) (string, error) {
 // from statuses' entry for managerContainerName's ImageID (e.g.
 // "docker.io/library/registry@sha256:abcd..." or, on some runtimes, a bare
 // "sha256:abcd..."). ok is false when no usable digest is available (no
-// matching status yet, an empty ImageID, or one that doesn't carry a
-// "sha256:..." digest) — see ownDashboardImage's doc comment for why that's
-// an accepted fallback rather than an error.
+// matching status yet, an empty ImageID, one that doesn't carry a
+// "sha256:..." digest, or one whose repository doesn't match specImage's —
+// see below) — see ownDashboardImage's doc comment for why that's an
+// accepted fallback rather than an error.
+//
+// The repository match check matters because ImageID's repository isn't
+// always specImage's: an image loaded locally without a real registry pull
+// (e.g. `kind load docker-image`, common for self-built/self-hosted
+// deployments and this project's own e2e tests) gets reported under a
+// synthetic repository the runtime invents for the import, distinct from
+// the repo the Deployment spec actually names. Pairing that digest with
+// specImage's repo would construct a reference the runtime can't resolve
+// (that exact repo@digest was never itself pulled/tagged), so such cases
+// fall back to the plain tag reference instead.
 func digestPinnedImage(specImage string, statuses []corev1.ContainerStatus) (image string, ok bool) {
+	repo := imageRepo(specImage)
 	for _, status := range statuses {
 		if status.Name != managerContainerName {
 			continue
@@ -390,17 +402,26 @@ func digestPinnedImage(specImage string, statuses []corev1.ContainerStatus) (ima
 		if idx == -1 {
 			return "", false
 		}
-		digest := status.ImageID[idx+1:]
-
-		repo := specImage
-		if at := strings.LastIndex(repo, "@"); at != -1 {
-			repo = repo[:at]
-		} else if colon := strings.LastIndex(repo, ":"); colon != -1 && !strings.Contains(repo[colon:], "/") {
-			repo = repo[:colon]
+		if status.ImageID[:idx] != repo {
+			return "", false
 		}
+		digest := status.ImageID[idx+1:]
 		return repo + "@" + digest, true
 	}
 	return "", false
+}
+
+// imageRepo strips the tag or digest suffix from an image reference, e.g.
+// "example.com/foo:v1" and "example.com/foo@sha256:abcd" both become
+// "example.com/foo".
+func imageRepo(image string) string {
+	if at := strings.LastIndex(image, "@"); at != -1 {
+		return image[:at]
+	}
+	if colon := strings.LastIndex(image, ":"); colon != -1 && !strings.Contains(image[colon:], "/") {
+		return image[:colon]
+	}
+	return image
 }
 
 // gatewayAPIAvailable reports whether the cluster has Gateway API's HTTPRoute
