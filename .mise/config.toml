@@ -172,7 +172,12 @@ kustomize build config/default > dist/install.yaml
 [tasks.helm-chart-refresh]
 description = "Regenerate dist/chart/ from config/ via kubebuilder's helm/v2-alpha plugin, preserving hand-tuned templates"
 depends = ["build-installer"]
+# Needs a shebang: this is the only task using `set -o pipefail`, and mise's
+# default task shell is /bin/sh (dash on Ubuntu, which doesn't support
+# pipefail — this only ever ran on macOS's bash-backed /bin/sh before it was
+# wired into CI, see test.yml's generated-file drift check).
 run = '''
+#!/usr/bin/env bash
 set -euo pipefail
 
 # The helm/v2-alpha plugin always shells out to `make manifests`, `make
