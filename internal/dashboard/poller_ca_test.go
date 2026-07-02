@@ -12,6 +12,8 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
+const testCACertSecretKey = "ca.crt"
+
 func TestCAClientCachesByPEMContentHash(t *testing.T) {
 	base := &http.Client{Timeout: 5 * time.Second}
 	pem := generateTestCACertPEM(t)
@@ -56,7 +58,7 @@ func TestHTTPClientForCACertResolvesSecretAndBuildsClient(t *testing.T) {
 	pemBytes := generateTestCACertPEM(t)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: testNamespace},
-		Data:       map[string][]byte{"ca.crt": pemBytes},
+		Data:       map[string][]byte{testCACertSecretKey: pemBytes},
 	}
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
@@ -66,7 +68,7 @@ func TestHTTPClientForCACertResolvesSecretAndBuildsClient(t *testing.T) {
 	caCert := &pagev1alpha1.SecretValueSource{
 		SecretKeyRef: &corev1.SecretKeySelector{
 			LocalObjectReference: corev1.LocalObjectReference{Name: "ca-bundle"},
-			Key:                  "ca.crt",
+			Key:                  testCACertSecretKey,
 		},
 	}
 
@@ -87,8 +89,8 @@ func TestHTTPClientForCACertSecretResolutionError(t *testing.T) {
 	base := &http.Client{Timeout: 5 * time.Second}
 	caCert := &pagev1alpha1.SecretValueSource{
 		SecretKeyRef: &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
-			Key:                  "ca.crt",
+			LocalObjectReference: corev1.LocalObjectReference{Name: testDoesNotExist},
+			Key:                  testCACertSecretKey,
 		},
 	}
 
