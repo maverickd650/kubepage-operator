@@ -28,13 +28,13 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: condRain}},
 		},
 		"thunderstorm": {
-			config:     `{"latitude":1,"longitude":1}`,
+			config:     testCoordsConfig,
 			response:   `{"current_weather":{"temperature":20,"weathercode":95}}`,
 			statusCode: http.StatusOK,
 			want:       []Field{{Label: labelWeather, Value: "20°C"}, {Label: labelConditions, Value: condThunderstorm}},
 		},
 		testCaseNon200: {
-			config:     `{"latitude":1,"longitude":1}`,
+			config:     testCoordsConfig,
 			statusCode: http.StatusInternalServerError,
 			want:       []Field{{Label: labelStatus, Value: testHTTP500}},
 		},
@@ -75,7 +75,7 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 func TestOpenMeteoWidgetPollUnreachable(t *testing.T) {
 	got, err := (openMeteoWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		URL:    testUnreachableAddr,
-		Config: []byte(`{"latitude":1,"longitude":1}`),
+		Config: []byte(testCoordsConfig),
 	})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)

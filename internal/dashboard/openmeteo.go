@@ -61,7 +61,7 @@ func (openMeteoWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 	}
 	tempUnit := "celsius"
 	tempSuffix := "°C"
-	if c.Units == "imperial" {
+	if c.Units == unitsImperial {
 		tempUnit = "fahrenheit"
 		tempSuffix = "°F"
 	}

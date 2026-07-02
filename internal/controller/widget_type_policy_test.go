@@ -33,7 +33,7 @@ var (
 	// allow-list that's also a registered dashboard.Widget; "greeting" and
 	// "datetime" are rendered statically by internal/dashboard/server.go and
 	// never go through Register, so they're intentionally excluded here.
-	infoWidgetPollableTypes = []string{testWidgetTypeOpenMeteo, "kubemetrics"}
+	infoWidgetPollableTypes = []string{testWidgetTypeOpenMeteo, "kubemetrics", "glances", "longhorn", "openweathermap"}
 )
 
 // TestRegisteredWidgetTypesCoveredByPolicy guards against a widget added to

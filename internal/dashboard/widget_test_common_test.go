@@ -47,6 +47,10 @@ const (
 	// carries to opt into discovery.go's discovery, built from the same
 	// constants the production code uses so it can't drift from them.
 	testDiscoveryEnabledAnnotation = defaultDiscoveryPrefix + discoveryAnnEnabled
+
+	// Shared literals across openmeteo/openweathermap tests.
+	testCoordsConfig = `{"latitude":1,"longitude":1}`
+	testAPIKey       = "abc123"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.
