@@ -28,6 +28,19 @@ jobs:
       - name: Setup Go environment
         uses: ./.github/actions/setup-go-env
 
+      - name: Check golangci-lint version lockstep with .custom-gcl.yml
+        # A Renovate bump of one without the other builds a mismatched
+        # custom golangci-lint binary (the mise-installed stock binary vs.
+        # the plugin version .custom-gcl.yml asks for) — fail fast here
+        # instead.
+        run: |
+          mise_version="$(grep -E '^golangci-lint = ' .mise/config.toml | sed -E 's/.*"([0-9.]+)".*/\1/')"
+          gcl_version="$(grep -E '^version:' .custom-gcl.yml | awk '{print $2}' | sed -E 's/^v//')"
+          if [ "$mise_version" != "$gcl_version" ]; then
+            echo "::error::golangci-lint version mismatch: .mise/config.toml has $mise_version, .custom-gcl.yml has v$gcl_version"
+            exit 1
+          fi
+
       - name: Cache custom golangci-lint binary
         id: golangci-lint-custom-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
