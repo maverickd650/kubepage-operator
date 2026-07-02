@@ -3,7 +3,9 @@ package dashboard
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"hash/fnv"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -71,6 +74,11 @@ type Server struct {
 	Namespace      string
 	InstanceName   string
 	RefreshSeconds int
+
+	// SecretReader resolves the basic-auth Secret (spec.auth.basicAuthSecretRef),
+	// deliberately uncached — see basicAuthMiddleware/loadBasicAuth and
+	// poller.go's resolveSecret for the same rule applied to widget secrets.
+	SecretReader client.Reader
 
 	// Version/Commit are stamped at build time (see cmd/main.go), shown in
 	// the page shell's footer unless Site.HideVersion is set.
@@ -146,49 +154,102 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /manifest.json", s.handleManifest)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	return securityHeaders(mux)
+	return securityHeaders(s.basicAuthMiddleware(mux))
 }
 
 // contentSecurityPolicy locks the page down to same-origin scripts/styles/
 // connections (htmx and every inline <script>/<style> in index.templ are
 // first-party; the only cross-origin loads are icons/backgrounds, which
 // resolve to operator- or CRD-supplied URLs — see icon.go — so img-src alone
-// stays open to https:/data:). 'unsafe-inline' on script-src/style-src is
-// needed because the page shell has no nonce/hash plumbing yet; every value
-// interpolated into those inline blocks is either a fixed lookup table
-// (AccentHex/PaletteRamp), a plain integer, or escaped via cssStringEscape
-// (CustomCSS/Background.Image) rather than free-form script text. frame-src
-// mirrors img-src's "https: and nothing else" scope: without it, an iframe
-// ServiceWidget's <iframe src="..."> (cards.templ, iframe.go) falls back to
-// default-src 'self' and every browser refuses to load it — the CSP is a
-// compile-time constant, so this can't be scoped to just the operator-
-// configured widget URLs without threading per-request state through the
-// page shell; iframe.go's own fixed sandbox attribute (allow-scripts
-// allow-same-origin, no allow-top-navigation) is the actual containment
-// boundary for whatever origin an operator points a widget at.
-const contentSecurityPolicy = "default-src 'self'; " +
-	"img-src 'self' https: data:; " +
-	"frame-src https:; " +
-	"style-src 'self' 'unsafe-inline'; " +
-	"script-src 'self' 'unsafe-inline'; " +
-	"connect-src 'self'; " +
-	"frame-ancestors 'none'; " +
-	"base-uri 'self'; " +
-	"form-action 'self'"
+// stays open to https:/data:). script-src/style-src use a per-request nonce
+// (see securityHeaders/generateNonce) rather than 'unsafe-inline' for
+// *elements*: every inline <style>/<script> in index.templ — including the
+// CustomCSS/CustomJS/background-image ones emitted via @templ.Raw
+// (render_helpers.go's customStyle/customScript/backgroundStyle) — carries
+// the same nonce, so a <script>/<style> tag without it (e.g. one smuggled in
+// by a future escaping regression in those @templ.Raw paths) is refused by
+// the browser regardless of what CustomCSS/CustomJS/Background.Image's own
+// escaping does or doesn't catch.
+//
+// style-src-attr/script-src-attr are a deliberate, narrower exception: per
+// the CSP spec, a nonce only satisfies the check for <script>/<style>
+// *elements* — it has no effect on inline attribute values (style="...",
+// onclick="..."), which the spec routes through a separate "attribute"
+// check that only 'unsafe-inline' (or a hash matching the literal rendered
+// value, impractical here since these are computed per request/element) can
+// satisfy. This codebase renders several: the page's CSS custom properties
+// on <html style=...> (index.templ), grid-template-columns/usage-bar-fill/
+// iframe-height styles and the tab switcher's onclick= (cards.templ). Every
+// value behind those attributes is server-computed from a fixed lookup
+// table, a plain integer, or already-escaped CRD input (see cssStringEscape)
+// — never attacker-controlled free text — so scoping 'unsafe-inline' to
+// *only* the -attr directives (leaving the element directives nonce-only)
+// keeps the actual XSS-relevant surface — a rogue <script>/<style> tag —
+// covered, without silently breaking every inline style/onclick in the app.
+//
+// frame-src mirrors img-src's "https: and nothing else" scope: without it,
+// an iframe ServiceWidget's <iframe src="..."> (cards.templ, iframe.go)
+// falls back to default-src 'self' and every browser refuses to load it —
+// this can't be scoped to just the operator-configured widget URLs without
+// threading per-request state through the page shell; iframe.go's own fixed
+// sandbox attribute (allow-scripts allow-same-origin, no
+// allow-top-navigation) is the actual containment boundary for whatever
+// origin an operator points a widget at.
+func contentSecurityPolicy(nonce string) string {
+	return "default-src 'self'; " +
+		"img-src 'self' https: data:; " +
+		"frame-src https:; " +
+		"style-src 'self' 'nonce-" + nonce + "'; " +
+		"style-src-attr 'unsafe-inline'; " +
+		"script-src 'self' 'nonce-" + nonce + "'; " +
+		"script-src-attr 'unsafe-inline'; " +
+		"connect-src 'self'; " +
+		"frame-ancestors 'none'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'"
+}
 
-// securityHeaders sets response headers that don't vary per request, cheap
-// defense-in-depth against XSS/clickjacking/MIME-sniffing for a page that
-// intentionally renders CRD-supplied CSS/URLs (background image, custom CSS,
-// icons — see cssStringEscape's doc comment on why those are escaped but not
-// blocked outright).
+// nonceByteLength is how many random bytes generateNonce reads before
+// base64-encoding them — 16 bytes (128 bits) is the commonly recommended
+// minimum for a CSP nonce, per https://content-security-policy.com/nonce/.
+const nonceByteLength = 16
+
+// generateNonce returns a fresh, cryptographically random, base64
+// (URL-safe, unpadded) CSP nonce for one request. URL-safe encoding is used
+// so the value needs no further escaping wherever it's interpolated — the
+// CSP header value, and every nonce="..." HTML attribute index.templ sets —
+// since its alphabet (A-Za-z0-9-_) contains no characters special to either
+// context.
+func generateNonce() string {
+	b := make([]byte, nonceByteLength)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read on a supported platform practically never fails;
+		// a panic here surfaces a broken host environment immediately
+		// rather than silently serving a predictable/empty nonce, which
+		// would defeat the point of nonce-based CSP.
+		panic("dashboard: reading random bytes for CSP nonce: " + err.Error())
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// securityHeaders sets response headers that don't vary per request beyond
+// the CSP nonce (see generateNonce) — cheap defense-in-depth against XSS/
+// clickjacking/MIME-sniffing for a page that intentionally renders
+// CRD-supplied CSS/URLs (background image, custom CSS, icons — see
+// cssStringEscape's doc comment on why those are escaped but not blocked
+// outright). Threads the nonce into the request context via templ.WithNonce
+// so index.templ's inline <style>/<script> tags (and @templ.JSONScript,
+// which reads it automatically) can render it — see contentSecurityPolicy's
+// doc comment.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nonce := generateNonce()
 		h := w.Header()
-		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("Content-Security-Policy", contentSecurityPolicy(nonce))
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(templ.WithNonce(r.Context(), nonce)))
 	})
 }
 

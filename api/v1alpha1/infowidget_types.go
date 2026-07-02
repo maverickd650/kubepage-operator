@@ -72,6 +72,13 @@ type InfoWidgetSpec struct {
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
+	// caCert optionally supplies a PEM-encoded CA certificate (or bundle)
+	// used, in addition to the system trust store, to verify this widget's
+	// upstream. See ServiceWidget.CACert's doc comment for the full
+	// rationale.
+	// +optional
+	CACert *SecretValueSource `json:"caCert,omitempty"`
+
 	// options holds every widget-type-specific field.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional

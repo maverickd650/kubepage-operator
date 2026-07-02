@@ -340,7 +340,7 @@ var _ = Describe("Instance controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
 			}).Should(Succeed())
 			Expect(role.Rules).To(ContainElement(HaveField("Resources", ContainElement("serviceentries"))))
-			Expect(role.Rules).NotTo(ContainElement(HaveField("Resources", ContainElement("secrets"))))
+			Expect(role.Rules).NotTo(ContainElement(HaveField("Resources", ContainElement(resourceSecrets))))
 
 			By("a RoleBinding binds the Role to the ServiceAccount")
 			rb := &rbacv1.RoleBinding{}
@@ -369,9 +369,9 @@ var _ = Describe("Instance controller", func() {
 						Type: testWidgetTypePrometheus,
 						URL:  &url,
 						Secrets: map[string]pagev1alpha1.SecretValueSource{
-							"token": {SecretKeyRef: &corev1.SecretKeySelector{
+							secretField: {SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{Name: "prom-creds"},
-								Key:                  "token",
+								Key:                  secretField,
 							}},
 						},
 					}},
@@ -388,7 +388,7 @@ var _ = Describe("Instance controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
 				g.Expect(role.Rules).To(ContainElement(SatisfyAll(
-					HaveField("Resources", ContainElement("secrets")),
+					HaveField("Resources", ContainElement(resourceSecrets)),
 					HaveField("ResourceNames", ConsistOf("prom-creds")),
 					HaveField("Verbs", ConsistOf("get")),
 				)))
@@ -402,7 +402,7 @@ var _ = Describe("Instance controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, role)).To(Succeed())
-				g.Expect(role.Rules).NotTo(ContainElement(HaveField("Resources", ContainElement("secrets"))))
+				g.Expect(role.Rules).NotTo(ContainElement(HaveField("Resources", ContainElement(resourceSecrets))))
 			}).Should(Succeed())
 		})
 
@@ -508,7 +508,7 @@ var _ = Describe("Instance controller", func() {
 			Expect(k8sClient.Create(ctx, bm)).To(Succeed())
 
 			entry := &pagev1alpha1.ServiceEntry{
-				ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: namespace.Name},
+				ObjectMeta: metav1.ObjectMeta{Name: testServiceEntryObjName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.ServiceEntrySpec{
 					InstanceRef: pagev1alpha1.InstanceRef{Name: InstanceName},
 					Group:       "Media",

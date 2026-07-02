@@ -20,6 +20,9 @@ const (
 	testOtherInstanceName        = "some-other-instance"
 	testPortNameHTTP             = "http"
 	testPortNameHTTPS            = "https"
+	testSecretRefName            = "api-secret"
+	testServiceEntryObjName      = "svc"
+	testValueTrue                = "true"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.

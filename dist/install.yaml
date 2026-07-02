@@ -550,6 +550,27 @@ spec:
                     - Enabled
                     - Disabled
                     type: string
+                  hideInternetSearch:
+                    default: Disabled
+                    description: |-
+                      hideInternetSearch removes the quick-launch palette's "search the
+                      web" fallthrough entry, leaving only card matches (and, unless
+                      HideVisitURL also hides it, the direct-URL entry).
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                  hideVisitURL:
+                    default: Disabled
+                    description: |-
+                      hideVisitURL removes the quick-launch palette's "visit <url>" entry
+                      that appears when the typed query itself looks like a URL or
+                      domain, letting the query jump there directly instead of running a
+                      web search for it.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   provider:
                     default: duckduckgo
                     description: |-
@@ -560,6 +581,17 @@ spec:
                     - google
                     - bing
                     - custom
+                    type: string
+                  searchDescriptions:
+                    default: Enabled
+                    description: |-
+                      searchDescriptions includes each card's description, not just its
+                      name, when matching the quick-launch (Ctrl/Cmd-K) palette's query
+                      against cards. Independent of FilterCards, which controls the
+                      inline as-you-type card filter instead.
+                    enum:
+                    - Enabled
+                    - Disabled
                     type: string
                   target:
                     default: _blank
@@ -772,6 +804,57 @@ spec:
           spec:
             description: spec defines the desired state of InfoWidget
             properties:
+              align:
+                description: |-
+                  align places this widget in the header strip's left or right slot,
+                  matching homepage's right-aligned info widgets. Unset defaults to
+                  "Left" for "greeting"/"datetime" and "Right" for every other type
+                  (homepage's own default layout: greeting/clock on the left, live
+                  stats on the right).
+                enum:
+                - Left
+                - Right
+                type: string
+              caCert:
+                description: |-
+                  caCert optionally supplies a PEM-encoded CA certificate (or bundle)
+                  used, in addition to the system trust store, to verify this widget's
+                  upstream. See ServiceWidget.CACert's doc comment for the full
+                  rationale.
+                properties:
+                  secretKeyRef:
+                    description: secretKeyRef selects a key of a Secret in the same
+                      namespace.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  value:
+                    description: |-
+                      value is a literal value. Avoid this for real credentials; prefer
+                      SecretKeyRef so the value isn't stored in the CR.
+                    maxLength: 4096
+                    minLength: 1
+                    type: string
+                type: object
               icon:
                 description: |-
                   icon shown to the left of this widget's value(s) in the header strip,
@@ -804,6 +887,14 @@ spec:
                   sorts last), ties broken by the InfoWidget object's name, since CRDs
                   have no inherent ordering of their own.
                 format: int32
+                type: integer
+              pollIntervalSeconds:
+                description: |-
+                  pollIntervalSeconds overrides the dashboard's global --poll-interval
+                  for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
+                  "datetime"/"greeting"/"logo", which aren't polled at all.
+                format: int32
+                minimum: 1
                 type: integer
               secrets:
                 additionalProperties:
@@ -1010,6 +1101,34 @@ spec:
                 description: annotations are the additional annotations to add to
                   the workload and pod
                 minProperties: 1
+                type: object
+              auth:
+                description: |-
+                  auth optionally gates every dashboard route (except /healthz) behind
+                  HTTP Basic authentication. Unset (the default) means the dashboard has
+                  no authentication of its own — see SECURITY.md's trust-model section
+                  for why, and for the recommended alternative of an authenticating
+                  reverse proxy.
+                properties:
+                  basicAuthSecretRef:
+                    description: |-
+                      basicAuthSecretRef names a Secret, in the same namespace as this
+                      Instance, holding an htpasswd-format file (bcrypt-hashed entries,
+                      e.g. produced by `htpasswd -B`) under its ".htpasswd" key. When set,
+                      every dashboard route except /healthz requires HTTP Basic credentials
+                      matching an entry in that file, checked with a constant-time compare.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                 type: object
               containerPort:
                 description: containerPort defines the port the dashboard HTTP server
@@ -1694,6 +1813,161 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              metrics:
+                description: |-
+                  metrics controls whether the dashboard's /metrics endpoint (per-widget
+                  poll counts/latencies, per-service up/down gauges) is exposed on the
+                  dashboard Service, in addition to the pod itself always serving it
+                  directly (reachable via a PodMonitor or port-forward regardless of
+                  this setting). Off by default: unlike the manager's own /metrics
+                  (which requires authn/authz), the dashboard's has none, so any pod
+                  able to reach the Service port could otherwise read which internal
+                  services this dashboard names and their live status with no RBAC
+                  check at all.
+                properties:
+                  enabled:
+                    default: Disabled
+                    description: enabled exposes port 9090 on the dashboard Service
+                      when "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                type: object
+              networkPolicy:
+                description: |-
+                  networkPolicy optionally creates an owner-referenced NetworkPolicy
+                  scoping which pods may reach this Instance's dashboard/metrics ports
+                  and, when egressCIDRs is set, which addresses its pods may reach. Off
+                  by default: dashboard pods otherwise accept ingress from anywhere in
+                  the cluster and have unrestricted egress, same as any Pod with no
+                  NetworkPolicy selecting it.
+                properties:
+                  egressCIDRs:
+                    description: |-
+                      egressCIDRs additionally allows egress to exactly these CIDR blocks
+                      (e.g. widget upstreams), plus DNS (port 53) and the Kubernetes API
+                      server (port 443) which are always allowed once egress is restricted.
+                      Leave empty to leave egress unrestricted (the non-breaking default)
+                      even with networkPolicy enabled for ingress — widget URLs are
+                      CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
+                      is an opt-in positive scope, not a default deny.
+                    items:
+                      maxLength: 43
+                      minLength: 1
+                      type: string
+                    maxItems: 64
+                    type: array
+                    x-kubernetes-list-type: set
+                  enabled:
+                    default: Disabled
+                    description: |-
+                      enabled creates and manages a NetworkPolicy for this Instance's
+                      dashboard pods when "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                  ingressNamespaceSelector:
+                    description: |-
+                      ingressNamespaceSelector selects which namespaces' pods may reach the
+                      dashboard's containerPort. Leave unset to allow ingress from any
+                      namespace (matching the default, unrestricted Service behavior) while
+                      still scoping the metrics port/egress below.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  metricsNamespaceSelector:
+                    description: |-
+                      metricsNamespaceSelector selects which namespaces' pods may reach the
+                      metrics port (9090). Only meaningful when spec.metrics.enabled; leave
+                      unset to allow from any namespace.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               podSecurityContext:
                 description: podSecurityContext is the pod security context
                 properties:
@@ -2149,6 +2423,22 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              secretPolicy:
+                default: Unrestricted
+                description: |-
+                  secretPolicy controls which Secrets a bound ServiceEntry/InfoWidget
+                  widget may reference via secretKeyRef (or caCert):
+                    - "Unrestricted" (default): any Secret in this namespace — the
+                      documented trust model (see SECURITY.md): anyone who can author
+                      these CRDs in a namespace is trusted with every Secret in it.
+                    - "Labeled": only Secrets carrying the
+                      page.kubepage.dev/allow-widgets: "true" label are granted to the
+                      dashboard pod's RBAC; a widget referencing an unlabeled (or
+                      nonexistent) Secret surfaces a clear card error instead.
+                enum:
+                - Unrestricted
+                - Labeled
+                type: string
               size:
                 default: 1
                 description: |-
@@ -2499,6 +2789,49 @@ spec:
                     directly in-process at poll time, so the plaintext value never appears in
                     pod env, a ConfigMap, or a projected file.
                   properties:
+                    caCert:
+                      description: |-
+                        caCert optionally supplies a PEM-encoded CA certificate (or bundle)
+                        used, in addition to the system trust store, to verify this widget's
+                        url. An alternative to Config's per-widget "insecureTLS" escape hatch
+                        (e.g. unifi.go) for self-hosted upstreams with a private CA: this lets
+                        the connection stay verified instead of skipping verification
+                        entirely. Resolved the same way as Secrets (never stored outside this
+                        object beyond the dashboard pod's in-memory TLS config).
+                      properties:
+                        secretKeyRef:
+                          description: secretKeyRef selects a key of a Secret in the
+                            same namespace.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        value:
+                          description: |-
+                            value is a literal value. Avoid this for real credentials; prefer
+                            SecretKeyRef so the value isn't stored in the CR.
+                          maxLength: 4096
+                          minLength: 1
+                          type: string
+                      type: object
                     config:
                       description: |-
                         config holds the remaining widget-type-specific options (e.g.
@@ -2618,6 +2951,17 @@ spec:
                         keyed by the field's label. See FieldHighlight.
                       minProperties: 1
                       type: object
+                    pollIntervalSeconds:
+                      description: |-
+                        pollIntervalSeconds overrides the dashboard's global --poll-interval
+                        for this widget only, letting a slow upstream (e.g. weather) poll less
+                        often than a fast one (e.g. Prometheus) without slowing every other
+                        widget down to match. Unset polls at the global interval every cycle.
+                        Floor-clamped to the global interval: a value smaller than it would
+                        have no effect anyway, since the poller only ever runs once per cycle.
+                      format: int32
+                      minimum: 1
+                      type: integer
                     secrets:
                       additionalProperties:
                         description: |-
@@ -3185,6 +3529,7 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
+  - networkpolicies
   verbs:
   - create
   - delete
@@ -3493,6 +3838,37 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
+  name: kubepage-operator-infowidget-credential-shaped-value
+  namespace: kubepage-operator-system
+spec:
+  failurePolicy: Ignore
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - page.kubepage.dev
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - infowidgets
+  validations:
+  - expression: |-
+      !has(object.spec.secrets) || object.spec.secrets.all(k,
+
+        !(has(object.spec.secrets[k].value) && k.matches('(?i)(token|password|passwd|secret|api[_-]?key|credential|private[_-]?key)')))
+    message: a secret field name looks credential-shaped (token/password/apiKey/secret/
+      credential/privateKey) but uses an inline "value" instead of "secretKeyRef"
+      — this stores the plaintext in the InfoWidget object itself (etcd, any GitOps
+      repo, `kubectl get -o yaml`). Prefer secretKeyRef for real credentials; ignore
+      this warning if the field name is a false positive (e.g. a genuinely non-secret
+      option that happens to be named this way).
+    reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
   name: kubepage-operator-infowidget-secret-source
   namespace: kubepage-operator-system
 spec:
@@ -3535,9 +3911,44 @@ spec:
       resources:
       - infowidgets
   validations:
-  - expression: object.spec.type in ['greeting', 'datetime', 'logo', 'openmeteo',
-      'kubemetrics']
-    message: InfoWidget type must be one of greeting, datetime, logo, openmeteo, kubemetrics
+  - expression: |-
+      object.spec.type in ['greeting', 'datetime', 'logo', 'openmeteo', 'kubemetrics',
+
+        'glances', 'longhorn', 'openweathermap']
+    message: InfoWidget type must be one of greeting, datetime, logo, openmeteo, kubemetrics,
+      glances, longhorn, openweathermap
+    reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubepage-operator-serviceentry-credential-shaped-value
+  namespace: kubepage-operator-system
+spec:
+  failurePolicy: Ignore
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - page.kubepage.dev
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - serviceentries
+  validations:
+  - expression: |-
+      !has(object.spec.widgets) || object.spec.widgets.all(w,
+
+        !has(w.secrets) || w.secrets.all(k,
+          !(has(w.secrets[k].value) && k.matches('(?i)(token|password|passwd|secret|api[_-]?key|credential|private[_-]?key)'))))
+    message: a widget secret field name looks credential-shaped (token/password/apiKey/
+      secret/credential/privateKey) but uses an inline "value" instead of "secretKeyRef"
+      — this stores the plaintext in the ServiceEntry object itself (etcd, any GitOps
+      repo, `kubectl get -o yaml`). Prefer secretKeyRef for real credentials; ignore
+      this warning if the field name is a false positive (e.g. a genuinely non-secret
+      option that happens to be named this way).
     reason: Invalid
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -3615,11 +4026,21 @@ spec:
 
         w.type in ['plex', 'stash', 'paperlessngx', 'grafana', 'prometheus',
           'prometheusmetric', 'unifi', 'truenas', 'cloudflared', 'linkwarden',
-          'homeassistant', 'mealie', 'customapi'])
+          'homeassistant', 'mealie', 'customapi', 'iframe'])
     message: each ServiceEntry widget type must be a supported service widget (plex,
       stash, paperlessngx, grafana, prometheus, prometheusmetric, unifi, truenas,
-      cloudflared, linkwarden, homeassistant, mealie, customapi)
+      cloudflared, linkwarden, homeassistant, mealie, customapi, iframe)
     reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: kubepage-operator-infowidget-credential-shaped-value
+  namespace: kubepage-operator-system
+spec:
+  policyName: kubepage-operator-infowidget-credential-shaped-value
+  validationActions:
+  - Warn
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -3640,6 +4061,16 @@ spec:
   policyName: kubepage-operator-infowidget-type
   validationActions:
   - Deny
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: kubepage-operator-serviceentry-credential-shaped-value
+  namespace: kubepage-operator-system
+spec:
+  policyName: kubepage-operator-serviceentry-credential-shaped-value
+  validationActions:
+  - Warn
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

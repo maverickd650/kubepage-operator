@@ -127,7 +127,7 @@ func TestPolicyRulesEqual(t *testing.T) {
 	}{
 		"equal":                  {base, []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{resourcePods}, Verbs: []string{verbList, verbGet}}}, true},
 		"different length":       {base, nil, false},
-		"different resources":    {base, []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{verbGet, verbList}}}, false},
+		"different resources":    {base, []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{resourceSecrets}, Verbs: []string{verbGet, verbList}}}, false},
 		"different api groups":   {base, []rbacv1.PolicyRule{{APIGroups: []string{"apps"}, Resources: []string{resourcePods}, Verbs: []string{verbGet, verbList}}}, false},
 		"different resourceName": {base, []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{resourcePods}, Verbs: []string{verbGet, verbList}, ResourceNames: []string{"x"}}}, false},
 	}

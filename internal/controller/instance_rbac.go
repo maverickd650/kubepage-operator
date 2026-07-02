@@ -30,7 +30,12 @@ const (
 	verbList  = "list"
 	verbWatch = "watch"
 
-	resourcePods = "pods"
+	resourcePods    = "pods"
+	resourceSecrets = "secrets"
+
+	// secretAllowWidgetsValue is the value SecretAllowWidgetsLabel must be
+	// set to for filterLabeledSecrets to treat a Secret as widget-readable.
+	secretAllowWidgetsValue = "true"
 )
 
 // clusterMetricsRules are the cluster-scoped permissions the dashboard pod
@@ -140,7 +145,7 @@ func dashboardRoles(secretNames []string, discoveryEnabled, gatewayAPIEnabled bo
 	if len(secretNames) > 0 {
 		rules = append(rules, rbacv1.PolicyRule{
 			APIGroups:     []string{""},
-			Resources:     []string{"secrets"},
+			Resources:     []string{resourceSecrets},
 			Verbs:         []string{verbGet},
 			ResourceNames: secretNames,
 		})
@@ -176,6 +181,9 @@ func (r *InstanceReconciler) referencedSecretNames(ctx context.Context, instance
 					names[src.SecretKeyRef.Name] = struct{}{}
 				}
 			}
+			if w.CACert != nil && w.CACert.SecretKeyRef != nil {
+				names[w.CACert.SecretKeyRef.Name] = struct{}{}
+			}
 		}
 	}
 
@@ -192,6 +200,9 @@ func (r *InstanceReconciler) referencedSecretNames(ctx context.Context, instance
 				names[src.SecretKeyRef.Name] = struct{}{}
 			}
 		}
+		if w.Spec.CACert != nil && w.Spec.CACert.SecretKeyRef != nil {
+			names[w.Spec.CACert.SecretKeyRef.Name] = struct{}{}
+		}
 	}
 
 	out := make([]string, 0, len(names))
@@ -199,7 +210,60 @@ func (r *InstanceReconciler) referencedSecretNames(ctx context.Context, instance
 		out = append(out, n)
 	}
 	slices.Sort(out)
+
+	if instance.Spec.SecretPolicy != nil && *instance.Spec.SecretPolicy == pagev1alpha1.SecretPolicyLabeled {
+		return r.filterLabeledSecrets(ctx, instance.Namespace, out)
+	}
 	return out, nil
+}
+
+// filterLabeledSecrets keeps only the Secret names, of those given, that
+// carry the page.kubepage.dev/allow-widgets: "true" label — the
+// spec.secretPolicy: Labeled opt-in (see InstanceSpec.SecretPolicy's doc
+// comment). A name whose Secret doesn't exist (yet, or ever) is dropped
+// rather than erroring: the dashboard pod's own Get on it already produces a
+// clear "does not exist" card error for that widget, and one missing Secret
+// shouldn't block reconciling RBAC for every other widget.
+//
+// Reads through DirectReader (uncached) rather than this reconciler's own
+// (cache-backed) Client deliberately: an informer Get on Secret would start a
+// cluster-wide Secret watch/cache on the manager, holding every Secret's
+// plaintext content in memory for the process lifetime — exactly what this
+// project avoids for the dashboard pod (see poller.go's resolveSecret) and
+// shouldn't introduce for the manager either, even though the manager
+// already holds "secrets get" RBAC cluster-wide (see SECURITY.md's P2.3
+// trade-off note) to provision the per-Instance Role below.
+func (r *InstanceReconciler) filterLabeledSecrets(ctx context.Context, namespace string, names []string) ([]string, error) {
+	allowed := make([]string, 0, len(names))
+	for _, name := range names {
+		secret := &corev1.Secret{}
+		err := r.DirectReader.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, secret)
+		switch {
+		case apierrors.IsNotFound(err):
+			continue
+		case err != nil:
+			return nil, fmt.Errorf("getting Secret %q to check secretPolicy label: %w", name, err)
+		}
+		if secret.Labels[pagev1alpha1.SecretAllowWidgetsLabel] == secretAllowWidgetsValue {
+			allowed = append(allowed, name)
+		}
+	}
+	return allowed, nil
+}
+
+// authSecretNames returns instance.Spec.Auth's basicAuthSecretRef Secret
+// name, if set, as a single-element (or empty) slice. Deliberately not
+// subject to referencedSecretNames' secretPolicy: Labeled filtering — that
+// gate protects against a ServiceEntry/InfoWidget *author* exfiltrating an
+// arbitrary Secret via a widget's own URL (see dashboardRoles' trust-model
+// note); the auth Secret is set directly on the Instance spec by whoever
+// already controls the Instance, the same trust level as every other
+// Instance-spec field, not a widget-supplied reference.
+func authSecretNames(instance *pagev1alpha1.Instance) []string {
+	if instance.Spec.Auth == nil || instance.Spec.Auth.BasicAuthSecretRef == nil {
+		return nil
+	}
+	return []string{instance.Spec.Auth.BasicAuthSecretRef.Name}
 }
 
 // reconcileDashboardRBAC ensures the per-Instance ServiceAccount, Role, and
@@ -244,6 +308,11 @@ func (r *InstanceReconciler) reconcileRole(ctx context.Context, instance *pagev1
 	secretNames, err := r.referencedSecretNames(ctx, instance)
 	if err != nil {
 		return err
+	}
+	if auth := authSecretNames(instance); len(auth) > 0 {
+		secretNames = append(secretNames, auth...)
+		slices.Sort(secretNames)
+		secretNames = slices.Compact(secretNames)
 	}
 
 	discoveryEnabled := instance.Spec.Discovery != nil && instance.Spec.Discovery.Enabled == pagev1alpha1.Enabled

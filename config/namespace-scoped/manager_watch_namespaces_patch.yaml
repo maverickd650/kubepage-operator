@@ -1,0 +1,7 @@
+# JSON6902 patch appending --watch-namespaces to the manager container's
+# args (config/manager/manager.yaml's single "manager" container, index 0).
+# CHANGE ME: replace WATCHED_NAMESPACE with the same namespace(s) named in
+# rolebinding.yaml, comma-separated if watching more than one.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --watch-namespaces=WATCHED_NAMESPACE

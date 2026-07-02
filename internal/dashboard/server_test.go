@@ -250,6 +250,80 @@ func TestSecurityHeadersAllowsHTTPSFrames(t *testing.T) {
 	}
 }
 
+// TestSecurityHeadersUsesNonceNotUnsafeInline verifies script-src/style-src
+// (the directives that govern <script>/<style> *elements*) no longer fall
+// back to 'unsafe-inline' (P2.4 in docs/security-review.md): a future
+// escaping regression in a @templ.Raw path should be blocked by the
+// browser, not just relying on server-side escaping. script-src-attr/
+// style-src-attr are a deliberate, narrower exception — see
+// contentSecurityPolicy's doc comment for why inline attributes (style=,
+// onclick=) need 'unsafe-inline' regardless of the nonce, since CSP nonces
+// don't cover attribute values at all.
+func TestSecurityHeadersUsesNonceNotUnsafeInline(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self' 'nonce-") || !strings.Contains(csp, "style-src 'self' 'nonce-") {
+		t.Errorf("Content-Security-Policy = %q, want nonce-based script-src/style-src", csp)
+	}
+	for directive := range strings.SplitSeq(csp, "; ") {
+		if (strings.HasPrefix(directive, "script-src ") || strings.HasPrefix(directive, "style-src ")) && strings.Contains(directive, "unsafe-inline") {
+			t.Errorf("Content-Security-Policy directive %q must not carry 'unsafe-inline' (only the -attr variants may)", directive)
+		}
+	}
+	for _, want := range []string{"style-src-attr 'unsafe-inline'", "script-src-attr 'unsafe-inline'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("Content-Security-Policy = %q, want %q (CSP nonces don't cover inline attributes like style= or onclick=)", csp, want)
+		}
+	}
+}
+
+// TestSecurityHeadersNonceVariesPerRequest guards against a static/reused
+// nonce, which would let an attacker who ever captures one page load reuse
+// its nonce indefinitely.
+func TestSecurityHeadersNonceVariesPerRequest(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+
+	get := func() string {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rec, req)
+		return rec.Header().Get("Content-Security-Policy")
+	}
+
+	first, second := get(), get()
+	if first == second {
+		t.Errorf("Content-Security-Policy nonce did not vary between requests: %q", first)
+	}
+}
+
+// TestIndexEmbedsNonceOnInlineScriptTags verifies the rendered page shell's
+// literal <script>/<style> tags actually carry the same nonce the CSP
+// header names — otherwise the browser would refuse every inline block and
+// the dashboard would render with no theme switching/search/etc.
+func TestIndexEmbedsNonceOnInlineScriptTags(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	start := strings.Index(csp, "'nonce-") + len("'nonce-")
+	end := strings.Index(csp[start:], "'") + start
+	nonce := csp[start:end]
+	if nonce == "" {
+		t.Fatal("could not extract nonce from Content-Security-Policy header")
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `nonce="`+nonce+`"`) {
+		t.Errorf("rendered page does not contain nonce=%q from its own CSP header:\n%s", nonce, body)
+	}
+}
+
 // TestServerMetricsRouteNotExposed asserts /metrics is not reachable on the
 // Server's own router: it's served on a separate listener (dashboard.go's
 // Run, on Options.MetricsAddr) specifically so it can't be exposed through
