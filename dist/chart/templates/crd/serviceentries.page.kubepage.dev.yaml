@@ -229,6 +229,49 @@ spec:
                     directly in-process at poll time, so the plaintext value never appears in
                     pod env, a ConfigMap, or a projected file.
                   properties:
+                    caCert:
+                      description: |-
+                        caCert optionally supplies a PEM-encoded CA certificate (or bundle)
+                        used, in addition to the system trust store, to verify this widget's
+                        url. An alternative to Config's per-widget "insecureTLS" escape hatch
+                        (e.g. unifi.go) for self-hosted upstreams with a private CA: this lets
+                        the connection stay verified instead of skipping verification
+                        entirely. Resolved the same way as Secrets (never stored outside this
+                        object beyond the dashboard pod's in-memory TLS config).
+                      properties:
+                        secretKeyRef:
+                          description: secretKeyRef selects a key of a Secret in the
+                            same namespace.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        value:
+                          description: |-
+                            value is a literal value. Avoid this for real credentials; prefer
+                            SecretKeyRef so the value isn't stored in the CR.
+                          maxLength: 4096
+                          minLength: 1
+                          type: string
+                      type: object
                     config:
                       description: |-
                         config holds the remaining widget-type-specific options (e.g.
@@ -348,6 +391,17 @@ spec:
                         keyed by the field's label. See FieldHighlight.
                       minProperties: 1
                       type: object
+                    pollIntervalSeconds:
+                      description: |-
+                        pollIntervalSeconds overrides the dashboard's global --poll-interval
+                        for this widget only, letting a slow upstream (e.g. weather) poll less
+                        often than a fast one (e.g. Prometheus) without slowing every other
+                        widget down to match. Unset polls at the global interval every cycle.
+                        Floor-clamped to the global interval: a value smaller than it would
+                        have no effect anyway, since the poller only ever runs once per cycle.
+                      format: int32
+                      minimum: 1
+                      type: integer
                     secrets:
                       additionalProperties:
                         description: |-
