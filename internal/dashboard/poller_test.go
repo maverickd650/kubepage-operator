@@ -944,7 +944,7 @@ func TestPollerInfoWidgetClusterWidgetUsesKubeReader(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Type:        "kubemetrics",
+			Type:        testKubeMetricsType,
 		},
 	}
 

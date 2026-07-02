@@ -595,6 +595,11 @@ func (in *InfoWidgetSpec) DeepCopyInto(out *InfoWidgetSpec) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.Align != nil {
+		in, out := &in.Align, &out.Align
+		*out = new(string)
+		**out = **in
+	}
 	if in.Secrets != nil {
 		in, out := &in.Secrets, &out.Secrets
 		*out = make(map[string]SecretValueSource, len(*in))

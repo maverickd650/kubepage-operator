@@ -58,6 +58,11 @@ const (
 
 	// Shared literal across bookmark fixtures.
 	testBookmarkHrefA = "https://example.invalid/a"
+
+	// Shared literals across header-widget alignment/kubemetrics fixtures.
+	testKubeMetricsType = "kubemetrics"
+	testCPUName         = "cpu"
+	testGreetName       = "greet"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.

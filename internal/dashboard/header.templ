@@ -2,7 +2,7 @@ package dashboard
 
 templ Header(data headerData) {
 	for _, w := range data.Widgets {
-		<div class={ "header-widget", "header-widget-" + w.Type }>
+		<div class={ "header-widget", "header-widget-" + w.Type, templ.KV("header-widget-push-right", w.PushRight) }>
 			switch w.Type {
 				case headerTypeGreeting:
 					<span class="greeting">{ w.Greeting }</span>

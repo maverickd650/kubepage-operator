@@ -112,6 +112,14 @@ type headerWidgetView struct {
 	Href   string
 	Fields []Field
 	Err    string
+
+	// PushRight marks the first widget in the right-aligned slot (once
+	// buildHeader has stably partitioned Widgets into left-then-right
+	// order): header.templ gives it "margin-left: auto", which — since
+	// every widget after it is also right-aligned by construction — pushes
+	// it and everything following to the header strip's right edge as one
+	// contiguous flex block.
+	PushRight bool
 }
 
 // headerData is the /header fragment's template data.
@@ -346,7 +354,29 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 		}
 		views = append(views, v)
 	}
-	return views
+	return partitionHeaderAlign(views, defs)
+}
+
+// partitionHeaderAlign stably reorders views (built 1:1 with, and in the
+// same order as, defs) so every left-aligned widget precedes every
+// right-aligned one, regardless of interleaving from Order/name sorting —
+// header.templ's CSS-only right-alignment (see headerWidgetView.PushRight's
+// doc comment) only works when the right-aligned widgets form one
+// contiguous trailing run.
+func partitionHeaderAlign(views []headerWidgetView, defs []HeaderWidget) []headerWidgetView {
+	left := make([]headerWidgetView, 0, len(views))
+	right := make([]headerWidgetView, 0, len(views))
+	for i, v := range views {
+		if defs[i].Align == alignRight {
+			right = append(right, v)
+		} else {
+			left = append(left, v)
+		}
+	}
+	if len(right) > 0 {
+		right[0].PushRight = true
+	}
+	return append(left, right...)
 }
 
 // groupCards buckets an already-ordered card slice into display groups,

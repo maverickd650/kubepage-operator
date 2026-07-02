@@ -31,6 +31,13 @@ const (
 // matching homepage's `bookmarksStyle: icons`.
 const bookmarksStyleIcons = "icons"
 
+// alignLeft/alignRight are HeaderWidget.Align's two resolved values (see
+// defaultHeaderAlign and partitionHeaderAlign in server.go).
+const (
+	alignLeft  = "left"
+	alignRight = "right"
+)
+
 // Site is everything the dashboard's look (6.1) needs beyond the polled
 // widget cards: the Instance's Configuration (theme/color/background/...)
 // and its bound Bookmarks, rendered as static link cards.
@@ -126,6 +133,10 @@ type HeaderWidget struct {
 	Order   *int32
 	IconURL string
 	Options map[string]string
+
+	// Align is "left" or "right", already defaulted (see
+	// defaultHeaderAlign) against InfoWidgetSpec.Align.
+	Align string
 }
 
 // Background mirrors api/v1alpha1.BackgroundSpec, resolved to render-ready
@@ -245,15 +256,35 @@ func headerWidgets(items []pagev1alpha1.InfoWidget, instanceName string) []Heade
 
 	out := make([]HeaderWidget, 0, len(bound))
 	for _, w := range bound {
+		align := defaultHeaderAlign(w.Spec.Type)
+		if w.Spec.Align != nil {
+			align = alignLeft
+			if *w.Spec.Align == pagev1alpha1.AlignRight {
+				align = alignRight
+			}
+		}
 		out = append(out, HeaderWidget{
 			Name:    w.Name,
 			Type:    w.Spec.Type,
 			Order:   w.Spec.Order,
 			IconURL: IconURL(w.Spec.Icon),
 			Options: scalarOptions(w.Spec.Options),
+			Align:   align,
 		})
 	}
 	return out
+}
+
+// defaultHeaderAlign returns the header strip slot a widget type renders in
+// when InfoWidgetSpec.Align isn't set, matching homepage's own default
+// layout: greeting/clock on the left, every live-value widget on the right.
+func defaultHeaderAlign(widgetType string) string {
+	switch widgetType {
+	case headerTypeGreeting, headerTypeDatetime:
+		return alignLeft
+	default:
+		return alignRight
+	}
 }
 
 // scalarOptions flattens an InfoWidget's passthrough Options JSON object into

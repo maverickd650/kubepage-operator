@@ -347,6 +347,39 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	}
 }
 
+// TestHeaderWidgetsResolvesAlign verifies the InfoWidgetSpec.Align default
+// (greeting/datetime left, everything else right) and its explicit
+// left/right override (gap-analysis §4.3).
+func TestHeaderWidgetsResolvesAlign(t *testing.T) {
+	explicitLeft := pagev1alpha1.AlignLeft
+	items := []pagev1alpha1.InfoWidget{
+		{ObjectMeta: metav1.ObjectMeta{Name: testGreetName}, Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: headerTypeGreeting,
+		}},
+		{ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather}, Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: testOpenMeteoType,
+		}},
+		{ObjectMeta: metav1.ObjectMeta{Name: testCPUName}, Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: testKubeMetricsType, Align: &explicitLeft,
+		}},
+	}
+
+	out := headerWidgets(items, testInstanceName)
+	got := map[string]string{}
+	for _, w := range out {
+		got[w.Name] = w.Align
+	}
+	if got[testGreetName] != alignLeft {
+		t.Errorf(`Align[testGreetName] = %q, want "left" (default for greeting)`, got[testGreetName])
+	}
+	if got[testHeaderWeather] != alignRight {
+		t.Errorf(`Align[%q] = %q, want "right" (default for a live-value widget)`, testHeaderWeather, got[testHeaderWeather])
+	}
+	if got[testCPUName] != alignLeft {
+		t.Errorf(`Align[testCPUName] = %q, want "left" (explicit InfoWidgetSpec.Align override)`, got[testCPUName])
+	}
+}
+
 func TestLoadSiteAppliesLayout(t *testing.T) {
 	scheme := testScheme(t)
 	cols := int32(4)

@@ -512,7 +512,7 @@ func TestServerHeaderRendersWidgets(t *testing.T) {
 	})
 
 	greeting := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testGreetName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Type:        headerTypeGreeting,
@@ -708,6 +708,37 @@ func TestBuildHeaderDatetimeWidget(t *testing.T) {
 	views := buildHeader(defs, nil)
 	if len(views) != 1 || views[0].Format != "medium" {
 		t.Fatalf("buildHeader(datetime) = %+v, want Format=medium", views)
+	}
+}
+
+// TestBuildHeaderPartitionsLeftBeforeRight verifies buildHeader stably
+// reorders an interleaved left/right/left/right sequence into left-then-
+// right, flagging only the first right-aligned widget with PushRight —
+// header.templ's CSS-only alignment (see headerWidgetView.PushRight) relies
+// on the right-aligned run being contiguous and trailing.
+func TestBuildHeaderPartitionsLeftBeforeRight(t *testing.T) {
+	defs := []HeaderWidget{
+		{Name: "greeting", Type: headerTypeGreeting, Align: alignLeft},
+		{Name: "weather", Type: testOpenMeteoType, Align: alignRight},
+		{Name: "clock", Type: headerTypeDatetime, Align: alignLeft},
+		{Name: testCPUName, Type: testKubeMetricsType, Align: alignRight},
+	}
+	views := buildHeader(defs, nil)
+	if len(views) != 4 {
+		t.Fatalf("buildHeader() = %d views, want 4", len(views))
+	}
+
+	wantTypes := []string{headerTypeGreeting, headerTypeDatetime, testOpenMeteoType, testKubeMetricsType}
+	for i, want := range wantTypes {
+		if views[i].Type != want {
+			t.Errorf("views[%d].Type = %q, want %q (left widgets first, right widgets after, order preserved within each)", i, views[i].Type, want)
+		}
+	}
+	for i, v := range views {
+		wantPushRight := i == 2 // first right-aligned widget in the reordered list
+		if v.PushRight != wantPushRight {
+			t.Errorf("views[%d] (%s).PushRight = %v, want %v", i, v.Type, v.PushRight, wantPushRight)
+		}
 	}
 }
 
