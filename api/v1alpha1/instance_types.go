@@ -120,6 +120,111 @@ type InstanceSpec struct {
 	// contract.
 	// +optional
 	Discovery *DiscoverySpec `json:"discovery,omitempty"`
+
+	// metrics controls whether the dashboard's /metrics endpoint (per-widget
+	// poll counts/latencies, per-service up/down gauges) is exposed on the
+	// dashboard Service, in addition to the pod itself always serving it
+	// directly (reachable via a PodMonitor or port-forward regardless of
+	// this setting). Off by default: unlike the manager's own /metrics
+	// (which requires authn/authz), the dashboard's has none, so any pod
+	// able to reach the Service port could otherwise read which internal
+	// services this dashboard names and their live status with no RBAC
+	// check at all.
+	// +optional
+	Metrics *MetricsSpec `json:"metrics,omitempty"`
+
+	// auth optionally gates every dashboard route (except /healthz) behind
+	// HTTP Basic authentication. Unset (the default) means the dashboard has
+	// no authentication of its own — see SECURITY.md's trust-model section
+	// for why, and for the recommended alternative of an authenticating
+	// reverse proxy.
+	// +optional
+	Auth *AuthSpec `json:"auth,omitempty"`
+
+	// networkPolicy optionally creates an owner-referenced NetworkPolicy
+	// scoping which pods may reach this Instance's dashboard/metrics ports
+	// and, when egressCIDRs is set, which addresses its pods may reach. Off
+	// by default: dashboard pods otherwise accept ingress from anywhere in
+	// the cluster and have unrestricted egress, same as any Pod with no
+	// NetworkPolicy selecting it.
+	// +optional
+	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
+
+	// secretPolicy controls which Secrets a bound ServiceEntry/InfoWidget
+	// widget may reference via secretKeyRef (or caCert):
+	//   - "Unrestricted" (default): any Secret in this namespace — the
+	//     documented trust model (see SECURITY.md): anyone who can author
+	//     these CRDs in a namespace is trusted with every Secret in it.
+	//   - "Labeled": only Secrets carrying the
+	//     page.kubepage.dev/allow-widgets: "true" label are granted to the
+	//     dashboard pod's RBAC; a widget referencing an unlabeled (or
+	//     nonexistent) Secret surfaces a clear card error instead.
+	// +kubebuilder:validation:Enum=Unrestricted;Labeled
+	// +default="Unrestricted"
+	// +optional
+	SecretPolicy *string `json:"secretPolicy,omitempty"`
+}
+
+// MetricsSpec controls whether the dashboard's /metrics port is exposed on
+// the dashboard Service.
+type MetricsSpec struct {
+	// enabled exposes port 9090 on the dashboard Service when "Enabled".
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Disabled"
+	// +optional
+	Enabled string `json:"enabled,omitempty"`
+}
+
+// AuthSpec configures the dashboard's optional built-in HTTP Basic
+// authentication. See SECURITY.md's "Optional built-in authentication"
+// section for the trade-offs versus fronting the dashboard with a real
+// authenticating reverse proxy (oauth2-proxy, Authelia, ...).
+type AuthSpec struct {
+	// basicAuthSecretRef names a Secret, in the same namespace as this
+	// Instance, holding an htpasswd-format file (bcrypt-hashed entries,
+	// e.g. produced by `htpasswd -B`) under its ".htpasswd" key. When set,
+	// every dashboard route except /healthz requires HTTP Basic credentials
+	// matching an entry in that file, checked with a constant-time compare.
+	// +optional
+	BasicAuthSecretRef *corev1.LocalObjectReference `json:"basicAuthSecretRef,omitempty"`
+}
+
+// NetworkPolicySpec configures an operator-managed NetworkPolicy for this
+// Instance's dashboard pods.
+type NetworkPolicySpec struct {
+	// enabled creates and manages a NetworkPolicy for this Instance's
+	// dashboard pods when "Enabled".
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Disabled"
+	// +optional
+	Enabled string `json:"enabled,omitempty"`
+
+	// ingressNamespaceSelector selects which namespaces' pods may reach the
+	// dashboard's containerPort. Leave unset to allow ingress from any
+	// namespace (matching the default, unrestricted Service behavior) while
+	// still scoping the metrics port/egress below.
+	// +optional
+	IngressNamespaceSelector *metav1.LabelSelector `json:"ingressNamespaceSelector,omitempty"`
+
+	// metricsNamespaceSelector selects which namespaces' pods may reach the
+	// metrics port (9090). Only meaningful when spec.metrics.enabled; leave
+	// unset to allow from any namespace.
+	// +optional
+	MetricsNamespaceSelector *metav1.LabelSelector `json:"metricsNamespaceSelector,omitempty"`
+
+	// egressCIDRs additionally allows egress to exactly these CIDR blocks
+	// (e.g. widget upstreams), plus DNS (port 53) and the Kubernetes API
+	// server (port 443) which are always allowed once egress is restricted.
+	// Leave empty to leave egress unrestricted (the non-breaking default)
+	// even with networkPolicy enabled for ingress — widget URLs are
+	// CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
+	// is an opt-in positive scope, not a default deny.
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=43
+	// +listType=set
+	// +optional
+	EgressCIDRs []string `json:"egressCIDRs,omitempty"`
 }
 
 // DiscoverySpec opts an Instance into Kubernetes-native service discovery:

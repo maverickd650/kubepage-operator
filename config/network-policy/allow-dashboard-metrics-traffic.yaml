@@ -1,0 +1,34 @@
+# Example NetworkPolicy for dashboard pods' /metrics port (see
+# docs/security-review.md P1.3). Only relevant when spec.metrics.enabled is
+# set on the Instance (the metrics Service port is opt-in and off by
+# default — see api/v1alpha1/instance_types.go's MetricsSpec). This is a
+# template, not applied by default — see allow-dashboard-ingress.yaml's
+# header comment for the same caveats (copy/adjust per namespace, or use
+# spec.networkPolicy instead of hand-maintaining this file).
+#
+# Mirrors config/network-policy/allow-metrics-traffic.yaml's pattern for the
+# manager's own /metrics, scoped to the dashboard's metrics port instead.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: allow-dashboard-metrics-traffic
+  namespace: default # CHANGE ME: the namespace your Instance runs in
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kubepage-operator
+      app.kubernetes.io/managed-by: InstanceController
+  policyTypes:
+    - Ingress
+  ingress:
+    # This allows ingress traffic from any namespace with the label metrics: enabled
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              metrics: enabled # Only from namespaces with this label
+      ports:
+        - port: 9090
+          protocol: TCP
