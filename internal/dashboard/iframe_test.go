@@ -25,6 +25,10 @@ func TestIframeWidgetPoll(t *testing.T) {
 		"missing url": {
 			wantErr: true,
 		},
+		"non-http scheme": {
+			url:     testJSSchemeURL,
+			wantErr: true,
+		},
 	}
 
 	for name, tc := range tests {

@@ -1,11 +1,19 @@
 package dashboard
 
 import (
+	"bytes"
+	"compress/gzip"
+	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
+	"hash/fnv"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -22,8 +30,13 @@ const (
 // binary needs no CDN (D11) and the dashboard keeps working air-gapped or if
 // a third-party CDN is unreachable/compromised.
 //
-//go:embed assets/*.woff2 assets/*.js
+//go:embed assets/*.woff2 assets/*.js assets/*.svg
 var assetFS embed.FS
+
+// pwaIconPath is the app icon's asset path, referenced by handleManifest's
+// icons array — an SVG with "sizes": "any" satisfies every installability
+// checker (Chrome, Android) without needing multiple raster sizes.
+const pwaIconPath = "/assets/icon.svg"
 
 // cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
@@ -61,6 +74,11 @@ type Server struct {
 	Namespace      string
 	InstanceName   string
 	RefreshSeconds int
+
+	// SecretReader resolves the basic-auth Secret (spec.auth.basicAuthSecretRef),
+	// deliberately uncached — see basicAuthMiddleware/loadBasicAuth and
+	// poller.go's resolveSecret for the same rule applied to widget secrets.
+	SecretReader client.Reader
 
 	// Version/Commit are stamped at build time (see cmd/main.go), shown in
 	// the page shell's footer unless Site.HideVersion is set.
@@ -136,49 +154,102 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /manifest.json", s.handleManifest)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	return securityHeaders(mux)
+	return securityHeaders(s.basicAuthMiddleware(mux))
 }
 
 // contentSecurityPolicy locks the page down to same-origin scripts/styles/
 // connections (htmx and every inline <script>/<style> in index.templ are
 // first-party; the only cross-origin loads are icons/backgrounds, which
 // resolve to operator- or CRD-supplied URLs — see icon.go — so img-src alone
-// stays open to https:/data:). 'unsafe-inline' on script-src/style-src is
-// needed because the page shell has no nonce/hash plumbing yet; every value
-// interpolated into those inline blocks is either a fixed lookup table
-// (AccentHex/PaletteRamp), a plain integer, or escaped via cssStringEscape
-// (CustomCSS/Background.Image) rather than free-form script text. frame-src
-// mirrors img-src's "https: and nothing else" scope: without it, an iframe
-// ServiceWidget's <iframe src="..."> (cards.templ, iframe.go) falls back to
-// default-src 'self' and every browser refuses to load it — the CSP is a
-// compile-time constant, so this can't be scoped to just the operator-
-// configured widget URLs without threading per-request state through the
-// page shell; iframe.go's own fixed sandbox attribute (allow-scripts
-// allow-same-origin, no allow-top-navigation) is the actual containment
-// boundary for whatever origin an operator points a widget at.
-const contentSecurityPolicy = "default-src 'self'; " +
-	"img-src 'self' https: data:; " +
-	"frame-src https:; " +
-	"style-src 'self' 'unsafe-inline'; " +
-	"script-src 'self' 'unsafe-inline'; " +
-	"connect-src 'self'; " +
-	"frame-ancestors 'none'; " +
-	"base-uri 'self'; " +
-	"form-action 'self'"
+// stays open to https:/data:). script-src/style-src use a per-request nonce
+// (see securityHeaders/generateNonce) rather than 'unsafe-inline' for
+// *elements*: every inline <style>/<script> in index.templ — including the
+// CustomCSS/CustomJS/background-image ones emitted via @templ.Raw
+// (render_helpers.go's customStyle/customScript/backgroundStyle) — carries
+// the same nonce, so a <script>/<style> tag without it (e.g. one smuggled in
+// by a future escaping regression in those @templ.Raw paths) is refused by
+// the browser regardless of what CustomCSS/CustomJS/Background.Image's own
+// escaping does or doesn't catch.
+//
+// style-src-attr/script-src-attr are a deliberate, narrower exception: per
+// the CSP spec, a nonce only satisfies the check for <script>/<style>
+// *elements* — it has no effect on inline attribute values (style="...",
+// onclick="..."), which the spec routes through a separate "attribute"
+// check that only 'unsafe-inline' (or a hash matching the literal rendered
+// value, impractical here since these are computed per request/element) can
+// satisfy. This codebase renders several: the page's CSS custom properties
+// on <html style=...> (index.templ), grid-template-columns/usage-bar-fill/
+// iframe-height styles and the tab switcher's onclick= (cards.templ). Every
+// value behind those attributes is server-computed from a fixed lookup
+// table, a plain integer, or already-escaped CRD input (see cssStringEscape)
+// — never attacker-controlled free text — so scoping 'unsafe-inline' to
+// *only* the -attr directives (leaving the element directives nonce-only)
+// keeps the actual XSS-relevant surface — a rogue <script>/<style> tag —
+// covered, without silently breaking every inline style/onclick in the app.
+//
+// frame-src mirrors img-src's "https: and nothing else" scope: without it,
+// an iframe ServiceWidget's <iframe src="..."> (cards.templ, iframe.go)
+// falls back to default-src 'self' and every browser refuses to load it —
+// this can't be scoped to just the operator-configured widget URLs without
+// threading per-request state through the page shell; iframe.go's own fixed
+// sandbox attribute (allow-scripts allow-same-origin, no
+// allow-top-navigation) is the actual containment boundary for whatever
+// origin an operator points a widget at.
+func contentSecurityPolicy(nonce string) string {
+	return "default-src 'self'; " +
+		"img-src 'self' https: data:; " +
+		"frame-src https:; " +
+		"style-src 'self' 'nonce-" + nonce + "'; " +
+		"style-src-attr 'unsafe-inline'; " +
+		"script-src 'self' 'nonce-" + nonce + "'; " +
+		"script-src-attr 'unsafe-inline'; " +
+		"connect-src 'self'; " +
+		"frame-ancestors 'none'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'"
+}
 
-// securityHeaders sets response headers that don't vary per request, cheap
-// defense-in-depth against XSS/clickjacking/MIME-sniffing for a page that
-// intentionally renders CRD-supplied CSS/URLs (background image, custom CSS,
-// icons — see cssStringEscape's doc comment on why those are escaped but not
-// blocked outright).
+// nonceByteLength is how many random bytes generateNonce reads before
+// base64-encoding them — 16 bytes (128 bits) is the commonly recommended
+// minimum for a CSP nonce, per https://content-security-policy.com/nonce/.
+const nonceByteLength = 16
+
+// generateNonce returns a fresh, cryptographically random, base64
+// (URL-safe, unpadded) CSP nonce for one request. URL-safe encoding is used
+// so the value needs no further escaping wherever it's interpolated — the
+// CSP header value, and every nonce="..." HTML attribute index.templ sets —
+// since its alphabet (A-Za-z0-9-_) contains no characters special to either
+// context.
+func generateNonce() string {
+	b := make([]byte, nonceByteLength)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read on a supported platform practically never fails;
+		// a panic here surfaces a broken host environment immediately
+		// rather than silently serving a predictable/empty nonce, which
+		// would defeat the point of nonce-based CSP.
+		panic("dashboard: reading random bytes for CSP nonce: " + err.Error())
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// securityHeaders sets response headers that don't vary per request beyond
+// the CSP nonce (see generateNonce) — cheap defense-in-depth against XSS/
+// clickjacking/MIME-sniffing for a page that intentionally renders
+// CRD-supplied CSS/URLs (background image, custom CSS, icons — see
+// cssStringEscape's doc comment on why those are escaped but not blocked
+// outright). Threads the nonce into the request context via templ.WithNonce
+// so index.templ's inline <style>/<script> tags (and @templ.JSONScript,
+// which reads it automatically) can render it — see contentSecurityPolicy's
+// doc comment.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nonce := generateNonce()
 		h := w.Header()
-		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("Content-Security-Policy", contentSecurityPolicy(nonce))
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(templ.WithNonce(r.Context(), nonce)))
 	})
 }
 
@@ -186,12 +257,23 @@ func securityHeaders(next http.Handler) http.Handler {
 // dashboard be installed as a Progressive Web App (homepage's documented
 // PWA support: https://gethomepage.dev/configs/settings/#progressive-web-app-pwa).
 type pwaManifest struct {
-	Name            string `json:"name"`
-	ShortName       string `json:"short_name"`
-	ThemeColor      string `json:"theme_color"`
-	BackgroundColor string `json:"background_color"`
-	Display         string `json:"display"`
-	StartURL        string `json:"start_url"`
+	Name            string    `json:"name"`
+	ShortName       string    `json:"short_name"`
+	ThemeColor      string    `json:"theme_color"`
+	BackgroundColor string    `json:"background_color"`
+	Display         string    `json:"display"`
+	StartURL        string    `json:"start_url"`
+	Icons           []pwaIcon `json:"icons"`
+}
+
+// pwaIcon is one entry of pwaManifest.Icons. "any" for Sizes tells the
+// installer the (vector) icon scales to whatever size it needs, so a single
+// SVG satisfies Chrome/Android's installability icon requirement without
+// shipping multiple raster sizes.
+type pwaIcon struct {
+	Src   string `json:"src"`
+	Sizes string `json:"sizes"`
+	Type  string `json:"type"`
 }
 
 func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
@@ -212,6 +294,7 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
 		BackgroundColor: bg,
 		Display:         "standalone",
 		StartURL:        site.StartURL,
+		Icons:           []pwaIcon{{Src: pwaIconPath, Sizes: "any", Type: "image/svg+xml"}},
 	}
 
 	w.Header().Set("Content-Type", "application/manifest+json")
@@ -252,6 +335,8 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "font/woff2")
 	case strings.HasSuffix(r.PathValue("file"), ".js"):
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	case strings.HasSuffix(r.PathValue("file"), ".svg"):
+		w.Header().Set("Content-Type", "image/svg+xml")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	_, _ = w.Write(b)
@@ -287,10 +372,63 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := Cards(s.buildFragmentData(site)).Render(r.Context(), w); err != nil {
+	data := s.buildFragmentData(site)
+	if err := writeCachedHTML(w, r, func(buf io.Writer) error { return Cards(data).Render(r.Context(), buf) }); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// writeCachedHTML renders an HTML fragment into a buffer and serves it with
+// a content-hash ETag: unlike a Store generation counter, a hash of the
+// actual rendered bytes stays correct even though /fragment and /header
+// depend on more than the Store (Configuration/Bookmark/InfoWidget changes,
+// read through the cached client, also change the output — see LoadSite).
+// "Cache-Control: no-cache" tells the browser to keep revalidating on every
+// request rather than caching outright, so it automatically sends
+// If-None-Match on htmx's next poll; when that matches, the response is a
+// bare 304 with no body — the common case once a dashboard's data has
+// settled between polls. When the body does need to go out, it's
+// gzip-compressed whenever the client advertises support.
+func writeCachedHTML(w http.ResponseWriter, r *http.Request, render func(io.Writer) error) error {
+	var buf bytes.Buffer
+	if err := render(&buf); err != nil {
+		return err
+	}
+
+	sum := etagFor(buf.Bytes())
+	h := w.Header()
+	h.Set("ETag", sum)
+	h.Set("Cache-Control", "no-cache")
+	if r.Header.Get("If-None-Match") == sum {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		h.Set("Content-Encoding", "gzip")
+		h.Set("Vary", "Accept-Encoding")
+		gz := gzip.NewWriter(w)
+		if _, err := gz.Write(buf.Bytes()); err != nil {
+			_ = gz.Close()
+			return err
+		}
+		// Close (not just Write) flushes gzip's trailer to w; without
+		// checking its error, a failed flush would silently truncate the
+		// compressed body the client receives.
+		return gz.Close()
+	}
+	_, err := w.Write(buf.Bytes())
+	return err
+}
+
+// etagFor returns a quoted strong-validator ETag (FNV-1a, not a security
+// hash — this only needs to detect byte differences, not resist tampering)
+// for writeCachedHTML's If-None-Match comparison.
+func etagFor(b []byte) string {
+	sum := fnv.New64a()
+	sum.Write(b) //nolint:errcheck // hash.Hash.Write never returns an error
+	return `"` + strconv.FormatUint(sum.Sum64(), 16) + `"`
 }
 
 // buildFragmentData builds the polled fragment's template data from the
@@ -314,9 +452,8 @@ func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := headerData{Widgets: buildHeader(site.HeaderWidgets, s.Store.Snapshot())}
-	if err := Header(data).Render(r.Context(), w); err != nil {
+	if err := writeCachedHTML(w, r, func(buf io.Writer) error { return Header(data).Render(r.Context(), buf) }); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

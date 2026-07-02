@@ -1,0 +1,26 @@
+# Namespaced replacement for the deleted cluster-wide ClusterRoleBinding
+# (delete_cluster_role_binding.yaml): binds the same ClusterRole
+# (kubepage-operator-manager-role, post config/default's namePrefix
+# transform) to the manager's ServiceAccount, but as a RoleBinding scoped to
+# WATCHED_NAMESPACE — a RoleBinding referencing a ClusterRole only grants
+# that ClusterRole's *namespaced* rules within the RoleBinding's own
+# namespace, never its cluster-scoped ones (see kustomization.yaml's header
+# comment on what that means for kubemetrics).
+#
+# CHANGE ME: replace WATCHED_NAMESPACE below with your target namespace, and
+# copy this file (with a distinct metadata.name) once per additional
+# namespace if --watch-namespaces (manager_watch_namespaces_patch.yaml)
+# lists more than one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: manager-rolebinding-watched-namespace
+  namespace: WATCHED_NAMESPACE
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubepage-operator-manager-role
+subjects:
+- kind: ServiceAccount
+  name: kubepage-operator-controller-manager
+  namespace: kubepage-operator-system

@@ -22,7 +22,7 @@ templ Index(data indexData) {
 				<meta name="robots" content="noindex, nofollow"/>
 			}
 			<link rel="manifest" href="/manifest.json"/>
-			<style>
+			<style nonce={ templ.GetNonce(ctx) }>
 				@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/manrope-400.woff2") format("woff2"); }
 				@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("/assets/manrope-600.woff2") format("woff2"); }
 				@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: swap; src: url("/assets/manrope-700.woff2") format("woff2"); }
@@ -170,18 +170,18 @@ templ Index(data indexData) {
 				.color-menu button { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); cursor: pointer; padding: 0; }
 			</style>
 			if data.Site.Background != nil {
-				@templ.Raw(backgroundStyle(data.Site.Background))
+				@templ.Raw(backgroundStyle(templ.GetNonce(ctx), data.Site.Background))
 			}
 			if data.Site.CustomCSS != "" {
-				@templ.Raw("<style>" + cssStringEscape(data.Site.CustomCSS) + "</style>")
+				@templ.Raw(customStyle(templ.GetNonce(ctx), data.Site.CustomCSS))
 			}
 			if data.Site.CustomJS != "" {
-				@templ.Raw("<script>" + jsStringEscape(data.Site.CustomJS) + "</script>")
+				@templ.Raw(customScript(templ.GetNonce(ctx), data.Site.CustomJS))
 			}
 			if !data.Site.ThemeFixed || !data.Site.ColorFixed {
 				@templ.JSONScript("switcher-config", switcherConfig{ThemeFixed: data.Site.ThemeFixed, ColorFixed: data.Site.ColorFixed})
 				@templ.JSONScript("palette-ramps", AllPalettes())
-				<script>
+				<script nonce={ templ.GetNonce(ctx) }>
 					// Apply any stored theme/color override before first paint
 					// (standard dark-mode-FOUC-avoidance pattern), only for the axis
 					// that isn't fixed by Configuration. window.__paletteRamps is also
@@ -220,7 +220,7 @@ templ Index(data indexData) {
 				if data.Site.Description != "" {
 					<p class="page-desc">{ data.Site.Description }</p>
 				}
-				<div class="header-strip" id="header" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="innerHTML"></div>
+				<div class="header-strip" id="header" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']" } hx-swap="innerHTML"></div>
 				if !data.Site.ThemeFixed || !data.Site.ColorFixed {
 					<div class="switcher">
 						if !data.Site.ColorFixed {
@@ -237,7 +237,7 @@ templ Index(data indexData) {
 				<div class="search-bar">
 					<input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off"/>
 				</div>
-				<div id="cards" hx-get="/fragment" hx-trigger={ "every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="innerHTML">
+				<div id="cards" hx-get="/fragment" hx-trigger={ "every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']" } hx-swap="innerHTML">
 					@Cards(data.Fragment)
 				</div>
 			</div>
@@ -251,8 +251,8 @@ templ Index(data indexData) {
 				</div>
 			</div>
 			@templ.JSONScript("search-config", data.Site.Search)
-			<script src="/assets/htmx-2.0.4.min.js"></script>
-			<script>
+			<script src="/assets/htmx-2.0.10.min.js"></script>
+			<script nonce={ templ.GetNonce(ctx) }>
 				const searchConfig = JSON.parse(document.getElementById("search-config").textContent);
 
 				function searchURL(query) {

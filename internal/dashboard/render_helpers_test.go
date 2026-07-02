@@ -53,7 +53,7 @@ func TestIsHTTPURL(t *testing.T) {
 	}{
 		"https":               {in: "https://example.com/search?q=", want: true},
 		"http":                {in: "http://example.com/search?q=", want: true},
-		"javascript scheme":   {in: "javascript:alert(1)", want: false},
+		"javascript scheme":   {in: testJSSchemeURL, want: false},
 		"data scheme":         {in: "data:text/html,<script>alert(1)</script>", want: false},
 		"file scheme":         {in: "file:///etc/passwd", want: false},
 		"scheme-relative":     {in: "//example.com/search?q=", want: false},
@@ -190,14 +190,14 @@ func TestCSSStringEscape(t *testing.T) {
 
 func TestBackgroundStyle(t *testing.T) {
 	t.Run("nil background", func(t *testing.T) {
-		if got := backgroundStyle(nil); got != "" {
+		if got := backgroundStyle("test-nonce", nil); got != "" {
 			t.Errorf("backgroundStyle(nil) = %q, want empty string", got)
 		}
 	})
 
 	t.Run("plain image URL is embedded as-is", func(t *testing.T) {
-		got := backgroundStyle(&Background{Image: testBgImageURL})
-		want := `<style>body { background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`
+		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL})
+		want := `<style nonce="test-nonce">body { background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`
 		if got != want {
 			t.Errorf("backgroundStyle() = %q, want %q", got, want)
 		}
@@ -210,13 +210,42 @@ func TestBackgroundStyle(t *testing.T) {
 	// CSS-string metacharacters (backslash/quote) is not enough to prevent
 	// that, since HTML tag-termination doesn't care about CSS string escaping.
 	t.Run("malicious image value cannot break out of the style tag", func(t *testing.T) {
-		got := backgroundStyle(&Background{Image: `"></style><script>alert(1)</script>`})
+		got := backgroundStyle("test-nonce", &Background{Image: `"></style><script>alert(1)</script>`})
 
 		if n := strings.Count(got, "</style>"); n != 1 {
 			t.Fatalf("backgroundStyle() output contains %d literal </style> closing tags, want exactly 1 (the legitimate one): %q", n, got)
 		}
 		if strings.Contains(got, "<script") {
 			t.Errorf("backgroundStyle() output contains an unescaped <script> tag, want it neutralized: %q", got)
+		}
+	})
+}
+
+func TestCustomStyleAndCustomScript(t *testing.T) {
+	t.Run("empty input renders nothing", func(t *testing.T) {
+		if got := customStyle("nonce", ""); got != "" {
+			t.Errorf("customStyle(nonce, \"\") = %q, want empty string", got)
+		}
+		if got := customScript("nonce", ""); got != "" {
+			t.Errorf("customScript(nonce, \"\") = %q, want empty string", got)
+		}
+	})
+
+	t.Run("carries the nonce and escapes its own closing tag", func(t *testing.T) {
+		css := customStyle("abc123", "body{}</style><script>alert(1)</script>")
+		if !strings.Contains(css, `nonce="abc123"`) {
+			t.Errorf("customStyle() = %q, want it to carry nonce=\"abc123\"", css)
+		}
+		if strings.Count(css, "</style>") != 1 {
+			t.Errorf("customStyle() = %q, want exactly one </style> (the legitimate one)", css)
+		}
+
+		js := customScript("abc123", "1</script><script>alert(1)</script>")
+		if !strings.Contains(js, `nonce="abc123"`) {
+			t.Errorf("customScript() = %q, want it to carry nonce=\"abc123\"", js)
+		}
+		if strings.Count(js, "</script>") != 1 {
+			t.Errorf("customScript() = %q, want exactly one </script> (the legitimate one)", js)
 		}
 	})
 }

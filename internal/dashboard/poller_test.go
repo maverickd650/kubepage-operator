@@ -43,6 +43,7 @@ const (
 	testInfraTab      = "Infrastructure"
 	testStyleRow      = "row"
 	testColor         = "blue"
+	testDoesNotExist  = "does-not-exist"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -268,7 +269,7 @@ func TestPollerUnsupportedWidgetType(t *testing.T) {
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Group:       "G",
 			Name:        "Mystery",
-			Widgets:     []pagev1alpha1.ServiceWidget{{Type: "does-not-exist", URL: &url}},
+			Widgets:     []pagev1alpha1.ServiceWidget{{Type: testDoesNotExist, URL: &url}},
 		},
 	}
 
@@ -1112,7 +1113,7 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 
 func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
 	entry := pagev1alpha1.ServiceEntry{Spec: pagev1alpha1.ServiceEntrySpec{Group: testGroup, Name: testSvcAName}}
-	widget := &pagev1alpha1.ServiceWidget{Type: "does-not-exist"}
+	widget := &pagev1alpha1.ServiceWidget{Type: testDoesNotExist}
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}

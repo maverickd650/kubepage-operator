@@ -353,6 +353,27 @@ spec:
                     - Enabled
                     - Disabled
                     type: string
+                  hideInternetSearch:
+                    default: Disabled
+                    description: |-
+                      hideInternetSearch removes the quick-launch palette's "search the
+                      web" fallthrough entry, leaving only card matches (and, unless
+                      HideVisitURL also hides it, the direct-URL entry).
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                  hideVisitURL:
+                    default: Disabled
+                    description: |-
+                      hideVisitURL removes the quick-launch palette's "visit <url>" entry
+                      that appears when the typed query itself looks like a URL or
+                      domain, letting the query jump there directly instead of running a
+                      web search for it.
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
                   provider:
                     default: duckduckgo
                     description: |-
@@ -363,6 +384,17 @@ spec:
                     - google
                     - bing
                     - custom
+                    type: string
+                  searchDescriptions:
+                    default: Enabled
+                    description: |-
+                      searchDescriptions includes each card's description, not just its
+                      name, when matching the quick-launch (Ctrl/Cmd-K) palette's query
+                      against cards. Independent of FilterCards, which controls the
+                      inline as-you-type card filter instead.
+                    enum:
+                    - Enabled
+                    - Disabled
                     type: string
                   target:
                     default: _blank

@@ -1,6 +1,9 @@
 package dashboard
 
 import (
+	"compress/gzip"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +27,7 @@ func newTestServer(t *testing.T, store *Store, objs ...client.Object) *Server {
 func TestServerFragmentRendersCards(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName,
+		Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName,
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy}},
 	})
 	store.Set(Card{
@@ -45,6 +48,106 @@ func TestServerFragmentRendersCards(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestServerFragmentRevalidatesWithETag(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	first := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/fragment", nil))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", first.Code)
+	}
+	etag := first.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("first response missing ETag header")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.Header.Set("If-None-Match", etag)
+	second := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(second, req)
+	if second.Code != http.StatusNotModified {
+		t.Fatalf("revalidated request status = %d, want 304", second.Code)
+	}
+	if second.Body.Len() != 0 {
+		t.Errorf("304 response body = %q, want empty", second.Body.String())
+	}
+
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
+	third := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(third, httptest.NewRequest(http.MethodGet, "/fragment", nil))
+	if third.Code != http.StatusOK {
+		t.Fatalf("changed-data request status = %d, want 200", third.Code)
+	}
+	if got := third.Header().Get("ETag"); got == etag {
+		t.Error("ETag unchanged after Store content changed")
+	}
+}
+
+func TestServerFragmentGzipsWhenAccepted(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", got)
+	}
+	gz, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	body, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(body), testServiceName) {
+		t.Errorf("decompressed body missing %q:\n%s", testServiceName, body)
+	}
+}
+
+// failingResponseWriter fails every Write, simulating a client that
+// disconnects mid-response — used to exercise writeCachedHTML's gzip
+// error-handling branch, which a well-behaved recorder never triggers.
+type failingResponseWriter struct {
+	header http.Header
+	code   int
+}
+
+func (w *failingResponseWriter) Header() http.Header        { return w.header }
+func (w *failingResponseWriter) WriteHeader(statusCode int) { w.code = statusCode }
+func (w *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errTestWrite
+}
+
+var errTestWrite = errors.New("simulated write failure")
+
+// TestServerFragmentGzipWriteErrorIsPropagated verifies writeCachedHTML
+// surfaces (rather than silently swallows) a failure to write the
+// gzip-compressed body, still closing the gzip writer on that path.
+func TestServerFragmentGzipWriteErrorIsPropagated(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := &failingResponseWriter{header: http.Header{}}
+	srv.Routes().ServeHTTP(w, req)
+
+	if w.code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 after a write failure", w.code)
 	}
 }
 
@@ -116,7 +219,7 @@ func TestServerIndexEmitsCardPixelTuningCSS(t *testing.T) {
 func TestServerFragmentRendersStatsRow(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName,
+		Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName,
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy}},
 	})
 	srv := newTestServer(t, store)
@@ -155,6 +258,7 @@ func TestServerFragmentRendersIframeWidget(t *testing.T) {
 	for _, want := range []string{
 		`class="card-iframe"`, `src="` + testIframeURL + `"`,
 		`sandbox="` + iframeSandbox + `"`, `height: ` + testIframeHeight,
+		`id="iframe-ns/dash/0"`, `hx-preserve="true"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
@@ -179,6 +283,126 @@ func TestSecurityHeadersAllowsHTTPSFrames(t *testing.T) {
 	csp := rec.Header().Get("Content-Security-Policy")
 	if !strings.Contains(csp, "frame-src https:") {
 		t.Errorf("Content-Security-Policy = %q, want a frame-src https: directive", csp)
+	}
+}
+
+// TestSecurityHeadersUsesNonceNotUnsafeInline verifies script-src/style-src
+// (the directives that govern <script>/<style> *elements*) no longer fall
+// back to 'unsafe-inline' (P2.4 in docs/security-review.md): a future
+// escaping regression in a @templ.Raw path should be blocked by the
+// browser, not just relying on server-side escaping. script-src-attr/
+// style-src-attr are a deliberate, narrower exception — see
+// contentSecurityPolicy's doc comment for why inline attributes (style=,
+// onclick=) need 'unsafe-inline' regardless of the nonce, since CSP nonces
+// don't cover attribute values at all.
+func TestSecurityHeadersUsesNonceNotUnsafeInline(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self' 'nonce-") || !strings.Contains(csp, "style-src 'self' 'nonce-") {
+		t.Errorf("Content-Security-Policy = %q, want nonce-based script-src/style-src", csp)
+	}
+	for directive := range strings.SplitSeq(csp, "; ") {
+		if (strings.HasPrefix(directive, "script-src ") || strings.HasPrefix(directive, "style-src ")) && strings.Contains(directive, "unsafe-inline") {
+			t.Errorf("Content-Security-Policy directive %q must not carry 'unsafe-inline' (only the -attr variants may)", directive)
+		}
+	}
+	for _, want := range []string{"style-src-attr 'unsafe-inline'", "script-src-attr 'unsafe-inline'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("Content-Security-Policy = %q, want %q (CSP nonces don't cover inline attributes like style= or onclick=)", csp, want)
+		}
+	}
+}
+
+// TestSecurityHeadersNonceVariesPerRequest guards against a static/reused
+// nonce, which would let an attacker who ever captures one page load reuse
+// its nonce indefinitely.
+func TestSecurityHeadersNonceVariesPerRequest(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+
+	get := func() string {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rec, req)
+		return rec.Header().Get("Content-Security-Policy")
+	}
+
+	first, second := get(), get()
+	if first == second {
+		t.Errorf("Content-Security-Policy nonce did not vary between requests: %q", first)
+	}
+}
+
+// TestIndexEmbedsNonceOnInlineScriptTags verifies the rendered page shell's
+// literal <script>/<style> tags actually carry the same nonce the CSP
+// header names — otherwise the browser would refuse every inline block and
+// the dashboard would render with no theme switching/search/etc.
+func TestIndexEmbedsNonceOnInlineScriptTags(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	start := strings.Index(csp, "'nonce-") + len("'nonce-")
+	end := strings.Index(csp[start:], "'") + start
+	nonce := csp[start:end]
+	if nonce == "" {
+		t.Fatal("could not extract nonce from Content-Security-Policy header")
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `nonce="`+nonce+`"`) {
+		t.Errorf("rendered page does not contain nonce=%q from its own CSP header:\n%s", nonce, body)
+	}
+}
+
+// TestIndexPollingStopsInBackgroundTab verifies the #cards and #header
+// hx-trigger attributes carry a document.visibilityState guard, so a
+// backgrounded browser tab stops firing poll requests. The header's load
+// trigger is deliberately left unguarded (it must still fire once even in a
+// background tab), so only its "every Ns" half is checked.
+func TestIndexPollingStopsInBackgroundTab(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`id="cards" hx-get="/fragment" hx-trigger="every 10s[document.visibilityState === &#39;visible&#39;]"`,
+		`hx-get="/header" hx-trigger="load, every 10s[document.visibilityState === &#39;visible&#39;]"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestIndexReferencesVendoredHTMX verifies the page shell loads the
+// vendored htmx build shipped under assets/, and that it's actually
+// servable — a stale script src (e.g. left pointing at a since-removed
+// version) would silently break every htmx-polled interaction.
+func TestIndexReferencesVendoredHTMX(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	const script = "/assets/htmx-2.0.10.min.js"
+	if !strings.Contains(body, `<script src="`+script+`">`) {
+		t.Errorf("index body missing htmx script tag for %q:\n%s", script, body)
+	}
+
+	assetReq := httptest.NewRequest(http.MethodGet, script, nil)
+	assetRec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(assetRec, assetReq)
+	if assetRec.Code != http.StatusOK {
+		t.Errorf("GET %s status = %d, want 200", script, assetRec.Code)
 	}
 }
 
@@ -387,10 +611,27 @@ func TestServerManifestRoute(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`"name":"My Lab"`, `"start_url":"/dashboard"`, `"display":"standalone"`} {
+	for _, want := range []string{`"name":"My Lab"`, `"start_url":"/dashboard"`, `"display":"standalone"`, `"src":"/assets/icon.svg"`, `"sizes":"any"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("manifest body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestServerAssetServesSVGIcon(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/assets/icon.svg", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("Content-Type = %q, want image/svg+xml", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "<svg") {
+		t.Errorf("asset body doesn't look like SVG:\n%s", rec.Body.String())
 	}
 }
 

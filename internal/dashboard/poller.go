@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -426,8 +428,17 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		cfg.Secrets[field] = value
 	}
 
+	httpClient, err := p.httpClientForCACert(ctx, entry.Namespace, widget.CACert, p.HTTPClient)
+	if err != nil {
+		if !card.HideErrors {
+			card.Err = err.Error()
+		}
+		p.Store.Set(card)
+		return
+	}
+
 	start := time.Now()
-	fields, err := impl.Poll(ctx, p.HTTPClient, cfg)
+	fields, err := impl.Poll(ctx, httpClient, cfg)
 	observePoll(widget.Type, metricErr(err, fields), time.Since(start).Seconds())
 	switch {
 	case err != nil && !card.HideErrors:
@@ -436,6 +447,54 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		card.Fields = applyHighlights(filterFields(fields, widget.Fields), widget.Highlight)
 	}
 	p.Store.Set(card)
+}
+
+// caClientCache caches one *http.Client per CA bundle (keyed by its SHA-256),
+// so a widget referencing the same caCert doesn't rebuild a TLS transport —
+// and lose keep-alive connections — every poll cycle. Mirrors unifi.go's
+// unifiInsecureClientCache pattern for the same reason.
+var caClientCache = struct {
+	mu      sync.Mutex
+	clients map[string]*http.Client
+}{clients: map[string]*http.Client{}}
+
+// caClient returns an *http.Client trusting caPEM in addition to the system
+// trust store, built from base's Timeout, caching the result by the PEM
+// bundle's content hash (see caClientCache).
+func caClient(base *http.Client, caPEM string) (*http.Client, error) {
+	sum := sha256.Sum256([]byte(caPEM))
+	key := hex.EncodeToString(sum[:])
+
+	caClientCache.mu.Lock()
+	defer caClientCache.mu.Unlock()
+	if c, ok := caClientCache.clients[key]; ok {
+		return c, nil
+	}
+
+	transport, err := newGuardedTransportWithCA([]byte(caPEM))
+	if err != nil {
+		return nil, err
+	}
+	c := &http.Client{Timeout: base.Timeout, Transport: transport}
+	caClientCache.clients[key] = c
+	return c, nil
+}
+
+// httpClientForCACert returns base unchanged when caCert is nil, or an
+// *http.Client trusting the resolved CA bundle otherwise (see caClient). A
+// non-nil error means the CA cert couldn't be resolved or parsed and the
+// caller should surface it as a card error rather than falling back to base
+// silently — a widget that opted into caCert wants pinned verification, not
+// a quiet downgrade to the system trust store alone.
+func (p *Poller) httpClientForCACert(ctx context.Context, namespace string, caCert *pagev1alpha1.SecretValueSource, base *http.Client) (*http.Client, error) {
+	if caCert == nil {
+		return base, nil
+	}
+	caPEM, err := p.resolveSecret(ctx, namespace, *caCert)
+	if err != nil {
+		return nil, fmt.Errorf("resolving caCert: %w", err)
+	}
+	return caClient(base, caPEM)
 }
 
 // metricErr returns the error to record for a poll metric, treating an
@@ -514,7 +573,11 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		// via KubeReader instead of polling an HTTP upstream.
 		fields, err = cw.PollCluster(ctx, p.KubeReader, cfg)
 	} else {
-		fields, err = impl.Poll(ctx, p.HTTPClient, cfg)
+		var httpClient *http.Client
+		httpClient, err = p.httpClientForCACert(ctx, iw.Namespace, iw.Spec.CACert, p.HTTPClient)
+		if err == nil {
+			fields, err = impl.Poll(ctx, httpClient, cfg)
+		}
 	}
 	observePoll(iw.Spec.Type, metricErr(err, fields), time.Since(start).Seconds())
 	if err != nil {

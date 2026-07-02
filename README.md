@@ -70,6 +70,31 @@ Both can be set at once (e.g. Ingress for one hostname, Gateway API for
 another); neither is required if you're reaching the dashboard via
 port-forward or your own externally-managed routing.
 
+**The dashboard has no authentication of its own by default** — see
+[SECURITY.md](SECURITY.md#trust-model) before setting `spec.ingress`/
+`spec.gateway` on anything beyond a trusted network. `spec.auth.basicAuthSecretRef`
+offers a minimal built-in HTTP Basic gate; a real authenticating reverse
+proxy in front of `spec.ingress`/`spec.gateway` is the better answer for
+anything more than a homelab.
+
+### Hardening opt-ins
+
+Several `Instance` spec fields harden the default (single-admin homelab)
+trust model further, all off by default so existing `Instance`s keep working
+unchanged:
+
+| Field | Default | Effect |
+|-------|---------|--------|
+| `spec.auth.basicAuthSecretRef` | unset (no auth) | Gates every dashboard route except `/healthz` behind HTTP Basic, checked against a bcrypt htpasswd Secret. See [SECURITY.md](SECURITY.md#optional-built-in-authentication). |
+| `spec.metrics.enabled` | `Disabled` | Exposes the dashboard's `/metrics` port (9090) on its Service. Off by default since, unlike the manager's own metrics, the dashboard's has no authn/authz — any pod that can reach the Service port would otherwise read per-service up/down status and poll metrics. |
+| `spec.networkPolicy.enabled` | `Disabled` | Creates an owner-referenced `NetworkPolicy` scoping which pods may reach the dashboard/metrics ports (`ingressNamespaceSelector`/`metricsNamespaceSelector`) and, when `egressCIDRs` is set, which addresses its pods may reach. |
+| `spec.secretPolicy` | `Unrestricted` | Set to `Labeled` to restrict which Secrets a `ServiceEntry`/`InfoWidget` widget may reference via `secretKeyRef`/`caCert` to only those carrying the `page.kubepage.dev/allow-widgets: "true"` label — see [SECURITY.md](SECURITY.md#trust-model) for the exfiltration path this closes. |
+
+Per-widget, `ServiceWidget`/`InfoWidget`'s `caCert` field supplies a
+PEM-encoded CA certificate (resolved the same way as any other secret-bearing
+field) so a self-hosted upstream with a private CA can be verified instead of
+falling back to a widget's own `insecureTLS` escape hatch (e.g. `unifi.go`).
+
 ## Quickstart
 
 ```sh
@@ -143,6 +168,19 @@ and [`CLAUDE.md`](CLAUDE.md) for a higher-level architecture overview
 relationships).
 
 ## Project Distribution
+
+### Namespace-scoped install (optional)
+
+By default the manager holds its RBAC (including `secrets get`, needed to
+provision each Instance's own scoped Secret access — see
+[SECURITY.md](SECURITY.md#supply-chain)) cluster-wide via a `ClusterRole`/
+`ClusterRoleBinding`. [`config/namespace-scoped/`](config/namespace-scoped)
+is an overlay that instead binds the same `ClusterRole` via a namespaced
+`RoleBinding` per watched namespace, paired with the manager's own
+`--watch-namespaces` flag, for operators who'd rather not grant that
+cluster-wide. See that directory's `kustomization.yaml` for setup steps and
+the trade-off it makes (the `kubemetrics` `InfoWidget` needs cluster-scoped
+access no matter what, so it doesn't work under this overlay).
 
 ### As a YAML bundle (Kustomize)
 

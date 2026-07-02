@@ -54,10 +54,12 @@ templ serviceCardView(c Card, siteTarget string) {
 		} else if c.WidgetType == widgetTypeIframe && len(c.Fields) > 0 {
 			<iframe
 				class="card-iframe"
+				id={ "iframe-" + c.Key }
 				src={ iframeSrc(c.Fields) }
 				style={ "height: " + iframeHeight(c.Fields) }
 				sandbox={ iframeSandbox }
 				loading="lazy"
+				hx-preserve="true"
 			></iframe>
 		} else if len(c.Fields) > 0 {
 			<div class="stats">
