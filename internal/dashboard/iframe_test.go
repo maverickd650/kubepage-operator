@@ -26,7 +26,7 @@ func TestIframeWidgetPoll(t *testing.T) {
 			wantErr: true,
 		},
 		"non-http scheme": {
-			url:     "javascript:alert(1)",
+			url:     testJSSchemeURL,
 			wantErr: true,
 		},
 	}

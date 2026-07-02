@@ -26,7 +26,7 @@ func newTestServer(t *testing.T, store *Store, objs ...client.Object) *Server {
 func TestServerFragmentRendersCards(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName,
+		Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName,
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy}},
 	})
 	store.Set(Card{
@@ -52,7 +52,7 @@ func TestServerFragmentRendersCards(t *testing.T) {
 
 func TestServerFragmentRevalidatesWithETag(t *testing.T) {
 	store := NewStore()
-	store.Set(Card{Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName})
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
 	srv := newTestServer(t, store)
 
 	first := httptest.NewRecorder()
@@ -76,7 +76,7 @@ func TestServerFragmentRevalidatesWithETag(t *testing.T) {
 		t.Errorf("304 response body = %q, want empty", second.Body.String())
 	}
 
-	store.Set(Card{Key: "ns/prom/0", Group: testGroup, ServiceName: "Renamed"})
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
 	third := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(third, httptest.NewRequest(http.MethodGet, "/fragment", nil))
 	if third.Code != http.StatusOK {
@@ -89,7 +89,7 @@ func TestServerFragmentRevalidatesWithETag(t *testing.T) {
 
 func TestServerFragmentGzipsWhenAccepted(t *testing.T) {
 	store := NewStore()
-	store.Set(Card{Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName})
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
 	srv := newTestServer(t, store)
 
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
@@ -184,7 +184,7 @@ func TestServerIndexEmitsCardPixelTuningCSS(t *testing.T) {
 func TestServerFragmentRendersStatsRow(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName,
+		Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName,
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy}},
 	})
 	srv := newTestServer(t, store)

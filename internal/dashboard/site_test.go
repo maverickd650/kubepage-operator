@@ -283,7 +283,7 @@ func TestLoadSiteQuickLaunchOptionsDefaults(t *testing.T) {
 
 func TestLoadSiteRejectsNonHTTPSearchURL(t *testing.T) {
 	scheme := testScheme(t)
-	badURL := "javascript:alert(1)"
+	badURL := testJSSchemeURL
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{

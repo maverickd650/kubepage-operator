@@ -53,7 +53,7 @@ func TestIsHTTPURL(t *testing.T) {
 	}{
 		"https":               {in: "https://example.com/search?q=", want: true},
 		"http":                {in: "http://example.com/search?q=", want: true},
-		"javascript scheme":   {in: "javascript:alert(1)", want: false},
+		"javascript scheme":   {in: testJSSchemeURL, want: false},
 		"data scheme":         {in: "data:text/html,<script>alert(1)</script>", want: false},
 		"file scheme":         {in: "file:///etc/passwd", want: false},
 		"scheme-relative":     {in: "//example.com/search?q=", want: false},

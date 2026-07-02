@@ -348,9 +348,14 @@ func writeCachedHTML(w http.ResponseWriter, r *http.Request, render func(io.Writ
 		h.Set("Content-Encoding", "gzip")
 		h.Set("Vary", "Accept-Encoding")
 		gz := gzip.NewWriter(w)
-		defer gz.Close()
-		_, err := gz.Write(buf.Bytes())
-		return err
+		if _, err := gz.Write(buf.Bytes()); err != nil {
+			_ = gz.Close()
+			return err
+		}
+		// Close (not just Write) flushes gzip's trailer to w; without
+		// checking its error, a failed flush would silently truncate the
+		// compressed body the client receives.
+		return gz.Close()
 	}
 	_, err := w.Write(buf.Bytes())
 	return err
