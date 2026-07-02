@@ -56,6 +56,14 @@ const (
 	testIframeURL    = "https://grafana.example.com/d/abc"
 	testIframeHeight = "40vh"
 
+	// testJSSchemeURL is a non-http(s) URL used to exercise scheme rejection
+	// (iframe widget URLs, Favicon/link hrefs, isHTTPURL itself).
+	testJSSchemeURL = "javascript:alert(1)"
+
+	// testFragmentCardKey is a Store card key shared by the /fragment
+	// ETag/ revalidation and ordering fixtures.
+	testFragmentCardKey = "ns/prom/0"
+
 	// Shared literal across bookmark fixtures.
 	testBookmarkHrefA = "https://example.invalid/a"
 

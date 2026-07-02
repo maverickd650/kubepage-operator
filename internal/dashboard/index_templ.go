@@ -265,9 +265,9 @@ func Index(data indexData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var13 string
-		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("load, every " + intToStr(data.RefreshSeconds) + "s")
+		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("load, every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/index.templ`, Line: 223, Col: 124}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/index.templ`, Line: 223, Col: 164}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 		if templ_7745c5c3_Err != nil {
@@ -304,9 +304,9 @@ func Index(data indexData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var14 string
-		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue("every " + intToStr(data.RefreshSeconds) + "s")
+		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue("every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/index.templ`, Line: 240, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/index.templ`, Line: 240, Col: 138}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -351,7 +351,7 @@ func Index(data indexData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<script src=\"/assets/htmx-2.0.4.min.js\"></script><script nonce=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<script src=\"/assets/htmx-2.0.10.min.js\"></script><script nonce=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

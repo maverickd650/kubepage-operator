@@ -14,7 +14,8 @@
 # //go:embed templates/*.tmpl)
 !**/templates/*.tmpl
 
-# Re-include embedded dashboard fonts and vendored htmx (internal/dashboard/
-# server.go //go:embed assets/*.woff2 assets/*.js)
+# Re-include embedded dashboard fonts, vendored htmx, and the PWA icon
+# (internal/dashboard/server.go //go:embed assets/*.woff2 assets/*.js assets/*.svg)
 !**/assets/*.woff2
 !**/assets/*.js
+!**/assets/*.svg
