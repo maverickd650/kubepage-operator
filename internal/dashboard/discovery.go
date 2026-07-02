@@ -8,6 +8,7 @@ import (
 
 	networkingv1 "k8s.io/api/networking/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
@@ -156,4 +157,76 @@ func ingressHref(ing *networkingv1.Ingress) string {
 		}
 	}
 	return scheme + "://" + host + "/"
+}
+
+// discoverHTTPRoutes is discoverServices' Gateway API counterpart (gap-
+// analysis §4.7): same annotation convention, same discoveredService shape,
+// same "no secrets in annotations" constraint — the only difference is the
+// source Kind and how a default href is derived. Callers must not invoke
+// this unless the cluster is known to have Gateway API installed (a List
+// against a nonexistent Kind fails outright, unlike an RBAC-denied one);
+// see Poller.GatewayAPIEnabled.
+func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace string, spec pagev1alpha1.DiscoverySpec) ([]discoveredService, error) {
+	var routes gatewayv1.HTTPRouteList
+	if err := reader.List(ctx, &routes, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("listing HTTPRoutes: %w", err)
+	}
+
+	prefix := defaultDiscoveryPrefix
+	if spec.AnnotationPrefix != nil && *spec.AnnotationPrefix != "" {
+		prefix = *spec.AnnotationPrefix
+	}
+	homepageCompat := spec.HomepageCompat != nil && *spec.HomepageCompat == pagev1alpha1.Enabled
+
+	out := make([]discoveredService, 0, len(routes.Items))
+	for _, route := range routes.Items {
+		ann, ok := discoveryAnnotations(route.Annotations, prefix, homepageCompat)
+		if !ok {
+			continue
+		}
+
+		name := ann[discoveryAnnName]
+		if name == "" {
+			name = route.Name
+		}
+		group := ann[discoveryAnnGroup]
+		if group == "" {
+			group = defaultDiscoveryGroup
+		}
+		href := ann[discoveryAnnHref]
+		if href == "" {
+			href = httpRouteHref(&route)
+		}
+
+		var iconURL string
+		if icon := ann[discoveryAnnIcon]; icon != "" {
+			iconURL = IconURL(&icon)
+		}
+
+		out = append(out, discoveredService{
+			Key:         "discovery/httproute/" + route.Namespace + "/" + route.Name,
+			Group:       group,
+			Name:        name,
+			IconURL:     iconURL,
+			Description: ann[discoveryAnnDescription],
+			Href:        href,
+			Ping:        ann[discoveryAnnPing] == annotationValueTrue,
+		})
+	}
+	slices.SortFunc(out, func(a, b discoveredService) int { return strings.Compare(a.Key, b.Key) })
+	return out, nil
+}
+
+// httpRouteHref derives a default href from an HTTPRoute with no explicit
+// href annotation: the first hostname. Unlike ingressHref, there's no TLS
+// entry on the HTTPRoute itself to check — TLS termination is the attaching
+// Gateway's concern, not the route's — so this always assumes "https",
+// matching how Gateway API is predominantly deployed for anything meant to
+// be discoverable. Returns "" when the HTTPRoute declares no hostname,
+// leaving the card titled but not linked.
+func httpRouteHref(route *gatewayv1.HTTPRoute) string {
+	if len(route.Spec.Hostnames) == 0 {
+		return ""
+	}
+	return "https://" + string(route.Spec.Hostnames[0]) + "/"
 }

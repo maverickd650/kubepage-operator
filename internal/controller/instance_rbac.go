@@ -78,6 +78,20 @@ var dashboardIngressRule = rbacv1.PolicyRule{
 	Verbs:     []string{verbGet, verbList, verbWatch},
 }
 
+// dashboardHTTPRouteRule mirrors dashboardIngressRule for Gateway API
+// HTTPRoutes (internal/dashboard/discovery.go's HTTPRoute discovery, the
+// gap-analysis §4.7 fast-follow to Ingress discovery). Added to the
+// per-Instance Role only while discovery is on *and* the cluster actually
+// has Gateway API installed (dashboardRoles' gatewayAPIEnabled parameter,
+// sourced from InstanceReconciler.GatewayAPIEnabled) — granting RBAC on a
+// Kind the apiserver doesn't recognize is harmless on its own, but there's
+// no reason to grant it when the dashboard pod could never use it.
+var dashboardHTTPRouteRule = rbacv1.PolicyRule{
+	APIGroups: []string{"gateway.networking.k8s.io"},
+	Resources: []string{"httproutes"},
+	Verbs:     []string{verbGet, verbList, verbWatch},
+}
+
 // dashboardPodsRule is the read access the dashboard pod needs in its own
 // namespace to evaluate a ServiceEntry's PodSelector
 // (internal/dashboard/poller.go's monitor): listing/watching pods to compute
@@ -92,7 +106,8 @@ var dashboardPodsRule = rbacv1.PolicyRule{
 }
 
 // dashboardRoles builds the per-Instance Role's rules: always read access to
-// the config CRDs (dashboardConfigRule) and to Pods (dashboardPodsRule),
+// the config CRDs (dashboardConfigRule) and to Pods (dashboardPodsRule);
+// Ingresses (and, when gatewayAPIEnabled, HTTPRoutes) while discoveryEnabled;
 // plus get access to exactly the Secrets referenced by the Instance's
 // widgets (secretNames, already sorted and de-duplicated). The Secret rule
 // is scoped with resourceNames and limited to get: the Poller only ever Gets
@@ -114,10 +129,13 @@ var dashboardPodsRule = rbacv1.PolicyRule{
 // Anyone who can create these CRDs in a namespace should therefore be
 // treated as trusted with every Secret in it, the same as anyone who can
 // create a Pod mounting arbitrary Secret volumes.
-func dashboardRoles(secretNames []string, discoveryEnabled bool) []rbacv1.PolicyRule {
+func dashboardRoles(secretNames []string, discoveryEnabled, gatewayAPIEnabled bool) []rbacv1.PolicyRule {
 	rules := []rbacv1.PolicyRule{dashboardConfigRule, dashboardPodsRule}
 	if discoveryEnabled {
 		rules = append(rules, dashboardIngressRule)
+		if gatewayAPIEnabled {
+			rules = append(rules, dashboardHTTPRouteRule)
+		}
 	}
 	if len(secretNames) > 0 {
 		rules = append(rules, rbacv1.PolicyRule{
@@ -231,7 +249,7 @@ func (r *InstanceReconciler) reconcileRole(ctx context.Context, instance *pagev1
 	discoveryEnabled := instance.Spec.Discovery != nil && instance.Spec.Discovery.Enabled == pagev1alpha1.Enabled
 	desired := &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
-		Rules:      dashboardRoles(secretNames, discoveryEnabled),
+		Rules:      dashboardRoles(secretNames, discoveryEnabled, r.GatewayAPIEnabled),
 	}
 	if err := ctrl.SetControllerReference(instance, desired, r.Scheme); err != nil {
 		return err

@@ -59,6 +59,12 @@ type Poller struct {
 	HTTPClient   *http.Client
 	Store        *Store
 
+	// GatewayAPIEnabled reports whether this cluster has Gateway API CRDs
+	// installed; see dashboard.Options.GatewayAPIEnabled's doc comment.
+	// Gates whether pollOnce ever attempts to List HTTPRoutes for HTTPRoute
+	// discovery.
+	GatewayAPIEnabled bool
+
 	// monitorLabels is the set of ServiceEntry "namespace/name" labels
 	// monitorUp reported on the previous poll cycle. pollOnce diffs the
 	// current cycle's set against this to delete a label series for an
@@ -174,6 +180,22 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			for _, svc := range services {
 				markKeep(svc.Key)
 				run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+			}
+		}
+
+		// HTTPRoute discovery (gap-analysis §4.7 fast-follow to Ingress
+		// discovery) additionally requires the cluster to actually have
+		// Gateway API installed — attempting to List HTTPRoutes otherwise
+		// would fail on a nonexistent Kind, not just missing RBAC.
+		if p.GatewayAPIEnabled {
+			routes, err := discoverHTTPRoutes(ctx, p.Reader, p.Namespace, spec)
+			if err != nil {
+				pollerLog.Error(err, "discovering HTTPRoutes")
+			} else {
+				for _, svc := range routes {
+					markKeep(svc.Key)
+					run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+				}
 			}
 		}
 	}

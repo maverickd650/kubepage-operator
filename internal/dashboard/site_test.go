@@ -324,7 +324,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 		},
 	}
 	other := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "skip", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testDiscoverySkipKey, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-" + testInstanceName},
 			Type:        headerTypeGreeting,
@@ -384,7 +384,7 @@ func TestLoadSiteAppliesLayout(t *testing.T) {
 	scheme := testScheme(t)
 	cols := int32(4)
 	style := testStyleRow
-	icon := "grafana"
+	icon := testGrafanaIconSlug
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{

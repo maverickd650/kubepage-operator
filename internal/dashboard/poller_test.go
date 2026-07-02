@@ -19,6 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -50,6 +52,9 @@ func testScheme(t *testing.T) *runtime.Scheme {
 		t.Fatal(err)
 	}
 	if err := pagev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := gatewayv1.Install(scheme); err != nil {
 		t.Fatal(err)
 	}
 	return scheme
@@ -1201,8 +1206,8 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	}
 	ing := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "app", Namespace: testNamespace,
-			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, "kubepage.io/name": "Discovered App"},
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, testKubepageNameAnnotation: testDiscoveredAppCardName},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, ing).Build()
@@ -1216,11 +1221,81 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	cards := store.Snapshot()
 	found := false
 	for _, c := range cards {
-		if c.ServiceName == "Discovered App" {
+		if c.ServiceName == testDiscoveredAppCardName {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("Snapshot() = %+v, want a card for the annotated Ingress", cards)
+	}
+}
+
+// TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled verifies
+// pollOnce also discovers annotated HTTPRoutes when GatewayAPIEnabled is
+// set (gap-analysis §4.7), reusing the same discovery-enabled Instance as
+// Ingress discovery.
+func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InstanceSpec{
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, testKubepageNameAnnotation: testDiscoveredRouteCardName},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, route).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store, GatewayAPIEnabled: true,
+	}
+	p.pollOnce(t.Context())
+
+	found := false
+	for _, c := range store.Snapshot() {
+		if c.ServiceName == testDiscoveredRouteCardName {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Snapshot() = %+v, want a card for the annotated HTTPRoute", store.Snapshot())
+	}
+}
+
+// TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled verifies pollOnce
+// never attempts HTTPRoute discovery when GatewayAPIEnabled is false (the
+// default) — a List against a nonexistent Kind would fail outright, so this
+// must be a hard gate, not just missing RBAC.
+func TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InstanceSpec{
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, testKubepageNameAnnotation: testDiscoveredRouteCardName},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, route).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	for _, c := range store.Snapshot() {
+		if c.ServiceName == testDiscoveredRouteCardName {
+			t.Fatalf("Snapshot() = %+v, want no HTTPRoute card when GatewayAPIEnabled is false", store.Snapshot())
+		}
 	}
 }

@@ -47,6 +47,18 @@ type Options struct {
 	// Configuration sets HideVersion.
 	Version string
 	Commit  string
+
+	// GatewayAPIEnabled reports whether the cluster has Gateway API CRDs
+	// installed, checked once at this process's own startup (cmd/main.go's
+	// gatewayAPIAvailable, the same helper the manager uses for
+	// spec.gateway) — this is a separate pod from the manager, so it can't
+	// just read the manager's own in-memory result. Gates whether the
+	// Poller attempts HTTPRoute discovery at all: the per-Instance Role
+	// only grants httproutes RBAC when discovery is enabled and the
+	// controller made this same determination (instance_rbac.go), so
+	// without it a List would just fail on missing RBAC or, if Gateway API
+	// truly isn't installed, on a nonexistent Kind.
+	GatewayAPIEnabled bool
 }
 
 // Run wires the CRD cache, secret-resolving client, background poller, and
@@ -87,14 +99,15 @@ func Run(ctx context.Context, opts Options) error {
 
 	store := NewStore()
 	poller := &Poller{
-		Reader:       clu.GetClient(),
-		SecretReader: secretClient,
-		KubeReader:   kubeClient,
-		Namespace:    opts.Namespace,
-		InstanceName: opts.InstanceName,
-		Interval:     opts.PollInterval,
-		HTTPClient:   newGuardedHTTPClient(10 * time.Second),
-		Store:        store,
+		Reader:            clu.GetClient(),
+		SecretReader:      secretClient,
+		KubeReader:        kubeClient,
+		Namespace:         opts.Namespace,
+		InstanceName:      opts.InstanceName,
+		Interval:          opts.PollInterval,
+		HTTPClient:        newGuardedHTTPClient(10 * time.Second),
+		Store:             store,
+		GatewayAPIEnabled: opts.GatewayAPIEnabled,
 	}
 	go poller.Run(ctx)
 

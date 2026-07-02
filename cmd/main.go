@@ -367,16 +367,24 @@ func runDashboard(args []string) {
 	setupLog.Info("Starting dashboard", "version", version, "commit", commit,
 		"namespace", namespace, "instanceName", instanceName)
 
+	restConfig := ctrl.GetConfigOrDie()
+	gatewayAPIEnabled, err := gatewayAPIAvailable(restConfig)
+	if err != nil {
+		setupLog.Error(err, "Failed to check for Gateway API CRDs; continuing with HTTPRoute discovery disabled")
+	}
+	setupLog.Info("Gateway API support", "enabled", gatewayAPIEnabled)
+
 	if err := dashboard.Run(ctrl.SetupSignalHandler(), dashboard.Options{
-		RestConfig:   ctrl.GetConfigOrDie(),
-		Scheme:       scheme,
-		Namespace:    namespace,
-		InstanceName: instanceName,
-		Addr:         addr,
-		MetricsAddr:  metricsAddr,
-		PollInterval: pollInterval,
-		Version:      version,
-		Commit:       commit,
+		RestConfig:        restConfig,
+		Scheme:            scheme,
+		Namespace:         namespace,
+		InstanceName:      instanceName,
+		Addr:              addr,
+		MetricsAddr:       metricsAddr,
+		PollInterval:      pollInterval,
+		Version:           version,
+		Commit:            commit,
+		GatewayAPIEnabled: gatewayAPIEnabled,
 	}); err != nil {
 		setupLog.Error(err, "Failed to run dashboard")
 		os.Exit(1)

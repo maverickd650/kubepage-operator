@@ -63,6 +63,18 @@ const (
 	testKubeMetricsType = "kubemetrics"
 	testCPUName         = "cpu"
 	testGreetName       = "greet"
+
+	// Shared literals across Ingress/HTTPRoute discovery fixtures.
+	testDiscoveredAppKey        = "app"
+	testDiscoveredBareKey       = "bare"
+	testDiscoverySkipKey        = "skip"
+	testMyAppDisplayName        = "My App"
+	testAnAppDescription        = "An app"
+	testGrafanaIconSlug         = "grafana"
+	testAppExampleHost          = "app.example.invalid"
+	testKubepageNameAnnotation  = "kubepage.io/name"
+	testDiscoveredAppCardName   = "Discovered App"
+	testDiscoveredRouteCardName = "Discovered Route"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.
