@@ -782,13 +782,35 @@ func selectorLabelsForInstance() map[string]string {
 // itself (never on a Selector). image is the dashboard image currently in
 // use (DashboardImage).
 func labelsForInstance(image string) map[string]string {
-	var imageTag string
-	if parts := strings.SplitN(image, ":", 2); len(parts) == 2 {
-		imageTag = parts[1]
-	}
 	labels := selectorLabelsForInstance()
-	labels["app.kubernetes.io/version"] = imageTag
+	labels["app.kubernetes.io/version"] = imageVersionLabel(image)
 	return labels
+}
+
+// maxLabelValueLen is the Kubernetes label value length limit.
+// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+const maxLabelValueLen = 63
+
+// imageVersionLabel extracts a Kubernetes-label-safe "version" string from an
+// image reference. For a tag reference (repo:tag) it returns the tag. For a
+// digest reference (repo@sha256:hash, as produced by digest-pinning) it
+// returns the digest truncated to maxLabelValueLen, since the full 64-hex-char
+// sha256 digest exceeds the label value length limit.
+func imageVersionLabel(image string) string {
+	if at := strings.LastIndex(image, "@"); at != -1 {
+		digest := image[at+1:]
+		if idx := strings.Index(digest, ":"); idx != -1 {
+			digest = digest[idx+1:]
+		}
+		if len(digest) > maxLabelValueLen {
+			digest = digest[:maxLabelValueLen]
+		}
+		return digest
+	}
+	if idx := strings.LastIndex(image, ":"); idx != -1 {
+		return image[idx+1:]
+	}
+	return ""
 }
 
 // SetupWithManager sets up the controller with the Manager.
