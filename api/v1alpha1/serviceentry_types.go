@@ -149,6 +149,16 @@ type ServiceWidget struct {
 	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	Highlight map[string]FieldHighlight `json:"highlight,omitempty"`
+
+	// pollIntervalSeconds overrides the dashboard's global --poll-interval
+	// for this widget only, letting a slow upstream (e.g. weather) poll less
+	// often than a fast one (e.g. Prometheus) without slowing every other
+	// widget down to match. Unset polls at the global interval every cycle.
+	// Floor-clamped to the global interval: a value smaller than it would
+	// have no effect anyway, since the poller only ever runs once per cycle.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	PollIntervalSeconds *int32 `json:"pollIntervalSeconds,omitempty"`
 }
 
 // ServiceEntrySpec defines one service card rendered by the native

@@ -734,6 +734,151 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 	}
 }
 
+// TestPollerPollWidgetHonorsPollIntervalSeconds exercises the
+// PollIntervalSeconds skip path: a widget whose override hasn't elapsed yet
+// must not be polled (and must leave any existing card untouched), while one
+// whose override has elapsed must be polled as normal.
+func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"activeTargets":[{"health":"up"}]}}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	overrideSeconds := int32(100)
+	entry := pagev1alpha1.ServiceEntry{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec:       pagev1alpha1.ServiceEntrySpec{Group: testGroup, Name: testSvcAName},
+	}
+	widget := &pagev1alpha1.ServiceWidget{Type: testWidgetType, URL: &url, PollIntervalSeconds: &overrideSeconds}
+
+	store := NewStore()
+	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
+
+	// First poll of key is always due, regardless of override.
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
+	}
+	if len(store.Snapshot()) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(store.Snapshot()))
+	}
+
+	// Immediately polling again is within the 100s override: skipped.
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	if n := hits.Load(); n != 1 {
+		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
+	}
+
+	// Back-date the last-polled time past the override: due again.
+	p.widgetLastPolledMu.Lock()
+	p.widgetLastPolled[testCardKeyA] = time.Now().Add(-101 * time.Second)
+	p.widgetLastPolledMu.Unlock()
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	if n := hits.Load(); n != 2 {
+		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
+	}
+}
+
+// TestPollerPollInfoWidgetHonorsPollIntervalSeconds is the InfoWidget analog
+// of TestPollerPollWidgetHonorsPollIntervalSeconds.
+func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"current_weather":{"temperature":9,"weathercode":0}}`))
+	}))
+	defer srv.Close()
+
+	overrideSeconds := int32(100)
+	iw := pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef:         pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:                testOpenMeteoType,
+			Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+			PollIntervalSeconds: &overrideSeconds,
+		},
+	}
+
+	const key = "header/" + testHeaderWeather
+	store := NewStore()
+	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
+
+	p.pollInfoWidget(t.Context(), key, iw)
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
+	}
+
+	p.pollInfoWidget(t.Context(), key, iw)
+	if n := hits.Load(); n != 1 {
+		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
+	}
+
+	p.widgetLastPolledMu.Lock()
+	p.widgetLastPolled[key] = time.Now().Add(-101 * time.Second)
+	p.widgetLastPolledMu.Unlock()
+	p.pollInfoWidget(t.Context(), key, iw)
+	if n := hits.Load(); n != 2 {
+		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
+	}
+}
+
+// TestPollerDuePollFloorClampedToInterval verifies an override shorter than
+// the poller's own Interval has no effect: the poller only ever runs once
+// per Interval, so a widget can't poll more often than that regardless of a
+// smaller PollIntervalSeconds.
+func TestPollerDuePollFloorClampedToInterval(t *testing.T) {
+	overrideSeconds := int32(1)
+	p := &Poller{Interval: time.Hour}
+
+	if !p.duePoll("k", &overrideSeconds) {
+		t.Fatal("duePoll() = false on first call, want true")
+	}
+	if p.duePoll("k", &overrideSeconds) {
+		t.Error("duePoll() = true immediately after, want false (clamped to the hour-long Interval, not the 1s override)")
+	}
+}
+
+// TestPollerDuePollNilOrZeroOverrideAlwaysDue verifies the common case (no
+// override) never gets gated, and is never tracked in widgetLastPolled.
+func TestPollerDuePollNilOrZeroOverrideAlwaysDue(t *testing.T) {
+	p := &Poller{Interval: time.Hour}
+	zero := int32(0)
+
+	for range 3 {
+		if !p.duePoll("k", nil) {
+			t.Error("duePoll(nil) = false, want true every time")
+		}
+		if !p.duePoll("k", &zero) {
+			t.Error("duePoll(&0) = false, want true every time")
+		}
+	}
+	if len(p.widgetLastPolled) != 0 {
+		t.Errorf("widgetLastPolled = %v, want empty (nil/zero overrides aren't tracked)", p.widgetLastPolled)
+	}
+}
+
+// TestPollerPruneWidgetLastPolledRemovesUnkept verifies pruneWidgetLastPolled
+// mirrors Store.Prune: an entry not in this cycle's keep set is dropped, so
+// a deleted or edited-away-from-an-override widget's bookkeeping doesn't
+// accumulate forever.
+func TestPollerPruneWidgetLastPolledRemovesUnkept(t *testing.T) {
+	p := &Poller{
+		widgetLastPolled: map[string]time.Time{"keep": time.Now(), "drop": time.Now()},
+	}
+	p.pruneWidgetLastPolled(map[string]bool{"keep": true})
+
+	if _, ok := p.widgetLastPolled["keep"]; !ok {
+		t.Error("pruneWidgetLastPolled removed a kept key")
+	}
+	if _, ok := p.widgetLastPolled["drop"]; ok {
+		t.Error("pruneWidgetLastPolled did not remove an unkept key")
+	}
+}
+
 func TestMetricErrTreatsUnreachableAndHTTPStatusAsError(t *testing.T) {
 	cases := []struct {
 		name   string

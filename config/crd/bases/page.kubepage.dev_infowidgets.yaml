@@ -87,6 +87,14 @@ spec:
                   have no inherent ordering of their own.
                 format: int32
                 type: integer
+              pollIntervalSeconds:
+                description: |-
+                  pollIntervalSeconds overrides the dashboard's global --poll-interval
+                  for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
+                  "datetime"/"greeting"/"logo", which aren't polled at all.
+                format: int32
+                minimum: 1
+                type: integer
               secrets:
                 additionalProperties:
                   description: |-

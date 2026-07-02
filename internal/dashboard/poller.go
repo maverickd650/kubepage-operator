@@ -67,6 +67,16 @@ type Poller struct {
 	// Only ever read/written from pollOnce, which Run never calls
 	// concurrently with itself, so this needs no lock of its own.
 	monitorLabels map[string]bool
+
+	// widgetLastPolled tracks the last time a widget with its own
+	// PollIntervalSeconds override was actually polled, keyed the same as
+	// Store (e.g. "ns/name/0", "header/name"). Widgets without an override
+	// poll every cycle and never appear here. Guarded by widgetLastPolledMu
+	// since, unlike monitorLabels, it's read and written from the
+	// concurrent per-widget goroutines pollOnce fans out via run(), not just
+	// from pollOnce itself.
+	widgetLastPolledMu sync.Mutex
+	widgetLastPolled   map[string]time.Time
 }
 
 // Run polls once immediately, then on Interval until ctx is done.
@@ -191,6 +201,44 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	wg.Wait()
 	p.Store.Prune(keep)
 	p.pruneMonitorMetrics(monitorLabels)
+	p.pruneWidgetLastPolled(keep)
+}
+
+// duePoll reports whether the widget at key should be polled this cycle,
+// given its optional PollIntervalSeconds override: nil or <=0 means every
+// cycle (the common case, tracked nowhere). A set override is floor-clamped
+// to the poller's own Interval, since a shorter override would have no
+// effect — pollOnce only runs once per Interval regardless. When it returns
+// true, it also records now as key's last-polled time.
+func (p *Poller) duePoll(key string, overrideSeconds *int32) bool {
+	if overrideSeconds == nil || *overrideSeconds <= 0 {
+		return true
+	}
+	interval := max(time.Duration(*overrideSeconds)*time.Second, p.Interval)
+
+	p.widgetLastPolledMu.Lock()
+	defer p.widgetLastPolledMu.Unlock()
+	if last, ok := p.widgetLastPolled[key]; ok && time.Since(last) < interval {
+		return false
+	}
+	if p.widgetLastPolled == nil {
+		p.widgetLastPolled = map[string]time.Time{}
+	}
+	p.widgetLastPolled[key] = time.Now()
+	return true
+}
+
+// pruneWidgetLastPolled deletes any widgetLastPolled entry not in this
+// cycle's keep set, mirroring Store.Prune, so a deleted (or edited-away-
+// from-an-override) widget's bookkeeping doesn't accumulate forever.
+func (p *Poller) pruneWidgetLastPolled(keep map[string]bool) {
+	p.widgetLastPolledMu.Lock()
+	defer p.widgetLastPolledMu.Unlock()
+	for key := range p.widgetLastPolled {
+		if !keep[key] {
+			delete(p.widgetLastPolled, key)
+		}
+	}
 }
 
 // pruneMonitorMetrics deletes any monitorUp label series from the previous
@@ -286,7 +334,15 @@ func podReady(pod *corev1.Pod) bool {
 // pollWidget builds and stores the Card for one of an entry's widgets, with
 // the entry's already-probed monitor status attached. A nil widget means the
 // entry has a monitor but no widget: the card shows only title/icon/monitor.
+// When widget sets its own PollIntervalSeconds and this cycle isn't due yet,
+// pollWidget returns immediately without touching Store, leaving the
+// previous cycle's card (monitor status included) in place — key is already
+// in this cycle's keep set from the caller, so it survives Store.Prune.
 func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool) {
+	if widget != nil && !p.duePoll(key, widget.PollIntervalSeconds) {
+		return
+	}
+
 	hideErrors := defaultHideErrors
 	if entry.Spec.HideErrors != nil {
 		hideErrors = *entry.Spec.HideErrors == pagev1alpha1.StatsHide
@@ -384,8 +440,15 @@ func metricErr(err error, fields []Field) error {
 
 // pollInfoWidget builds and stores the header Card for one InfoWidget whose
 // type is a registered widget (e.g. openmeteo). Options become the widget's
-// Config; Secrets are resolved in-process like service widgets.
+// Config; Secrets are resolved in-process like service widgets. When iw sets
+// its own PollIntervalSeconds and this cycle isn't due yet, it returns
+// immediately, leaving the previous cycle's card in place (see pollWidget's
+// doc comment for the same pattern).
 func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1.InfoWidget) {
+	if !p.duePoll(key, iw.Spec.PollIntervalSeconds) {
+		return
+	}
+
 	card := Card{
 		Key:         key,
 		ServiceName: iw.Name,

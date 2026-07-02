@@ -345,6 +345,17 @@ spec:
                         keyed by the field's label. See FieldHighlight.
                       minProperties: 1
                       type: object
+                    pollIntervalSeconds:
+                      description: |-
+                        pollIntervalSeconds overrides the dashboard's global --poll-interval
+                        for this widget only, letting a slow upstream (e.g. weather) poll less
+                        often than a fast one (e.g. Prometheus) without slowing every other
+                        widget down to match. Unset polls at the global interval every cycle.
+                        Floor-clamped to the global interval: a value smaller than it would
+                        have no effect anyway, since the poller only ever runs once per cycle.
+                      format: int32
+                      minimum: 1
+                      type: integer
                     secrets:
                       additionalProperties:
                         description: |-

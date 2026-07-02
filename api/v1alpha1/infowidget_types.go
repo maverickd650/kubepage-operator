@@ -61,6 +61,13 @@ type InfoWidgetSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Options *apiextensionsv1.JSON `json:"options,omitempty"`
+
+	// pollIntervalSeconds overrides the dashboard's global --poll-interval
+	// for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
+	// "datetime"/"greeting"/"logo", which aren't polled at all.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	PollIntervalSeconds *int32 `json:"pollIntervalSeconds,omitempty"`
 }
 
 // InfoWidgetStatus defines the observed state of InfoWidget.
