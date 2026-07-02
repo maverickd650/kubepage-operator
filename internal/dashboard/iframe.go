@@ -16,6 +16,12 @@ func init() {
 // on a service card (homepage's "iframe" widget), rather than polling an
 // upstream for Fields to render as stat chips. cards.templ special-cases
 // this WidgetType to render the embed instead of the usual stats grid.
+//
+// Because the embed itself lives in card.Fields (see iframeSrc/iframeHeight
+// below), a ServiceEntry.Spec.ShowStats="Hide" on an iframe widget's entry
+// hides the iframe too, not just stat chips — pollWidget only populates
+// card.Fields when ShowStats is on. Don't set ShowStats=Hide on an entry
+// carrying an iframe widget.
 const widgetTypeIframe = "iframe"
 
 // Field labels iframeWidget.Poll returns, read back by cards.templ via

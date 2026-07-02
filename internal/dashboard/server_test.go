@@ -165,6 +165,23 @@ func TestServerFragmentRendersIframeWidget(t *testing.T) {
 	}
 }
 
+// TestSecurityHeadersAllowsHTTPSFrames guards the iframe ServiceWidget
+// (iframe.go/cards.templ): without a frame-src directive, the CSP's
+// default-src 'self' would make every browser refuse to load an iframe
+// widget's cross-origin src, silently breaking the whole feature despite
+// the fragment's rendered markup looking correct.
+func TestSecurityHeadersAllowsHTTPSFrames(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "frame-src https:") {
+		t.Errorf("Content-Security-Policy = %q, want a frame-src https: directive", csp)
+	}
+}
+
 // TestServerMetricsRouteNotExposed asserts /metrics is not reachable on the
 // Server's own router: it's served on a separate listener (dashboard.go's
 // Run, on Options.MetricsAddr) specifically so it can't be exposed through

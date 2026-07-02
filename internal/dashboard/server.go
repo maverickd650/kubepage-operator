@@ -147,9 +147,18 @@ func (s *Server) Routes() http.Handler {
 // needed because the page shell has no nonce/hash plumbing yet; every value
 // interpolated into those inline blocks is either a fixed lookup table
 // (AccentHex/PaletteRamp), a plain integer, or escaped via cssStringEscape
-// (CustomCSS/Background.Image) rather than free-form script text.
+// (CustomCSS/Background.Image) rather than free-form script text. frame-src
+// mirrors img-src's "https: and nothing else" scope: without it, an iframe
+// ServiceWidget's <iframe src="..."> (cards.templ, iframe.go) falls back to
+// default-src 'self' and every browser refuses to load it — the CSP is a
+// compile-time constant, so this can't be scoped to just the operator-
+// configured widget URLs without threading per-request state through the
+// page shell; iframe.go's own fixed sandbox attribute (allow-scripts
+// allow-same-origin, no allow-top-navigation) is the actual containment
+// boundary for whatever origin an operator points a widget at.
 const contentSecurityPolicy = "default-src 'self'; " +
 	"img-src 'self' https: data:; " +
+	"frame-src https:; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"script-src 'self' 'unsafe-inline'; " +
 	"connect-src 'self'; " +
