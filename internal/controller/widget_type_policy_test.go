@@ -27,7 +27,7 @@ var (
 	serviceEntryWidgetTypes = []string{
 		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
 		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
-		"homeassistant", "mealie",
+		"homeassistant", "mealie", "customapi",
 	}
 	// infoWidgetPollableTypes is the subset of config/admission's infowidget-type
 	// allow-list that's also a registered dashboard.Widget; "greeting" and
@@ -109,6 +109,12 @@ var _ = Describe("Widget-type ValidatingAdmissionPolicies", Ordered, func() {
 
 		It("admits a supported header type", func() {
 			iw := infoWidgetWithType("iw-good-type", "datetime")
+			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, iw)).To(Succeed())
+		})
+
+		It("admits the static logo type", func() {
+			iw := infoWidgetWithType("iw-logo-type", "logo")
 			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, iw)).To(Succeed())
 		})

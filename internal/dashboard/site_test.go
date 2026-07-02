@@ -344,7 +344,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "bm2", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-			Group:       testBookmarkGroup, Name: "First", Href: "https://example.invalid/1", Order: &order1,
+			Group:       testBookmarkGroup, Name: testLabelFirst, Href: "https://example.invalid/1", Order: &order1,
 		},
 	}
 	other := &pagev1alpha1.Bookmark{
@@ -364,7 +364,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 		t.Fatalf("BookmarkGroups = %+v", site.BookmarkGroups)
 	}
 	bms := site.BookmarkGroups[0].Bookmarks
-	if len(bms) != 2 || bms[0].Name != "First" || bms[1].Name != "Second" {
+	if len(bms) != 2 || bms[0].Name != testLabelFirst || bms[1].Name != "Second" {
 		t.Errorf("Bookmarks = %+v, want First then Second (ordered by Order)", bms)
 	}
 }
@@ -537,6 +537,55 @@ func TestScalarOptions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoadSiteAppliesCustomJSStatusStyleHideErrorsHideVersion(t *testing.T) {
+	scheme := testScheme(t)
+	customJS := "console.log('hi')"
+	statusStyle := testStatusBasic
+	hideErrors := pagev1alpha1.StatsHide
+	hideVersion := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			CustomJS:    &customJS,
+			StatusStyle: &statusStyle,
+			HideErrors:  &hideErrors,
+			HideVersion: &hideVersion,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.CustomJS != customJS {
+		t.Errorf("CustomJS = %q, want %q", site.CustomJS, customJS)
+	}
+	if site.StatusStyle != statusStyle {
+		t.Errorf("StatusStyle = %q, want %q", site.StatusStyle, statusStyle)
+	}
+	if !site.HideErrors {
+		t.Error("HideErrors = false, want true")
+	}
+	if !site.HideVersion {
+		t.Error("HideVersion = false, want true")
+	}
+}
+
+func TestLoadSiteStatusStyleDefaultsToDot(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.StatusStyle != statusStyleDot {
+		t.Errorf("StatusStyle = %q, want default %q", site.StatusStyle, statusStyleDot)
 	}
 }
 

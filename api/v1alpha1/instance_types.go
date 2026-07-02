@@ -112,6 +112,46 @@ type InstanceSpec struct {
 	// than crashing the manager trying to watch a Kind that doesn't exist.
 	// +optional
 	Gateway *GatewaySpec `json:"gateway,omitempty"`
+
+	// discovery opts this Instance into synthesizing service cards from
+	// annotated Ingresses in its own namespace, in addition to explicit
+	// ServiceEntry cards (an explicit ServiceEntry wins on a Group+Name
+	// collision). Off by default. See DiscoverySpec for the annotation
+	// contract.
+	// +optional
+	Discovery *DiscoverySpec `json:"discovery,omitempty"`
+}
+
+// DiscoverySpec opts an Instance into Kubernetes-native service discovery:
+// the dashboard process lists Ingresses in its own namespace and renders one
+// card per Ingress carrying the enable annotation, without requiring an
+// explicit ServiceEntry. Mirrors (a curated subset of) homepage's Ingress
+// annotation discovery (https://gethomepage.dev/configs/kubernetes/), scoped
+// to what an annotation — world-readable to anyone who can read the Ingress —
+// can safely carry: no secrets, so no widget config, only href/icon/
+// description/group/ping.
+type DiscoverySpec struct {
+	// enabled turns on Ingress annotation discovery for this Instance.
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +default="Disabled"
+	// +optional
+	Enabled string `json:"enabled,omitempty"`
+
+	// annotationPrefix is the annotation key prefix an Ingress must carry to
+	// be discovered, e.g. "<prefix>enabled", "<prefix>name", "<prefix>group".
+	// Defaults to "kubepage.io/".
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	AnnotationPrefix *string `json:"annotationPrefix,omitempty"`
+
+	// homepageCompat additionally honors "gethomepage.dev/*" annotations
+	// (homepage's own discovery convention) on any Ingress that doesn't carry
+	// AnnotationPrefix's own enable annotation, so a cluster migrating from
+	// homepage doesn't need to relabel every Ingress.
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +optional
+	HomepageCompat *string `json:"homepageCompat,omitempty"`
 }
 
 // IngressSpec configures an Ingress exposing the dashboard Service.

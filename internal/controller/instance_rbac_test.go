@@ -62,7 +62,7 @@ func TestClusterRBACNameStaysWithinKubernetesLimit(t *testing.T) {
 // this Role regardless of whether any bound ServiceEntry uses PodSelector.
 func TestDashboardRolesGrantsPods(t *testing.T) {
 	for _, secretNames := range [][]string{nil, {"some-secret"}} {
-		rules := dashboardRoles(secretNames)
+		rules := dashboardRoles(secretNames, false)
 		found := slices.ContainsFunc(rules, func(r rbacv1.PolicyRule) bool {
 			return slices.Contains(r.Resources, resourcePods) &&
 				slices.Contains(r.Verbs, verbGet) &&
@@ -70,8 +70,27 @@ func TestDashboardRolesGrantsPods(t *testing.T) {
 				slices.Contains(r.Verbs, "watch")
 		})
 		if !found {
-			t.Errorf("dashboardRoles(%v) has no pods get/list/watch rule", secretNames)
+			t.Errorf("dashboardRoles(%v, false) has no pods get/list/watch rule", secretNames)
 		}
+	}
+}
+
+// TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled guards the
+// least-privilege intent of DiscoverySpec: the per-Instance Role should only
+// carry Ingress read access while Ingress annotation discovery is actually
+// turned on for that Instance.
+func TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled(t *testing.T) {
+	hasIngressRule := func(rules []rbacv1.PolicyRule) bool {
+		return slices.ContainsFunc(rules, func(r rbacv1.PolicyRule) bool {
+			return slices.Contains(r.Resources, "ingresses") && slices.Contains(r.Verbs, verbGet)
+		})
+	}
+
+	if hasIngressRule(dashboardRoles(nil, false)) {
+		t.Error("dashboardRoles(nil, false) unexpectedly grants ingresses access")
+	}
+	if !hasIngressRule(dashboardRoles(nil, true)) {
+		t.Error("dashboardRoles(nil, true) has no ingresses get/list/watch rule")
 	}
 }
 

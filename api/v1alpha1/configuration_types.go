@@ -314,6 +314,34 @@ type ConfigurationSpec struct {
 	// +kubebuilder:validation:MaxLength=10000
 	// +optional
 	CustomCSS *string `json:"customCSS,omitempty"`
+
+	// customJS is raw JavaScript injected into the dashboard's page in a
+	// <script> block, run once on page load. Trusted, operator-supplied
+	// content — the same trust level as CustomCSS/Background.Image.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=10000
+	// +optional
+	CustomJS *string `json:"customJS,omitempty"`
+
+	// statusStyle is the site-wide default for how a ServiceEntry's Ping/
+	// SiteMonitor/PodSelector status renders ("dot" or "basic"), used when a
+	// ServiceEntry doesn't set its own StatusStyle. Defaults to "dot" when
+	// unset here too.
+	// +kubebuilder:validation:Enum=dot;basic
+	// +optional
+	StatusStyle *string `json:"statusStyle,omitempty"`
+
+	// hideErrors is the site-wide default for whether a widget's error text
+	// is suppressed on its card, used when a ServiceEntry doesn't set its own
+	// HideErrors. Defaults to "Show" when unset here too.
+	// +kubebuilder:validation:Enum=Show;Hide
+	// +optional
+	HideErrors *string `json:"hideErrors,omitempty"`
+
+	// hideVersion hides the dashboard's version/commit footer.
+	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// +optional
+	HideVersion *string `json:"hideVersion,omitempty"`
 }
 
 // ConfigurationStatus defines the observed state of Configuration.

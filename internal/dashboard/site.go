@@ -79,6 +79,17 @@ type Site struct {
 	// CustomCSS is raw, operator-supplied CSS appended after the built-in
 	// stylesheet.
 	CustomCSS string
+	// CustomJS is raw, operator-supplied JavaScript run once on page load.
+	CustomJS string
+
+	// StatusStyle/HideErrors are the site-wide defaults a ServiceEntry falls
+	// back to when it doesn't set its own StatusStyle/HideErrors (see
+	// poller.go's siteDefaults).
+	StatusStyle string
+	HideErrors  bool
+
+	// HideVersion hides the dashboard's version/commit footer.
+	HideVersion bool
 
 	BookmarkGroups []BookmarkGroup
 	HeaderWidgets  []HeaderWidget
@@ -166,27 +177,16 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Title:       defaultTitle,
 		Target:      defaultTarget,
 		StartURL:    "/",
+		StatusStyle: statusStyleDot,
 		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true},
 	}
 
-	var configs pagev1alpha1.ConfigurationList
-	if err := reader.List(ctx, &configs, client.InNamespace(namespace)); err != nil {
-		return site, fmt.Errorf("listing Configurations: %w", err)
+	spec, err := boundConfigurationSpec(ctx, reader, namespace, instanceName)
+	if err != nil {
+		return site, err
 	}
-
-	var bound []pagev1alpha1.Configuration
-	for _, c := range configs.Items {
-		if c.Spec.InstanceRef.Name == instanceName {
-			bound = append(bound, c)
-		}
-	}
-	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
-	if len(bound) > 1 {
-		siteLog.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
-			"instance", instanceName, "using", bound[0].Name)
-	}
-	if len(bound) > 0 {
-		applyConfiguration(&site, &bound[0].Spec)
+	if spec != nil {
+		applyConfiguration(&site, spec)
 	}
 
 	var bookmarks pagev1alpha1.BookmarkList
@@ -261,7 +261,45 @@ func scalarOptions(raw *apiextensionsv1.JSON) map[string]string {
 	return opts
 }
 
+// boundConfigurationSpec returns the Spec of the Configuration bound to
+// instanceName (the lexicographically first by name, when more than one
+// references the same Instance), or nil if none is bound. Shared by LoadSite
+// and Poller.siteDefaults so both read the same "which Configuration wins"
+// rule from a single place.
+func boundConfigurationSpec(ctx context.Context, reader client.Reader, namespace, instanceName string) (*pagev1alpha1.ConfigurationSpec, error) {
+	var configs pagev1alpha1.ConfigurationList
+	if err := reader.List(ctx, &configs, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("listing Configurations: %w", err)
+	}
+
+	var bound []pagev1alpha1.Configuration
+	for _, c := range configs.Items {
+		if c.Spec.InstanceRef.Name == instanceName {
+			bound = append(bound, c)
+		}
+	}
+	if len(bound) == 0 {
+		return nil, nil
+	}
+	slices.SortFunc(bound, func(a, b pagev1alpha1.Configuration) int { return strings.Compare(a.Name, b.Name) })
+	if len(bound) > 1 {
+		siteLog.Info("Multiple Configurations reference this Instance; using the lexicographically first by name",
+			"instance", instanceName, "using", bound[0].Name)
+	}
+	return &bound[0].Spec, nil
+}
+
 func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
+	applyLookFields(site, spec)
+	applySearch(site, spec.Search)
+	applyLayout(site, spec.Layout)
+	applyBehaviorFields(site, spec)
+}
+
+// applyLookFields applies the Configuration fields governing the page's
+// visual identity: title/description/favicon/card look, theme/color/header
+// style, language, layout width, and background image.
+func applyLookFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.Title != nil {
 		site.Title = *spec.Title
 	}
@@ -304,45 +342,60 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 		}
 		site.Background = bg
 	}
-	if s := spec.Search; s != nil {
-		if s.Provider != nil {
-			site.Search.Provider = *s.Provider
-		}
-		if s.URL != nil && isHTTPURL(*s.URL) {
-			// The CRD schema's Pattern marker already rejects non-http(s)
-			// URLs at apply time, but re-check here defensively: this value
-			// is passed straight into a client-side window.open()/href, so a
-			// non-http(s) scheme (e.g. "javascript:") would be a stored
-			// script-injection vector, and existing CRs predate the schema
-			// change.
-			site.Search.URL = *s.URL
-		}
-		if s.Target != nil {
-			site.Search.Target = *s.Target
-		}
-		if s.FilterCards != nil {
-			site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
-		}
+}
+
+// applySearch applies the Configuration's header search box settings, if set.
+func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
+	if s == nil {
+		return
 	}
-	if spec.Layout != nil {
-		tabs := make([]LayoutTab, 0, len(spec.Layout))
-		for _, t := range spec.Layout {
-			groups := make([]LayoutGroup, 0, len(t.Groups))
-			for _, g := range t.Groups {
-				groups = append(groups, LayoutGroup{
-					Name:               g.Name,
-					Columns:            g.Columns,
-					Style:              stringOrEmpty(g.Style),
-					IconURL:            IconURL(g.Icon),
-					Header:             boolFromEnum(g.Header, pagev1alpha1.HeaderShown),
-					InitiallyCollapsed: boolFromEnum(g.InitiallyCollapsed, pagev1alpha1.CollapseCollapsed),
-					UseEqualHeights:    boolFromEnum(g.UseEqualHeights, pagev1alpha1.HeightsEqual),
-				})
-			}
-			tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
-		}
-		site.Layout = tabs
+	if s.Provider != nil {
+		site.Search.Provider = *s.Provider
 	}
+	if s.URL != nil && isHTTPURL(*s.URL) {
+		// The CRD schema's Pattern marker already rejects non-http(s) URLs at
+		// apply time, but re-check here defensively: this value is passed
+		// straight into a client-side window.open()/href, so a non-http(s)
+		// scheme (e.g. "javascript:") would be a stored script-injection
+		// vector, and existing CRs predate the schema change.
+		site.Search.URL = *s.URL
+	}
+	if s.Target != nil {
+		site.Search.Target = *s.Target
+	}
+	if s.FilterCards != nil {
+		site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
+	}
+}
+
+// applyLayout resolves the Configuration's Layout tabs/groups, if set.
+func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
+	if layout == nil {
+		return
+	}
+	tabs := make([]LayoutTab, 0, len(layout))
+	for _, t := range layout {
+		groups := make([]LayoutGroup, 0, len(t.Groups))
+		for _, g := range t.Groups {
+			groups = append(groups, LayoutGroup{
+				Name:               g.Name,
+				Columns:            g.Columns,
+				Style:              stringOrEmpty(g.Style),
+				IconURL:            IconURL(g.Icon),
+				Header:             boolFromEnum(g.Header, pagev1alpha1.HeaderShown),
+				InitiallyCollapsed: boolFromEnum(g.InitiallyCollapsed, pagev1alpha1.CollapseCollapsed),
+				UseEqualHeights:    boolFromEnum(g.UseEqualHeights, pagev1alpha1.HeightsEqual),
+			})
+		}
+		tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
+	}
+	site.Layout = tabs
+}
+
+// applyBehaviorFields applies the Configuration fields governing dashboard
+// behavior rather than look: collapsibility, bookmark/indexing/PWA
+// settings, injected CSS/JS, and the site-wide status/error/version defaults.
+func applyBehaviorFields(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	if spec.DisableCollapse != nil {
 		site.DisableCollapse = *spec.DisableCollapse == pagev1alpha1.Disabled
 	}
@@ -363,6 +416,18 @@ func applyConfiguration(site *Site, spec *pagev1alpha1.ConfigurationSpec) {
 	}
 	if spec.CustomCSS != nil {
 		site.CustomCSS = *spec.CustomCSS
+	}
+	if spec.CustomJS != nil {
+		site.CustomJS = *spec.CustomJS
+	}
+	if spec.StatusStyle != nil {
+		site.StatusStyle = *spec.StatusStyle
+	}
+	if spec.HideErrors != nil {
+		site.HideErrors = *spec.HideErrors == pagev1alpha1.StatsHide
+	}
+	if spec.HideVersion != nil {
+		site.HideVersion = *spec.HideVersion == pagev1alpha1.Enabled
 	}
 }
 

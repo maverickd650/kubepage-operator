@@ -114,6 +114,8 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		})
 	}
 
+	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
+
 	var entries pagev1alpha1.ServiceEntryList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
 		pollerLog.Error(err, "listing ServiceEntries")
@@ -131,7 +133,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		// starts. Previously a single slow/unreachable monitor delayed every
 		// other card in the cycle by up to its full HTTP timeout.
 		run(func() {
-			status, statusStyle, latency := p.monitor(ctx, entry, recordMonitorLabel)
+			status, statusStyle, latency := p.monitor(ctx, entry, defaultStatusStyle, recordMonitorLabel)
 
 			if len(entry.Spec.Widgets) == 0 {
 				// A service with a monitor but no widget still gets one card
@@ -141,7 +143,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 				}
 				key := fmt.Sprintf("%s/%s/monitor", entry.Namespace, entry.Name)
 				markKeep(key)
-				p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency)
+				p.pollWidget(ctx, key, entry, nil, status, statusStyle, latency, defaultHideErrors)
 				return
 			}
 
@@ -149,9 +151,21 @@ func (p *Poller) pollOnce(ctx context.Context) {
 				key := fmt.Sprintf("%s/%s/%d", entry.Namespace, entry.Name, i)
 				markKeep(key)
 				widget := &entry.Spec.Widgets[i]
-				run(func() { p.pollWidget(ctx, key, entry, widget, status, statusStyle, latency) })
+				run(func() { p.pollWidget(ctx, key, entry, widget, status, statusStyle, latency, defaultHideErrors) })
 			}
 		})
+	}
+
+	if spec, ok := p.discoverySpec(ctx); ok {
+		services, err := discoverServices(ctx, p.Reader, p.Namespace, spec)
+		if err != nil {
+			pollerLog.Error(err, "discovering Ingresses")
+		} else {
+			for _, svc := range services {
+				markKeep(svc.Key)
+				run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+			}
+		}
 	}
 
 	// Header widgets: poll InfoWidgets whose type is a registered (pollable)
@@ -198,7 +212,7 @@ func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
 // status/style/latency, or empty strings when none is configured. record is
 // called with the monitorUp label this probe reported under, so the caller
 // can track which labels are still live this cycle (see pruneMonitorMetrics).
-func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry, record func(label string)) (status, statusStyle, latency string) {
+func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
 	switch {
 	case entry.Spec.PodSelector != nil:
 		status, latency = p.podStatus(ctx, entry)
@@ -210,7 +224,7 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceEntry, r
 		return "", "", ""
 	}
 
-	style := statusStyleDot
+	style := defaultStatusStyle
 	if entry.Spec.StatusStyle != nil {
 		style = *entry.Spec.StatusStyle
 	}
@@ -272,7 +286,11 @@ func podReady(pod *corev1.Pod) bool {
 // pollWidget builds and stores the Card for one of an entry's widgets, with
 // the entry's already-probed monitor status attached. A nil widget means the
 // entry has a monitor but no widget: the card shows only title/icon/monitor.
-func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string) {
+func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool) {
+	hideErrors := defaultHideErrors
+	if entry.Spec.HideErrors != nil {
+		hideErrors = *entry.Spec.HideErrors == pagev1alpha1.StatsHide
+	}
 	card := Card{
 		Key:         key,
 		Group:       entry.Spec.Group,
@@ -280,7 +298,7 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		Order:       entry.Spec.Order,
 		IconURL:     IconURL(entry.Spec.Icon),
 		ShowStats:   entry.Spec.ShowStats == nil || *entry.Spec.ShowStats != pagev1alpha1.StatsHide,
-		HideErrors:  entry.Spec.HideErrors != nil && *entry.Spec.HideErrors == pagev1alpha1.StatsHide,
+		HideErrors:  hideErrors,
 		Status:      status,
 		StatusStyle: statusStyle,
 		Latency:     latency,
@@ -449,4 +467,74 @@ func (p *Poller) resolveSecret(ctx context.Context, namespace string, src pagev1
 		return "", fmt.Errorf("key %q does not exist in Secret %q", ref.Key, ref.Name)
 	}
 	return string(data), nil
+}
+
+// siteDefaults returns the site-wide StatusStyle/HideErrors defaults from
+// the Instance's bound Configuration (falling back to statusStyleDot/false
+// when none is bound), the same "which Configuration wins" resolution
+// LoadSite uses for the HTTP-serving side.
+func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErrors bool) {
+	statusStyle = statusStyleDot
+
+	spec, err := boundConfigurationSpec(ctx, p.Reader, p.Namespace, p.InstanceName)
+	if err != nil {
+		pollerLog.Error(err, "loading Configuration for site-wide defaults")
+		return statusStyle, hideErrors
+	}
+	if spec == nil {
+		return statusStyle, hideErrors
+	}
+	if spec.StatusStyle != nil {
+		statusStyle = *spec.StatusStyle
+	}
+	if spec.HideErrors != nil {
+		hideErrors = *spec.HideErrors == pagev1alpha1.StatsHide
+	}
+	return statusStyle, hideErrors
+}
+
+// discoverySpec returns the Instance's DiscoverySpec when Ingress annotation
+// discovery is enabled, or (zero value, false) otherwise (including when the
+// Instance can't be read — a transient error here should not make every
+// discovered card vanish from the log at more than Error level, but it must
+// not panic the poll cycle either).
+func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec, bool) {
+	var instance pagev1alpha1.Instance
+	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.InstanceName, Namespace: p.Namespace}, &instance); err != nil {
+		pollerLog.Error(err, "getting Instance for discovery config")
+		return pagev1alpha1.DiscoverySpec{}, false
+	}
+	if instance.Spec.Discovery == nil || instance.Spec.Discovery.Enabled != pagev1alpha1.Enabled {
+		return pagev1alpha1.DiscoverySpec{}, false
+	}
+	return *instance.Spec.Discovery, true
+}
+
+// pollDiscoveredService builds and stores the Card for one Ingress-derived
+// discoveredService: title/icon/description/href only, plus an optional Ping
+// probe — never a polled widget, since annotations are world-readable to
+// anyone who can read the Ingress and so can't safely carry secrets (see
+// DiscoverySpec's doc comment).
+func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredService, record func(label string)) {
+	card := Card{
+		Key:         svc.Key,
+		Group:       svc.Group,
+		ServiceName: svc.Name,
+		IconURL:     svc.IconURL,
+		Description: svc.Description,
+		Href:        svc.Href,
+		UpdatedAt:   time.Now(),
+	}
+	if svc.Ping && svc.Href != "" {
+		card.Status, card.Latency = monitorResult(ctx, p.HTTPClient, svc.Href)
+		card.StatusStyle = statusStyleDot
+		label := "discovery/" + svc.Key
+		up := 0.0
+		if card.Status == "Up" {
+			up = 1
+		}
+		monitorUp.WithLabelValues(label).Set(up)
+		record(label)
+	}
+	p.Store.Set(card)
 }

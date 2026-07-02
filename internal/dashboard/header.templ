@@ -8,6 +8,14 @@ templ Header(data headerData) {
 					<span class="greeting">{ w.Greeting }</span>
 				case headerTypeDatetime:
 					<span class="clock" data-clock data-format={ w.Format }></span>
+				case headerTypeLogo:
+					if w.Href != "" {
+						<a href={ w.Href }>
+							@icon(w.IconURL)
+						</a>
+					} else {
+						@icon(w.IconURL)
+					}
 				default:
 					@icon(w.IconURL)
 					if w.Err != "" {

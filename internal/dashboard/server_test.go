@@ -671,7 +671,7 @@ func TestLayoutTabsAppliesGroupOverridePointers(t *testing.T) {
 func TestServerFragmentRendersTabs(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
-	store.Set(Card{Key: "ns/b/0", Group: "Apps", ServiceName: "Svc B"})
+	store.Set(Card{Key: "ns/b/0", Group: testDiscoveryGroup, ServiceName: "Svc B"})
 
 	cols := int32(2)
 	cfg := &pagev1alpha1.Configuration{
@@ -994,7 +994,7 @@ func TestServerFragmentRendersHighlightedStatClasses(t *testing.T) {
 		Fields: []Field{
 			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
-			{Label: "disk", Value: "3", Highlight: HighlightDanger},
+			{Label: testLabelDisk, Value: "3", Highlight: HighlightDanger},
 		},
 	})
 	srv := newTestServer(t, store)
@@ -1017,7 +1017,7 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 		Fields: []Field{
 			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
-			{Label: "disk", Value: "3", Highlight: HighlightDanger},
+			{Label: testLabelDisk, Value: "3", Highlight: HighlightDanger},
 		},
 	})
 	weather := &pagev1alpha1.InfoWidget{
@@ -1083,6 +1083,151 @@ func TestServerFragmentRendersServiceCardDescription(t *testing.T) {
 	want := `<div class="desc">A very fine service.</div>`
 	if body := rec.Body.String(); !strings.Contains(body, want) {
 		t.Errorf("fragment body missing %q, want a service card's Description rendered as visible text:\n%s", want, body)
+	}
+}
+
+func TestServerIndexRendersVersionFooter(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	srv.Version, srv.Commit = "v1.2.3", "abc1234"
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	want := `<div class="footer">v1.2.3 (abc1234)</div>`
+	if !strings.Contains(body, want) {
+		t.Errorf("index body missing %q:\n%s", want, body)
+	}
+}
+
+func TestServerIndexHidesVersionFooterWhenConfigured(t *testing.T) {
+	hide := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			HideVersion: &hide,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	srv.Version = "v1.2.3"
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if strings.Contains(rec.Body.String(), `class="footer"`) {
+		t.Errorf("index body has footer with HideVersion set:\n%s", rec.Body.String())
+	}
+}
+
+func TestServerIndexRendersCustomJS(t *testing.T) {
+	js := "console.log('hi'); // </script> attempt"
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			CustomJS:    &js,
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "console.log('hi')") {
+		t.Errorf("index body missing CustomJS content:\n%s", body)
+	}
+	if strings.Contains(body, "</script> attempt") {
+		t.Errorf("index body has an unescaped </script> from CustomJS, want it neutralized:\n%s", body)
+	}
+}
+
+// TestServerIndexServerRendersInitialFragment guards 1.7's fix: the card
+// grid must be populated straight from the page shell response, not left
+// empty until htmx's first /fragment poll completes.
+func TestServerIndexServerRendersInitialFragment(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testCardKeyA, Group: testGroup, ServiceName: testSvcAName})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, testSvcAName) {
+		t.Errorf("index body missing %q, want the initial card grid server-rendered into the shell:\n%s", testSvcAName, body)
+	}
+	if !strings.Contains(body, `<div id="cards" hx-get="/fragment" hx-trigger="every`) {
+		t.Errorf("index body's #cards div should no longer have a \"load\" hx-trigger now that content is server-rendered:\n%s", body)
+	}
+}
+
+func TestServerHeaderRendersLogoWidget(t *testing.T) {
+	href := "https://example.invalid"
+	logo := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        headerTypeLogo,
+			Icon:        strPtr("https://example.invalid/logo.png"),
+			Options:     &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
+		},
+	}
+	srv := newTestServer(t, NewStore(), logo)
+	req := httptest.NewRequest(http.MethodGet, "/header", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`src="https://example.invalid/logo.png"`, `<a href="` + href + `"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("header body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
+	logo := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Type:        headerTypeLogo,
+			Icon:        strPtr("https://example.invalid/logo.png"),
+		},
+	}
+	srv := newTestServer(t, NewStore(), logo)
+	req := httptest.NewRequest(http.MethodGet, "/header", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `src="https://example.invalid/logo.png"`) {
+		t.Errorf("header body missing logo image:\n%s", body)
+	}
+	if strings.Contains(body, "<a href=") {
+		t.Errorf("header body has a link wrapper with no href option configured:\n%s", body)
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
+// TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders guards 1.6's
+// fix: "boxedWidgets" should box the header info-widget strip specifically,
+// not group headers (which "boxed" already covers) — previously the two
+// header styles rendered group headers identically.
+func TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `[data-header-style="boxedWidgets"] .header-widget`) {
+		t.Errorf("index body missing boxedWidgets .header-widget rule:\n%s", body)
+	}
+	if strings.Contains(body, `[data-header-style="boxedWidgets"] h2`) {
+		t.Errorf("index body still boxes group headers for boxedWidgets, want that left to \"boxed\" only:\n%s", body)
 	}
 }
 

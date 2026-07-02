@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -168,15 +169,16 @@ func TestPollerRunPollsOnIntervalAndStopsOnCancel(t *testing.T) {
 		}()
 
 		synctest.Wait()
-		// pollOnce lists ServiceEntries and InfoWidgets once each.
-		if n := listCalls.Load(); n != 2 {
-			t.Fatalf("after the immediate poll, List was called %d times, want 2", n)
+		// pollOnce lists Configurations (site-wide defaults), ServiceEntries,
+		// and InfoWidgets once each.
+		if n := listCalls.Load(); n != 3 {
+			t.Fatalf("after the immediate poll, List was called %d times, want 3", n)
 		}
 
 		time.Sleep(10 * time.Second)
 		synctest.Wait()
-		if n := listCalls.Load(); n != 4 {
-			t.Fatalf("after one Interval, List was called %d times, want 4 (one more poll)", n)
+		if n := listCalls.Load(); n != 6 {
+			t.Fatalf("after one Interval, List was called %d times, want 6 (one more poll)", n)
 		}
 
 		cancel()
@@ -254,7 +256,7 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 }
 
 func TestPollerUnsupportedWidgetType(t *testing.T) {
-	url := "http://example.invalid"
+	url := testExampleURL
 	entry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: "mystery", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
@@ -341,7 +343,7 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(t.Context(), entry, func(string) {})
+	status, style, latency := p.monitor(t.Context(), entry, statusStyleDot, func(string) {})
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
@@ -647,7 +649,7 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 }
 
 func TestPollerMissingSecret(t *testing.T) {
-	url := "http://example.invalid"
+	url := testExampleURL
 	entry := &pagev1alpha1.ServiceEntry{
 		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceEntrySpec{
@@ -714,7 +716,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "")
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -727,7 +729,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 	if card.Target != target {
 		t.Errorf("card.Target = %q, want %q", card.Target, target)
 	}
-	if len(card.Fields) != 1 || card.Fields[0].Label != "Custom" {
+	if len(card.Fields) != 1 || card.Fields[0].Label != testCustomName {
 		t.Errorf("card.Fields = %+v, want a single Custom-labeled field (proves widget.Config.Raw reached the widget)", card.Fields)
 	}
 }
@@ -891,5 +893,189 @@ func TestResolveSecretGetError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "does not exist") {
 		t.Errorf("resolveSecret(Get error) = %q, want the generic getting-Secret wrap, not the NotFound message (errBoom isn't an apierrors.IsNotFound error)", err.Error())
+	}
+}
+
+func TestPollerSiteDefaultsAppliesConfiguration(t *testing.T) {
+	scheme := testScheme(t)
+	style := testStatusBasic
+	hide := pagev1alpha1.StatsHide
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			StatusStyle: &style,
+			HideErrors:  &hide,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	statusStyle, hideErrors := p.siteDefaults(t.Context())
+	if statusStyle != style || !hideErrors {
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, true)", statusStyle, hideErrors, style)
+	}
+}
+
+func TestPollerSiteDefaultsNoConfiguration(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	statusStyle, hideErrors := p.siteDefaults(t.Context())
+	if statusStyle != statusStyleDot || hideErrors {
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, false)", statusStyle, hideErrors, statusStyleDot)
+	}
+}
+
+func TestPollerSiteDefaultsListError(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	failing := errInjectingReader{
+		Reader: cl,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*pagev1alpha1.ConfigurationList)
+			return ok
+		},
+	}
+	p := &Poller{Reader: failing, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	statusStyle, hideErrors := p.siteDefaults(t.Context())
+	if statusStyle != statusStyleDot || hideErrors {
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, false) on a Configuration list error", statusStyle, hideErrors, statusStyleDot)
+	}
+}
+
+func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+
+	entry := pagev1alpha1.ServiceEntry{
+		Spec: pagev1alpha1.ServiceEntrySpec{Ping: &srv.URL},
+	}
+	p := &Poller{HTTPClient: srv.Client()}
+	_, style, _ := p.monitor(t.Context(), entry, testStatusBasic, func(string) {})
+	if style != testStatusBasic {
+		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceEntry.StatusStyle is unset", style, testStatusBasic)
+	}
+}
+
+func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
+	entry := pagev1alpha1.ServiceEntry{Spec: pagev1alpha1.ServiceEntrySpec{Group: testGroup, Name: testSvcAName}}
+	widget := &pagev1alpha1.ServiceWidget{Type: "does-not-exist"}
+
+	store := NewStore()
+	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", true)
+
+	card := store.Snapshot()[0]
+	if card.Err != "" {
+		t.Errorf("card.Err = %q, want empty when the site-wide HideErrors default is true", card.Err)
+	}
+}
+
+func TestPollerDiscoverySpecDisabledByDefault(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	if _, ok := p.discoverySpec(t.Context()); ok {
+		t.Error("discoverySpec() ok = true, want false when Instance.Spec.Discovery is unset")
+	}
+}
+
+func TestPollerDiscoverySpecEnabled(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InstanceSpec{
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	spec, ok := p.discoverySpec(t.Context())
+	if !ok || spec.Enabled != pagev1alpha1.Enabled {
+		t.Errorf("discoverySpec() = (%+v, %v), want an enabled DiscoverySpec", spec, ok)
+	}
+}
+
+func TestPollerDiscoverySpecMissingInstance(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, InstanceName: testInstanceName}
+
+	if _, ok := p.discoverySpec(t.Context()); ok {
+		t.Error("discoverySpec() ok = true, want false when the Instance can't be read")
+	}
+}
+
+func TestPollerPollDiscoveredServiceStoresCard(t *testing.T) {
+	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: "https://app.invalid"}
+	store := NewStore()
+	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
+	p.pollDiscoveredService(t.Context(), svc, func(string) {})
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].ServiceName != testDiscoveredAppName || cards[0].Group != testDiscoveryGroup || cards[0].Status != "" {
+		t.Fatalf("Snapshot() = %+v, want an unmonitored App card (Ping unset)", cards)
+	}
+}
+
+func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+
+	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: srv.URL, Ping: true}
+	store := NewStore()
+	p := &Poller{HTTPClient: srv.Client(), Store: store}
+
+	var recorded string
+	p.pollDiscoveredService(t.Context(), svc, func(label string) { recorded = label })
+
+	card := store.Snapshot()[0]
+	if card.Status != "Up" || card.StatusStyle != statusStyleDot {
+		t.Errorf("card = %+v, want Status=Up StatusStyle=dot", card)
+	}
+	if recorded == "" {
+		t.Error("pollDiscoveredService() did not record a monitor label for a Ping-enabled discovered service")
+	}
+}
+
+func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Instance{
+		ObjectMeta: metav1.ObjectMeta{Name: testInstanceName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InstanceSpec{
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+	ing := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "app", Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, "kubepage.io/name": "Discovered App"},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, ing).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, InstanceName: testInstanceName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	found := false
+	for _, c := range cards {
+		if c.ServiceName == "Discovered App" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Snapshot() = %+v, want a card for the annotated Ingress", cards)
 	}
 }

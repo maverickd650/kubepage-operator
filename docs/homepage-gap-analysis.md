@@ -17,6 +17,10 @@ curates a small widget set instead of shipping ~140 integrations. Several
 homepage features are therefore listed as intentional non-goals rather than
 gaps.
 
+**Status:** Phase 1 (§4, all seven items) and Phase 2 (§4, both items — 2.2
+scoped to Ingress-only discovery, HTTPRoute tracked as a fast-follow at
+§4.7) are done. Phase 3/4 are still just plan.
+
 ---
 
 ## 1. Where parity already exists
@@ -40,6 +44,8 @@ These homepage capabilities are already implemented (largely via the
 ## 2. Feature gaps
 
 ### 2.1 Service-widget coverage — the biggest functional gap
+
+**Done (customapi): see §4, item 2.1.**
 
 homepage ships **~140 service widgets**; kubepage registers **14**:
 `cloudflared`, `grafana`, `homeassistant`, `kubemetrics`, `linkwarden`,
@@ -65,6 +71,9 @@ Architecture note: adding a widget is already a one-file change
 registration + table test); no poller/server/store changes needed.
 
 ### 2.2 Kubernetes auto-discovery — the most strategic gap
+
+**Done for Ingress (see §4, item 2.2); HTTPRoute is a tracked fast-follow
+(§4.7).**
 
 homepage discovers services from **Ingress / Traefik IngressRoute /
 Gateway API HTTPRoute annotations** (`gethomepage.dev/enabled`,
@@ -103,7 +112,7 @@ Gaps worth closing, in rough value order:
 
 | Widget | Notes | Size |
 |--------|-------|------|
-| `logo` | Static image in the header strip; trivial (options: `icon`/URL, `href`) | XS |
+| `logo` | ✅ Done (§4, item 1.2). Static image in the header strip (options: `icon`/URL, `href`) | XS |
 | `resources`-style node metrics | `kubemetrics` covers cluster CPU/mem; homepage's `resources` also shows disk. A `kubemetrics` option for per-node breakdown + node disk (kubelet stats) gets closest without a host agent | M |
 | `glances` | The standard answer for host metrics outside the cluster; plain JSON API, fits the `Widget` interface (also useful as a *service* widget) | S |
 | `longhorn` | Popular on exactly this audience's clusters; JSON API | S |
@@ -116,7 +125,10 @@ Also in this area: **InfoWidget `datetime` ignores its `format` option** —
 hardcodes `dateStyle: "medium", timeStyle: "medium"`. homepage supports
 `text_size` and `format` (Intl.DateTimeFormat options). Honoring the
 already-emitted attribute is a small fix and should be treated as a bug,
-not a feature.
+not a feature. **Fixed (§4, item 1.1)**: `format` is now a JSON-encoded
+`Intl.DateTimeFormatOptions` string (e.g. `{"dateStyle":"short"}`), parsed
+client-side with a fallback to the previous medium/medium default on empty
+or invalid JSON.
 
 ### 2.4 Layout gaps
 
@@ -169,11 +181,11 @@ coverage is a non-goal.
 
 | homepage feature | kubepage state | Verdict |
 |---|---|---|
-| `customJS` | only `customCSS` | Add alongside customCSS (same operator-trust argument, same injection path); XS |
-| Site-wide `statusStyle` / `hideErrors` defaults | per-ServiceEntry only | Add Configuration-level defaults that entries override; XS |
+| `customJS` | ✅ Done (§4, item 1.3) | — |
+| Site-wide `statusStyle` / `hideErrors` defaults | ✅ Done (§4, item 1.4) | — |
 | `iconStyle: theme` (mdi icons tinted to theme color) | `-#hexcolor` suffix only | Add: resolve mdi/si icons with the accent color when set; XS |
 | `iframe` service widget | none | Add a sandboxed `iframe` widget type (`sandbox` attr, operator-trusted URL); S |
-| Version footer + `hideVersion` | no version display (version/commit are already stamped into the binary since PR #57) | Add footer + toggle; XS |
+| Version footer + `hideVersion` | ✅ Done (§4, item 1.5) | — |
 | `maxGroupColumns`, `useEqualHeights`, `groupsInitiallyCollapsed` | covered | — |
 | `providers` block (shared API keys) | per-widget `secrets` with `secretKeyRef` | kubepage's model is better-suited to K8s; non-goal |
 
@@ -205,6 +217,7 @@ Remaining visual deltas, smallest-effort-first:
    background here, so the practical difference is small — make
    `boxedWidgets` toggle a stronger boxed treatment on `.header-widget`
    and leave group headers un-boxed, matching homepage semantics. XS.
+   **Done (§4, item 1.6).**
 3. **Header strip alignment** — homepage right-aligns info widgets
    (greeting/datetime left, resources/search right); kubepage renders one
    left-aligned wrapping row. Add left/right slots (e.g. greeting +
@@ -214,7 +227,7 @@ Remaining visual deltas, smallest-effort-first:
    fetch completes; homepage shows skeleton placeholders. Server-render
    the first fragment into the page shell (the data is already in
    `Store`) and let htmx take over from there — removes the flash with
-   no skeleton CSS needed. S.
+   no skeleton CSS needed. S. **Done (§4, item 1.7).**
 5. **Card details** — homepage's icons are slightly larger (~2rem vs
    1.2rem) with the title stacked beside them, and stat blocks sit flush
    to the card bottom under `useEqualHeights`. Pixel-tuning pass over
@@ -225,24 +238,44 @@ Remaining visual deltas, smallest-effort-first:
 Phased so each lands independently; sizes are XS (<½ day) / S (~1 day) /
 M (2–4 days) / L (1–2 weeks).
 
-### Phase 1 — quick wins & bug-level fixes
+### Phase 1 — quick wins & bug-level fixes — done
 
 | # | Item | Where | Size |
 |---|------|-------|------|
-| 1.1 | Honor `datetime` `format` option (bug) | `index.templ` clock JS + `header.templ` | XS |
-| 1.2 | `logo` info widget | new InfoWidget type in `site.go`/`header.templ` | XS |
-| 1.3 | `customJS` Configuration field | `configuration_types.go`, `index.templ` | XS |
-| 1.4 | Site-wide `statusStyle`/`hideErrors` defaults | `configuration_types.go`, `site.go` | XS |
-| 1.5 | Version footer + `hideVersion` | `index.templ`, `configuration_types.go` | XS |
-| 1.6 | `boxedWidgets` styles the header strip (visual §3.2) | `index.templ` CSS | XS |
-| 1.7 | Server-render first card fragment (visual §3.4) | `server.go`, `index.templ` | S |
+| 1.1 | ✅ Honor `datetime` `format` option (bug) | `index.templ` clock JS + `header.templ` | XS |
+| 1.2 | ✅ `logo` info widget | `server.go`/`header.templ`, `infowidget-type` admission policy | XS |
+| 1.3 | ✅ `customJS` Configuration field | `configuration_types.go`, `site.go`, `index.templ`, `render_helpers.go` (`jsStringEscape`) | XS |
+| 1.4 | ✅ Site-wide `statusStyle`/`hideErrors` defaults | `configuration_types.go`, `site.go`, `poller.go` (`siteDefaults`) | XS |
+| 1.5 | ✅ Version footer + `hideVersion` | `dashboard.go`, `server.go`, `index.templ`, `cmd/main.go`, `configuration_types.go` | XS |
+| 1.6 | ✅ `boxedWidgets` styles the header strip (visual §3.2) | `index.templ` CSS | XS |
+| 1.7 | ✅ Server-render first card fragment (visual §3.4) | `server.go` (`buildFragmentData`), `index.templ` | S |
 
-### Phase 2 — the two strategic items
+All seven landed together in the PR that also does Phase 2; see each file's
+tests (`site_test.go`, `server_test.go`, `poller_test.go`) for coverage.
+
+### Phase 2 — the two strategic items — done (2.2 scoped to Ingress only)
 
 | # | Item | Where | Size |
 |---|------|-------|------|
-| 2.1 | `customapi` generic widget (JSON-path field mapping, secrets, highlight-compatible) | new `internal/dashboard/customapi.go` | M |
-| 2.2 | Ingress/HTTPRoute annotation auto-discovery (opt-in, `Instance.spec.discovery`, `gethomepage.dev/*` compat toggle, no secret-bearing annotations) | `instance_types.go`, `instance_rbac.go`, new `internal/dashboard/discovery.go`, docs | L |
+| 2.1 | ✅ `customapi` generic widget (JSON-path field mapping, secrets, highlight-compatible) | `internal/dashboard/customapi.go` | M |
+| 2.2 | ✅ Ingress annotation auto-discovery (opt-in, `Instance.spec.discovery`, `gethomepage.dev/*` compat toggle, no secret-bearing annotations) | `instance_types.go`, `instance_rbac.go`, `internal/dashboard/discovery.go` + `poller.go` | L |
+
+2.2 shipped as **Ingress-only** discovery: the Poller reads the Instance's
+own `spec.discovery` (RBAC: unconditional `get` on the Instance itself,
+scoped like the rest of `dashboardConfigRule`) and, when enabled, lists
+Ingresses in-namespace (RBAC: `dashboardIngressRule`, added to the
+per-Instance Role only while `discovery.enabled` — computed by the
+controller, which already has full read access to the Instance, so there's
+no chicken-and-egg problem with the dashboard pod's own restricted RBAC).
+Discovered services become ordinary `Card`s (`Group`/`Name`/`Icon`/
+`Description`/`Href`, plus an HTTP up/down probe when the `<prefix>ping`
+annotation is `"true"`) written into the same `Store` a `ServiceEntry`
+populates — no separate rendering path, `cards.templ` needed no changes.
+**HTTPRoute discovery is not included** — mirroring it would need the same
+conditional-availability dance `cmd/main.go` already does for Gateway API
+on the controller side, wired through to the dashboard pod's own RBAC/
+client too; tracked as a fast-follow (see §4.7 below) rather than expanding
+this PR further.
 
 ### Phase 3 — coverage expansion
 
@@ -263,6 +296,7 @@ M (2–4 days) / L (1–2 weeks).
 | 4.4 | Card pixel-tuning pass vs. homepage screenshots (visual §3.5) | S |
 | 4.5 | Nested groups (subgroups) — only if user demand materializes | L |
 | 4.6 | Search suggestions proxy (`/suggest`, SSRF-guarded) — only on demand | M |
+| 4.7 | Extend `Instance.spec.discovery` (§2.2) to also synthesize cards from annotated Gateway API `HTTPRoute`s, conditional on Gateway API being installed (same discovery pattern `cmd/main.go` already uses for `spec.gateway`) | M |
 
 ### Explicitly deferred / declined
 
