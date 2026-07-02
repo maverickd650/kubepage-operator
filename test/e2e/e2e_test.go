@@ -60,7 +60,7 @@ metadata:
   name: %[1]s
   namespace: %[2]s
 spec:
-  size: 1
+  replicas: 1
   containerPort: 8080
 ---
 apiVersion: page.kubepage.dev/v1alpha1
