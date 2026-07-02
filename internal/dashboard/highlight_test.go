@@ -57,9 +57,9 @@ func TestApplyHighlightsFirstMatchWins(t *testing.T) {
 
 func TestApplyHighlightsDoesNotOverrideWidgetSet(t *testing.T) {
 	rules := map[string]pagev1alpha1.FieldHighlight{
-		"cpu": {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: HighlightDanger, When: whenGTE, Value: "0"}}},
+		testCPUName: {Rules: []pagev1alpha1.HighlightRuleSpec{{Level: HighlightDanger, When: whenGTE, Value: "0"}}},
 	}
-	fields := []Field{{Label: "cpu", Value: "90", Highlight: HighlightWarn}}
+	fields := []Field{{Label: testCPUName, Value: "90", Highlight: HighlightWarn}}
 	got := applyHighlights(fields, rules)
 	if got[0].Highlight != HighlightWarn {
 		t.Errorf("applyHighlights overrode a widget-set Highlight: got %q, want unchanged %q", got[0].Highlight, HighlightWarn)

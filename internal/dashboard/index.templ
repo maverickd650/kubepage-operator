@@ -46,6 +46,7 @@ templ Index(data indexData) {
 					border-radius: 0.5rem; padding: 0.5rem 0.9rem; font-size: 0.9rem;
 				}
 				.header-widget { display: flex; align-items: center; gap: 0.5rem; }
+				.header-widget-push-right { margin-left: auto; }
 				.header-field { display: inline-flex; flex-direction: column; gap: 0.15rem; }
 				.header-field + .header-field { margin-left: 0.75rem; }
 				.header-field-row { display: flex; align-items: baseline; gap: 0.35rem; }
@@ -99,10 +100,11 @@ templ Index(data indexData) {
 					transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
 					border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 				}
-				.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+				.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.6rem; }
 				.card h3 a { color: inherit; text-decoration: none; }
 				.card h3 a:hover { color: var(--accent); }
 				img.icon { width: 1.2rem; height: 1.2rem; object-fit: contain; }
+				.card h3 img.icon { width: 2rem; height: 2rem; }
 				.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-left: auto; background: var(--muted); }
 				.status-dot.status-Up { background: #4ade80; }
 				.status-dot.status-Down { background: #f87171; }
@@ -110,6 +112,7 @@ templ Index(data indexData) {
 				.status-pill.status-Up { background: color-mix(in srgb, #4ade80 22%, transparent); color: #4ade80; }
 				.status-pill.status-Down { background: color-mix(in srgb, #f87171 22%, transparent); color: #f87171; }
 				.stats { display: flex; flex-direction: row; width: 100%; margin-top: 0.5rem; }
+				.grid.grid-equal .card .stats { margin-top: auto; }
 				.stat {
 					flex: 1 1 0%; margin: 0.15rem; padding: 0.25rem;
 					background: color-mix(in srgb, var(--muted) 14%, transparent);
@@ -125,6 +128,7 @@ templ Index(data indexData) {
 				.stat-warn .value { color: #fbbf24; }
 				.stat-danger { background: color-mix(in srgb, #f87171 22%, transparent); }
 				.stat-danger .value { color: #f87171; }
+				.card-iframe { width: 100%; margin-top: 0.5rem; border: 0; border-radius: 0.25rem; }
 				.usage-bar { width: 100%; height: 4px; margin-top: 0.3rem; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--muted) 25%, transparent); }
 				.usage-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; }
 				.stat-good .usage-bar-fill { background: #4ade80; }
@@ -346,14 +350,41 @@ templ Index(data indexData) {
 					return a ? a.href : null;
 				}
 
+				// looksLikeURL/normalizeURL back the quick-launch "visit <url>" entry
+				// (hidden via searchConfig.hideVisitURL): a bare domain like
+				// "example.com" counts as a URL too, not just an explicit scheme.
+				function looksLikeURL(q) {
+					if (/^https?:\/\//i.test(q)) return true;
+					return /^[a-z0-9-]+(\.[a-z0-9-]+)+([:/?#].*)?$/i.test(q);
+				}
+				function normalizeURL(q) {
+					return /^https?:\/\//i.test(q) ? q : "https://" + q;
+				}
+
+				function qlAppendItem(text, href) {
+					const a = document.createElement("a");
+					a.className = "ql-item" + (qlResults.children.length === 0 ? " active" : "");
+					a.href = href;
+					a.target = searchConfig.target || "_blank";
+					const querySpan = document.createElement("span");
+					querySpan.textContent = text;
+					a.appendChild(querySpan);
+					const subSpan = document.createElement("span");
+					subSpan.className = "ql-sub";
+					subSpan.textContent = "↵";
+					a.appendChild(subSpan);
+					qlResults.appendChild(a);
+				}
+
 				function qlRender() {
-					const q = qlInput.value.trim().toLowerCase();
+					const raw = qlInput.value.trim();
+					const q = raw.toLowerCase();
 					const items = [];
 					document.querySelectorAll("#cards [data-name]").forEach(function (el) {
 						const name = el.dataset.name || "";
 						const href = qlHref(el);
 						if (!href) return;
-						const hay = (name + " " + (el.dataset.description || "")).toLowerCase();
+						const hay = (searchConfig.searchDescriptions ? (name + " " + (el.dataset.description || "")) : name).toLowerCase();
 						if (q && !hay.includes(q)) return;
 						const icon = el.querySelector("img.icon");
 						items.push({ name: name, href: href, icon: icon ? icon.src : null });
@@ -376,19 +407,11 @@ templ Index(data indexData) {
 						a.appendChild(nameSpan);
 						qlResults.appendChild(a);
 					});
-					if (q) {
-						const ws = document.createElement("a");
-						ws.className = "ql-item" + (qlResults.children.length === 0 ? " active" : "");
-						ws.href = searchURL(qlInput.value.trim());
-						ws.target = searchConfig.target || "_blank";
-						const querySpan = document.createElement("span");
-						querySpan.textContent = "Search the web for “" + qlInput.value.trim() + "”";
-						ws.appendChild(querySpan);
-						const subSpan = document.createElement("span");
-						subSpan.className = "ql-sub";
-						subSpan.textContent = "↵";
-						ws.appendChild(subSpan);
-						qlResults.appendChild(ws);
+					if (raw && !searchConfig.hideVisitURL && looksLikeURL(raw)) {
+						qlAppendItem("Visit " + raw, normalizeURL(raw));
+					}
+					if (raw && !searchConfig.hideInternetSearch) {
+						qlAppendItem("Search the web for “" + raw + "”", searchURL(raw));
 					}
 				}
 

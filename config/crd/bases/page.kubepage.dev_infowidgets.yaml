@@ -54,6 +54,17 @@ spec:
           spec:
             description: spec defines the desired state of InfoWidget
             properties:
+              align:
+                description: |-
+                  align places this widget in the header strip's left or right slot,
+                  matching homepage's right-aligned info widgets. Unset defaults to
+                  "Left" for "greeting"/"datetime" and "Right" for every other type
+                  (homepage's own default layout: greeting/clock on the left, live
+                  stats on the right).
+                enum:
+                - Left
+                - Right
+                type: string
               icon:
                 description: |-
                   icon shown to the left of this widget's value(s) in the header strip,
@@ -86,6 +97,14 @@ spec:
                   sorts last), ties broken by the InfoWidget object's name, since CRDs
                   have no inherent ordering of their own.
                 format: int32
+                type: integer
+              pollIntervalSeconds:
+                description: |-
+                  pollIntervalSeconds overrides the dashboard's global --poll-interval
+                  for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
+                  "datetime"/"greeting"/"logo", which aren't polled at all.
+                format: int32
+                minimum: 1
                 type: integer
               secrets:
                 additionalProperties:

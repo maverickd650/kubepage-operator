@@ -31,6 +31,13 @@ const (
 // matching homepage's `bookmarksStyle: icons`.
 const bookmarksStyleIcons = "icons"
 
+// alignLeft/alignRight are HeaderWidget.Align's two resolved values (see
+// defaultHeaderAlign and partitionHeaderAlign in server.go).
+const (
+	alignLeft  = "left"
+	alignRight = "right"
+)
+
 // Site is everything the dashboard's look (6.1) needs beyond the polled
 // widget cards: the Instance's Configuration (theme/color/background/...)
 // and its bound Bookmarks, rendered as static link cards.
@@ -126,6 +133,10 @@ type HeaderWidget struct {
 	Order   *int32
 	IconURL string
 	Options map[string]string
+
+	// Align is "left" or "right", already defaulted (see
+	// defaultHeaderAlign) against InfoWidgetSpec.Align.
+	Align string
 }
 
 // Background mirrors api/v1alpha1.BackgroundSpec, resolved to render-ready
@@ -147,12 +158,32 @@ type Search struct {
 	URL         string `json:"url"`
 	Target      string `json:"target"`
 	FilterCards bool   `json:"filterCards"`
+
+	// SearchDescriptions/HideInternetSearch/HideVisitURL are the
+	// quick-launch (Ctrl/Cmd-K) palette's toggles; see SearchSpec's doc
+	// comments. JSON tags match the client-side searchConfig JS's field
+	// names (index.templ).
+	SearchDescriptions bool `json:"searchDescriptions"`
+	HideInternetSearch bool `json:"hideInternetSearch"`
+	HideVisitURL       bool `json:"hideVisitURL"`
 }
 
 // BookmarkGroup is one bookmarks.yaml-style group of static link cards.
+// Columns/Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights mirror
+// cardGroup's resolved (non-pointer) fields: a LayoutGroupSpec whose Name
+// matches this group's Name styles it exactly like a service group's
+// (server.go's layoutTabs), already resolved against the Site-wide
+// defaults by groupBookmarks. A bookmark group doesn't move into a tab —
+// only its look is shared with the Layout config.
 type BookmarkGroup struct {
-	Name      string
-	Bookmarks []BookmarkCard
+	Name               string
+	Bookmarks          []BookmarkCard
+	Columns            *int32
+	Style              string
+	IconURL            string
+	Header             bool
+	InitiallyCollapsed bool
+	UseEqualHeights    bool
 }
 
 // BookmarkCard is one render-ready bookmark.
@@ -178,7 +209,7 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 		Target:      defaultTarget,
 		StartURL:    "/",
 		StatusStyle: statusStyleDot,
-		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true},
+		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true, SearchDescriptions: true},
 	}
 
 	spec, err := boundConfigurationSpec(ctx, reader, namespace, instanceName)
@@ -193,7 +224,7 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, instanceName
 	if err := reader.List(ctx, &bookmarks, client.InNamespace(namespace)); err != nil {
 		return site, fmt.Errorf("listing Bookmarks: %w", err)
 	}
-	site.BookmarkGroups = groupBookmarks(bookmarks.Items, instanceName)
+	site.BookmarkGroups = groupBookmarks(bookmarks.Items, instanceName, site)
 
 	var infoWidgets pagev1alpha1.InfoWidgetList
 	if err := reader.List(ctx, &infoWidgets, client.InNamespace(namespace)); err != nil {
@@ -225,15 +256,35 @@ func headerWidgets(items []pagev1alpha1.InfoWidget, instanceName string) []Heade
 
 	out := make([]HeaderWidget, 0, len(bound))
 	for _, w := range bound {
+		align := defaultHeaderAlign(w.Spec.Type)
+		if w.Spec.Align != nil {
+			align = alignLeft
+			if *w.Spec.Align == pagev1alpha1.AlignRight {
+				align = alignRight
+			}
+		}
 		out = append(out, HeaderWidget{
 			Name:    w.Name,
 			Type:    w.Spec.Type,
 			Order:   w.Spec.Order,
 			IconURL: IconURL(w.Spec.Icon),
 			Options: scalarOptions(w.Spec.Options),
+			Align:   align,
 		})
 	}
 	return out
+}
+
+// defaultHeaderAlign returns the header strip slot a widget type renders in
+// when InfoWidgetSpec.Align isn't set, matching homepage's own default
+// layout: greeting/clock on the left, every live-value widget on the right.
+func defaultHeaderAlign(widgetType string) string {
+	switch widgetType {
+	case headerTypeGreeting, headerTypeDatetime:
+		return alignLeft
+	default:
+		return alignRight
+	}
 }
 
 // scalarOptions flattens an InfoWidget's passthrough Options JSON object into
@@ -366,6 +417,15 @@ func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 	if s.FilterCards != nil {
 		site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
 	}
+	if s.SearchDescriptions != nil {
+		site.Search.SearchDescriptions = *s.SearchDescriptions == pagev1alpha1.Enabled
+	}
+	if s.HideInternetSearch != nil {
+		site.Search.HideInternetSearch = *s.HideInternetSearch == pagev1alpha1.Enabled
+	}
+	if s.HideVisitURL != nil {
+		site.Search.HideVisitURL = *s.HideVisitURL == pagev1alpha1.Enabled
+	}
 }
 
 // applyLayout resolves the Configuration's Layout tabs/groups, if set.
@@ -476,7 +536,26 @@ func blurPx(keyword string) string {
 	}
 }
 
-func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string) []BookmarkGroup {
+// layoutGroupsByName flattens every LayoutGroup across every tab into a
+// lookup by Name, for groupBookmarks to style a bookmark group the same way
+// as a service group sharing its name. A name placed in more than one tab
+// (already an edge case layoutTabs also just takes the first for) resolves
+// to whichever tab's Groups slice was flattened first.
+func layoutGroupsByName(layout []LayoutTab) map[string]LayoutGroup {
+	byName := map[string]LayoutGroup{}
+	for _, t := range layout {
+		for _, g := range t.Groups {
+			if _, ok := byName[g.Name]; !ok {
+				byName[g.Name] = g
+			}
+		}
+	}
+	return byName
+}
+
+func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string, site Site) []BookmarkGroup {
+	layoutByName := layoutGroupsByName(site.Layout)
+
 	var bound []pagev1alpha1.Bookmark
 	for _, b := range items {
 		if b.Spec.InstanceRef.Name == instanceName {
@@ -524,7 +603,29 @@ func groupBookmarks(items []pagev1alpha1.Bookmark, instanceName string) []Bookma
 			}
 			cards = append(cards, card)
 		}
-		groups = append(groups, BookmarkGroup{Name: name, Bookmarks: cards})
+
+		bg := BookmarkGroup{
+			Name:               name,
+			Bookmarks:          cards,
+			Header:             true,
+			InitiallyCollapsed: site.GroupsInitiallyCollapsed,
+			UseEqualHeights:    site.UseEqualHeights,
+		}
+		if lg, ok := layoutByName[name]; ok {
+			bg.Columns = lg.Columns
+			bg.Style = lg.Style
+			bg.IconURL = lg.IconURL
+			if lg.Header != nil {
+				bg.Header = *lg.Header
+			}
+			if lg.InitiallyCollapsed != nil {
+				bg.InitiallyCollapsed = *lg.InitiallyCollapsed
+			}
+			if lg.UseEqualHeights != nil {
+				bg.UseEqualHeights = *lg.UseEqualHeights
+			}
+		}
+		groups = append(groups, bg)
 	}
 	return groups
 }

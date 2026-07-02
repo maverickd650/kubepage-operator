@@ -94,11 +94,11 @@ type fragmentData struct {
 	// DisableCollapse disables the collapsible control on every group
 	// header (service and bookmark groups alike).
 	DisableCollapse bool
-	// BookmarksInitiallyCollapsed/BookmarksIconsOnly are the Site-wide
-	// bookmark-group settings; bookmark groups have no per-group override
-	// (they don't go through LayoutGroupSpec).
-	BookmarksInitiallyCollapsed bool
-	BookmarksIconsOnly          bool
+	// BookmarksIconsOnly is the Site-wide bookmark card style; unlike
+	// InitiallyCollapsed/Columns/Style/Icon (resolved per bookmark group by
+	// groupBookmarks, see BookmarkGroup's doc comment), homepage has no
+	// per-group icons-only override to mirror.
+	BookmarksIconsOnly bool
 }
 
 // headerWidgetView is one rendered header widget: a static definition joined
@@ -112,6 +112,14 @@ type headerWidgetView struct {
 	Href   string
 	Fields []Field
 	Err    string
+
+	// PushRight marks the first widget in the right-aligned slot (once
+	// buildHeader has stably partitioned Widgets into left-then-right
+	// order): header.templ gives it "margin-left: auto", which — since
+	// every widget after it is also right-aligned by construction — pushes
+	// it and everything following to the header strip's right edge as one
+	// contiguous flex block.
+	PushRight bool
 }
 
 // headerData is the /header fragment's template data.
@@ -139,9 +147,18 @@ func (s *Server) Routes() http.Handler {
 // needed because the page shell has no nonce/hash plumbing yet; every value
 // interpolated into those inline blocks is either a fixed lookup table
 // (AccentHex/PaletteRamp), a plain integer, or escaped via cssStringEscape
-// (CustomCSS/Background.Image) rather than free-form script text.
+// (CustomCSS/Background.Image) rather than free-form script text. frame-src
+// mirrors img-src's "https: and nothing else" scope: without it, an iframe
+// ServiceWidget's <iframe src="..."> (cards.templ, iframe.go) falls back to
+// default-src 'self' and every browser refuses to load it — the CSP is a
+// compile-time constant, so this can't be scoped to just the operator-
+// configured widget URLs without threading per-request state through the
+// page shell; iframe.go's own fixed sandbox attribute (allow-scripts
+// allow-same-origin, no allow-top-navigation) is the actual containment
+// boundary for whatever origin an operator points a widget at.
 const contentSecurityPolicy = "default-src 'self'; " +
 	"img-src 'self' https: data:; " +
+	"frame-src https:; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"script-src 'self' 'unsafe-inline'; " +
 	"connect-src 'self'; " +
@@ -282,12 +299,11 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 // htmx poll), so the two never drift apart.
 func (s *Server) buildFragmentData(site Site) fragmentData {
 	return fragmentData{
-		Tabs:                        layoutTabs(serviceCards(s.Store.Snapshot()), site),
-		BookmarkGroups:              site.BookmarkGroups,
-		SiteTarget:                  site.Target,
-		DisableCollapse:             site.DisableCollapse,
-		BookmarksInitiallyCollapsed: site.GroupsInitiallyCollapsed,
-		BookmarksIconsOnly:          site.BookmarksIconsOnly,
+		Tabs:               layoutTabs(serviceCards(s.Store.Snapshot()), site),
+		BookmarkGroups:     site.BookmarkGroups,
+		SiteTarget:         site.Target,
+		DisableCollapse:    site.DisableCollapse,
+		BookmarksIconsOnly: site.BookmarksIconsOnly,
 	}
 }
 
@@ -347,7 +363,29 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 		}
 		views = append(views, v)
 	}
-	return views
+	return partitionHeaderAlign(views, defs)
+}
+
+// partitionHeaderAlign stably reorders views (built 1:1 with, and in the
+// same order as, defs) so every left-aligned widget precedes every
+// right-aligned one, regardless of interleaving from Order/name sorting —
+// header.templ's CSS-only right-alignment (see headerWidgetView.PushRight's
+// doc comment) only works when the right-aligned widgets form one
+// contiguous trailing run.
+func partitionHeaderAlign(views []headerWidgetView, defs []HeaderWidget) []headerWidgetView {
+	left := make([]headerWidgetView, 0, len(views))
+	right := make([]headerWidgetView, 0, len(views))
+	for i, v := range views {
+		if defs[i].Align == alignRight {
+			right = append(right, v)
+		} else {
+			left = append(left, v)
+		}
+	}
+	if len(right) > 0 {
+		right[0].PushRight = true
+	}
+	return append(left, right...)
 }
 
 // groupCards buckets an already-ordered card slice into display groups,

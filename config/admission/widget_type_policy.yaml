@@ -34,8 +34,8 @@ spec:
         !has(object.spec.widgets) || object.spec.widgets.all(w,
           w.type in ['plex', 'stash', 'paperlessngx', 'grafana', 'prometheus',
             'prometheusmetric', 'unifi', 'truenas', 'cloudflared', 'linkwarden',
-            'homeassistant', 'mealie', 'customapi'])
-      message: "each ServiceEntry widget type must be a supported service widget (plex, stash, paperlessngx, grafana, prometheus, prometheusmetric, unifi, truenas, cloudflared, linkwarden, homeassistant, mealie, customapi)"
+            'homeassistant', 'mealie', 'customapi', 'iframe'])
+      message: "each ServiceEntry widget type must be a supported service widget (plex, stash, paperlessngx, grafana, prometheus, prometheusmetric, unifi, truenas, cloudflared, linkwarden, homeassistant, mealie, customapi, iframe)"
       reason: Invalid
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -60,8 +60,9 @@ spec:
         resources: ["infowidgets"]
   validations:
     - expression: >-
-        object.spec.type in ['greeting', 'datetime', 'logo', 'openmeteo', 'kubemetrics']
-      message: "InfoWidget type must be one of greeting, datetime, logo, openmeteo, kubemetrics"
+        object.spec.type in ['greeting', 'datetime', 'logo', 'openmeteo', 'kubemetrics',
+          'glances', 'longhorn', 'openweathermap']
+      message: "InfoWidget type must be one of greeting, datetime, logo, openmeteo, kubemetrics, glances, longhorn, openweathermap"
       reason: Invalid
 ---
 apiVersion: admissionregistration.k8s.io/v1

@@ -51,6 +51,14 @@ templ serviceCardView(c Card, siteTarget string) {
 		}
 		if c.Err != "" {
 			<div class="err">{ c.Err }</div>
+		} else if c.WidgetType == widgetTypeIframe && len(c.Fields) > 0 {
+			<iframe
+				class="card-iframe"
+				src={ iframeSrc(c.Fields) }
+				style={ "height: " + iframeHeight(c.Fields) }
+				sandbox={ iframeSandbox }
+				loading="lazy"
+			></iframe>
 		} else if len(c.Fields) > 0 {
 			<div class="stats">
 				for _, f := range c.Fields {
@@ -139,22 +147,36 @@ templ serviceCardGrid(g cardGroup, siteTarget string) {
 }
 
 // bookmarkGroupBlock mirrors serviceGroupBlock for a bookmarks.yaml-style
-// group; bookmark groups have no per-group Header override (they don't go
-// through LayoutGroupSpec), so a header always renders when collapsible.
-templ bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, collapsible, initiallyCollapsed, iconsOnly bool) {
-	if collapsible {
-		<details class="group" data-group-name={ "bookmark:" + bg.Name } open?={ !initiallyCollapsed }>
-			<summary>{ bg.Name }</summary>
+// group: a LayoutGroupSpec sharing bg.Name styles it exactly like a service
+// group (see BookmarkGroup's doc comment), resolved by groupBookmarks
+// (site.go) into bg.Header/InitiallyCollapsed/Columns/Style/IconURL. A
+// header-less group can't be collapsed — there's nothing to click — so it
+// always renders its grid directly regardless of disableCollapse.
+templ bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, disableCollapse, iconsOnly bool) {
+	if !bg.Header {
+		@bookmarkCardGrid(bg, siteTarget, iconsOnly)
+	} else if !disableCollapse {
+		<details class="group" data-group-name={ "bookmark:" + bg.Name } open?={ !bg.InitiallyCollapsed }>
+			<summary>
+				@groupHeading(bg.Name, bg.IconURL)
+			</summary>
 			@bookmarkCardGrid(bg, siteTarget, iconsOnly)
 		</details>
 	} else {
-		<h2>{ bg.Name }</h2>
+		<h2>
+			@groupHeading(bg.Name, bg.IconURL)
+		</h2>
 		@bookmarkCardGrid(bg, siteTarget, iconsOnly)
 	}
 }
 
 templ bookmarkCardGrid(bg BookmarkGroup, siteTarget string, iconsOnly bool) {
-	<div class="grid">
+	<div
+		class={ "grid", templ.KV("grid-row", bg.Style == "row"), templ.KV("grid-equal", bg.UseEqualHeights) }
+		if bg.Columns != nil {
+			style={ gridStyle(bg.Columns) }
+		}
+	>
 		for _, b := range bg.Bookmarks {
 			@bookmarkCardView(b, siteTarget, iconsOnly)
 		}
@@ -177,6 +199,6 @@ templ Cards(data fragmentData) {
 		</div>
 	}
 	for _, bg := range data.BookmarkGroups {
-		@bookmarkGroupBlock(bg, data.SiteTarget, !data.DisableCollapse, data.BookmarksInitiallyCollapsed, data.BookmarksIconsOnly)
+		@bookmarkGroupBlock(bg, data.SiteTarget, data.DisableCollapse, data.BookmarksIconsOnly)
 	}
 }

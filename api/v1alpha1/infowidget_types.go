@@ -9,6 +9,12 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// Enum values for InfoWidgetSpec.Align.
+const (
+	AlignLeft  = "Left"
+	AlignRight = "Right"
+)
+
 // InfoWidgetSpec defines one header/info widget, rendered by the native
 // dashboard in the header strip above the service cards. Supported types:
 // "datetime" (client-side clock; Options.format), "greeting" (static text;
@@ -45,6 +51,15 @@ type InfoWidgetSpec struct {
 	// +optional
 	Icon *string `json:"icon,omitempty"`
 
+	// align places this widget in the header strip's left or right slot,
+	// matching homepage's right-aligned info widgets. Unset defaults to
+	// "Left" for "greeting"/"datetime" and "Right" for every other type
+	// (homepage's own default layout: greeting/clock on the left, live
+	// stats on the right).
+	// +kubebuilder:validation:Enum=Left;Right
+	// +optional
+	Align *string `json:"align,omitempty"`
+
 	// secrets are secret-bearing option fields. Merged into Options under the
 	// same field names once a renderer for this CRD exists.
 	//
@@ -61,6 +76,13 @@ type InfoWidgetSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Options *apiextensionsv1.JSON `json:"options,omitempty"`
+
+	// pollIntervalSeconds overrides the dashboard's global --poll-interval
+	// for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
+	// "datetime"/"greeting"/"logo", which aren't polled at all.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	PollIntervalSeconds *int32 `json:"pollIntervalSeconds,omitempty"`
 }
 
 // InfoWidgetStatus defines the observed state of InfoWidget.

@@ -20,4 +20,10 @@ const (
 	labelConditions = "Conditions"
 	labelCPU        = "CPU"
 	labelMemory     = "Memory"
+	labelStorage    = "Storage"
+
+	// unitsImperial is the "units" config value openmeteo.go and
+	// openweathermap.go both switch on for Fahrenheit output (their default
+	// is metric/Celsius).
+	unitsImperial = "imperial"
 )

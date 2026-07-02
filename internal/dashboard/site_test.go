@@ -225,6 +225,62 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 	}
 }
 
+// TestLoadSiteAppliesQuickLaunchOptions verifies the quick-launch palette
+// toggles (gap-analysis §4.2): SearchDescriptions defaults to true (the
+// palette's previous always-on behavior) but can be turned off, and
+// HideInternetSearch/HideVisitURL default to false (both entries shown)
+// but can be turned on.
+func TestLoadSiteAppliesQuickLaunchOptions(t *testing.T) {
+	scheme := testScheme(t)
+	disabled := pagev1alpha1.Disabled
+	enabled := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Search: &pagev1alpha1.SearchSpec{
+				SearchDescriptions: &disabled,
+				HideInternetSearch: &enabled,
+				HideVisitURL:       &enabled,
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if site.Search.SearchDescriptions {
+		t.Error("Search.SearchDescriptions = true, want false (Disabled)")
+	}
+	if !site.Search.HideInternetSearch {
+		t.Error("Search.HideInternetSearch = false, want true (Enabled)")
+	}
+	if !site.Search.HideVisitURL {
+		t.Error("Search.HideVisitURL = false, want true (Enabled)")
+	}
+}
+
+func TestLoadSiteQuickLaunchOptionsDefaults(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testInstanceName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if !site.Search.SearchDescriptions {
+		t.Error("Search.SearchDescriptions default = false, want true")
+	}
+	if site.Search.HideInternetSearch {
+		t.Error("Search.HideInternetSearch default = true, want false")
+	}
+	if site.Search.HideVisitURL {
+		t.Error("Search.HideVisitURL default = true, want false")
+	}
+}
+
 func TestLoadSiteRejectsNonHTTPSearchURL(t *testing.T) {
 	scheme := testScheme(t)
 	badURL := "javascript:alert(1)"
@@ -268,7 +324,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 		},
 	}
 	other := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "skip", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testDiscoverySkipKey, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: "not-" + testInstanceName},
 			Type:        headerTypeGreeting,
@@ -291,11 +347,44 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	}
 }
 
+// TestHeaderWidgetsResolvesAlign verifies the InfoWidgetSpec.Align default
+// (greeting/datetime left, everything else right) and its explicit
+// left/right override (gap-analysis §4.3).
+func TestHeaderWidgetsResolvesAlign(t *testing.T) {
+	explicitLeft := pagev1alpha1.AlignLeft
+	items := []pagev1alpha1.InfoWidget{
+		{ObjectMeta: metav1.ObjectMeta{Name: testGreetName}, Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: headerTypeGreeting,
+		}},
+		{ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather}, Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: testOpenMeteoType,
+		}},
+		{ObjectMeta: metav1.ObjectMeta{Name: testCPUName}, Spec: pagev1alpha1.InfoWidgetSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName}, Type: testKubeMetricsType, Align: &explicitLeft,
+		}},
+	}
+
+	out := headerWidgets(items, testInstanceName)
+	got := map[string]string{}
+	for _, w := range out {
+		got[w.Name] = w.Align
+	}
+	if got[testGreetName] != alignLeft {
+		t.Errorf(`Align[testGreetName] = %q, want "left" (default for greeting)`, got[testGreetName])
+	}
+	if got[testHeaderWeather] != alignRight {
+		t.Errorf(`Align[%q] = %q, want "right" (default for a live-value widget)`, testHeaderWeather, got[testHeaderWeather])
+	}
+	if got[testCPUName] != alignLeft {
+		t.Errorf(`Align[testCPUName] = %q, want "left" (explicit InfoWidgetSpec.Align override)`, got[testCPUName])
+	}
+}
+
 func TestLoadSiteAppliesLayout(t *testing.T) {
 	scheme := testScheme(t)
 	cols := int32(4)
 	style := testStyleRow
-	icon := "grafana"
+	icon := testGrafanaIconSlug
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ConfigurationSpec{
@@ -479,7 +568,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
-				Group:       testBookmarkGroup, Name: "A", Href: "https://example.invalid/a", Order: &order1,
+				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA, Order: &order1,
 				Abbr: &abbr, Description: &desc,
 			},
 		},
@@ -491,7 +580,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		},
 	}
 
-	groups := groupBookmarks(items, testInstanceName)
+	groups := groupBookmarks(items, testInstanceName, Site{})
 
 	if len(groups) != 2 || groups[0].Name != testBookmarkGroup {
 		t.Fatalf("groupBookmarks() groups = %+v, want %s first (lower effective Order after the second entry improves it)", groups, testBookmarkGroup)
@@ -502,6 +591,85 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	}
 	if bms[0].Abbr != abbr || bms[0].Description != desc {
 		t.Errorf("groupBookmarks() first bookmark = %+v, want Abbr=%q Description=%q", bms[0], abbr, desc)
+	}
+}
+
+// TestGroupBookmarksAppliesMatchingLayoutGroup verifies a LayoutGroupSpec
+// sharing a bookmark group's name styles it the same way it would a service
+// group sharing that name (gap-analysis §4.1): Columns/Style/Icon/Header all
+// carry over.
+func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
+	items := []pagev1alpha1.Bookmark{
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+			},
+		},
+	}
+	site := Site{
+		Layout: []LayoutTab{{
+			Name: testTab1,
+			Groups: []LayoutGroup{{
+				Name:    testBookmarkGroup,
+				Columns: ptr(int32(3)),
+				Style:   testStyleRow,
+				IconURL: testExampleURL,
+				Header:  ptr(false),
+			}},
+		}},
+	}
+
+	groups := groupBookmarks(items, testInstanceName, site)
+	if len(groups) != 1 {
+		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
+	}
+	g := groups[0]
+	if g.Columns == nil || *g.Columns != 3 {
+		t.Errorf("g.Columns = %v, want 3", g.Columns)
+	}
+	if g.Style != testStyleRow {
+		t.Errorf("g.Style = %q, want %q", g.Style, testStyleRow)
+	}
+	if g.IconURL != testExampleURL {
+		t.Errorf("g.IconURL = %q, want %q", g.IconURL, testExampleURL)
+	}
+	if g.Header {
+		t.Error("g.Header = true, want false (LayoutGroupSpec.Header=Hidden)")
+	}
+}
+
+// TestGroupBookmarksUnmatchedGroupUsesSiteDefaults verifies a bookmark group
+// with no matching LayoutGroupSpec falls back to the Site-wide
+// InitiallyCollapsed/UseEqualHeights defaults and a shown header, exactly
+// like groupCards does for service groups.
+func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
+	items := []pagev1alpha1.Bookmark{
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+				Group:       testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+			},
+		},
+	}
+	site := Site{GroupsInitiallyCollapsed: true, UseEqualHeights: true}
+
+	groups := groupBookmarks(items, testInstanceName, site)
+	if len(groups) != 1 {
+		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
+	}
+	g := groups[0]
+	if !g.Header {
+		t.Error("g.Header = false, want true (default)")
+	}
+	if !g.InitiallyCollapsed {
+		t.Error("g.InitiallyCollapsed = false, want true (from Site.GroupsInitiallyCollapsed)")
+	}
+	if !g.UseEqualHeights {
+		t.Error("g.UseEqualHeights = false, want true (from Site.UseEqualHeights)")
+	}
+	if g.Columns != nil || g.Style != "" || g.IconURL != "" {
+		t.Errorf("g = %+v, want zero Columns/Style/IconURL (no matching LayoutGroupSpec)", g)
 	}
 }
 

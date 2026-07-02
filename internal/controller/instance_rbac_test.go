@@ -62,7 +62,7 @@ func TestClusterRBACNameStaysWithinKubernetesLimit(t *testing.T) {
 // this Role regardless of whether any bound ServiceEntry uses PodSelector.
 func TestDashboardRolesGrantsPods(t *testing.T) {
 	for _, secretNames := range [][]string{nil, {"some-secret"}} {
-		rules := dashboardRoles(secretNames, false)
+		rules := dashboardRoles(secretNames, false, false)
 		found := slices.ContainsFunc(rules, func(r rbacv1.PolicyRule) bool {
 			return slices.Contains(r.Resources, resourcePods) &&
 				slices.Contains(r.Verbs, verbGet) &&
@@ -70,7 +70,7 @@ func TestDashboardRolesGrantsPods(t *testing.T) {
 				slices.Contains(r.Verbs, "watch")
 		})
 		if !found {
-			t.Errorf("dashboardRoles(%v, false) has no pods get/list/watch rule", secretNames)
+			t.Errorf("dashboardRoles(%v, false, false) has no pods get/list/watch rule", secretNames)
 		}
 	}
 }
@@ -86,11 +86,35 @@ func TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled(t *testing.T) {
 		})
 	}
 
-	if hasIngressRule(dashboardRoles(nil, false)) {
-		t.Error("dashboardRoles(nil, false) unexpectedly grants ingresses access")
+	if hasIngressRule(dashboardRoles(nil, false, false)) {
+		t.Error("dashboardRoles(nil, false, false) unexpectedly grants ingresses access")
 	}
-	if !hasIngressRule(dashboardRoles(nil, true)) {
-		t.Error("dashboardRoles(nil, true) has no ingresses get/list/watch rule")
+	if !hasIngressRule(dashboardRoles(nil, true, false)) {
+		t.Error("dashboardRoles(nil, true, false) has no ingresses get/list/watch rule")
+	}
+}
+
+// TestDashboardRolesGrantsHTTPRouteOnlyWhenDiscoveryAndGatewayAPIEnabled
+// mirrors TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled for the
+// HTTPRoute discovery fast-follow (gap-analysis §4.7): the Role should only
+// carry HTTPRoute read access when discovery is on *and* the cluster
+// actually has Gateway API installed — granting it otherwise would be a
+// permission the dashboard pod could never use.
+func TestDashboardRolesGrantsHTTPRouteOnlyWhenDiscoveryAndGatewayAPIEnabled(t *testing.T) {
+	hasHTTPRouteRule := func(rules []rbacv1.PolicyRule) bool {
+		return slices.ContainsFunc(rules, func(r rbacv1.PolicyRule) bool {
+			return slices.Contains(r.Resources, "httproutes") && slices.Contains(r.Verbs, verbGet)
+		})
+	}
+
+	if hasHTTPRouteRule(dashboardRoles(nil, true, false)) {
+		t.Error("dashboardRoles(nil, true, false) unexpectedly grants httproutes access without Gateway API")
+	}
+	if hasHTTPRouteRule(dashboardRoles(nil, false, true)) {
+		t.Error("dashboardRoles(nil, false, true) unexpectedly grants httproutes access without discovery enabled")
+	}
+	if !hasHTTPRouteRule(dashboardRoles(nil, true, true)) {
+		t.Error("dashboardRoles(nil, true, true) has no httproutes get/list/watch rule")
 	}
 }
 

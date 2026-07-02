@@ -30,7 +30,7 @@ func Header(data headerData) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, w := range data.Widgets {
-			var templ_7745c5c3_Var2 = []any{"header-widget", "header-widget-" + w.Type}
+			var templ_7745c5c3_Var2 = []any{"header-widget", "header-widget-" + w.Type, templ.KV("header-widget-push-right", w.PushRight)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var2...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

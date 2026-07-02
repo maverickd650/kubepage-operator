@@ -94,6 +94,25 @@ func TestServerIndexEmitsPaletteRamp(t *testing.T) {
 	}
 }
 
+// TestServerIndexEmitsCardPixelTuningCSS locks in the visual-parity pass
+// (gap-analysis §3.5/4.4): service card icons render larger than header/
+// bookmark icons, and equal-height cards push their stats row to the bottom
+// via a grid-equal-scoped rule rather than a global one (which would also
+// affect non-equal-height cards).
+func TestServerIndexEmitsCardPixelTuningCSS(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{".card h3 img.icon { width: 2rem; height: 2rem; }", ".grid.grid-equal .card .stats { margin-top: auto; }"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q", want)
+		}
+	}
+}
+
 func TestServerFragmentRendersStatsRow(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
@@ -110,6 +129,56 @@ func TestServerFragmentRendersStatsRow(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestServerFragmentRendersIframeWidget verifies a Card whose WidgetType is
+// "iframe" renders an actual <iframe> (sandboxed, sized per the widget's
+// Fields) instead of the usual stats grid — cards.templ's special case for
+// widgetTypeIframe.
+func TestServerFragmentRendersIframeWidget(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/dash/0", Group: testGroup, ServiceName: testServiceName,
+		WidgetType: widgetTypeIframe,
+		Fields: []Field{
+			{Label: labelIframeSrc, Value: testIframeURL},
+			{Label: labelIframeHeight, Value: testIframeHeight},
+		},
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`class="card-iframe"`, `src="` + testIframeURL + `"`,
+		`sandbox="` + iframeSandbox + `"`, `height: ` + testIframeHeight,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `class="stats"`) {
+		t.Errorf("fragment body rendered a stats grid for an iframe widget:\n%s", body)
+	}
+}
+
+// TestSecurityHeadersAllowsHTTPSFrames guards the iframe ServiceWidget
+// (iframe.go/cards.templ): without a frame-src directive, the CSP's
+// default-src 'self' would make every browser refuse to load an iframe
+// widget's cross-origin src, silently breaking the whole feature despite
+// the fragment's rendered markup looking correct.
+func TestSecurityHeadersAllowsHTTPSFrames(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "frame-src https:") {
+		t.Errorf("Content-Security-Policy = %q, want a frame-src https: directive", csp)
 	}
 }
 
@@ -166,6 +235,36 @@ func TestServerIndexServesShell(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "/fragment") {
 		t.Errorf("index body should hx-get /fragment:\n%s", rec.Body.String())
+	}
+}
+
+// TestServerIndexEmitsQuickLaunchSearchConfig verifies the Configuration's
+// quick-launch toggles reach the page shell's client-side searchConfig JSON
+// (gap-analysis §4.2), which index.templ's qlRender reads.
+func TestServerIndexEmitsQuickLaunchSearchConfig(t *testing.T) {
+	disabled := pagev1alpha1.Disabled
+	enabled := pagev1alpha1.Enabled
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Search: &pagev1alpha1.SearchSpec{
+				SearchDescriptions: &disabled,
+				HideInternetSearch: &enabled,
+				HideVisitURL:       &enabled,
+			},
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`"searchDescriptions":false`, `"hideInternetSearch":true`, `"hideVisitURL":true`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q in search-config JSON:\n%s", want, body)
+		}
 	}
 }
 
@@ -449,7 +548,7 @@ func TestServerHeaderRendersWidgets(t *testing.T) {
 	})
 
 	greeting := &pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testGreetName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
 			Type:        headerTypeGreeting,
@@ -648,6 +747,37 @@ func TestBuildHeaderDatetimeWidget(t *testing.T) {
 	}
 }
 
+// TestBuildHeaderPartitionsLeftBeforeRight verifies buildHeader stably
+// reorders an interleaved left/right/left/right sequence into left-then-
+// right, flagging only the first right-aligned widget with PushRight —
+// header.templ's CSS-only alignment (see headerWidgetView.PushRight) relies
+// on the right-aligned run being contiguous and trailing.
+func TestBuildHeaderPartitionsLeftBeforeRight(t *testing.T) {
+	defs := []HeaderWidget{
+		{Name: "greeting", Type: headerTypeGreeting, Align: alignLeft},
+		{Name: "weather", Type: testOpenMeteoType, Align: alignRight},
+		{Name: "clock", Type: headerTypeDatetime, Align: alignLeft},
+		{Name: testCPUName, Type: testKubeMetricsType, Align: alignRight},
+	}
+	views := buildHeader(defs, nil)
+	if len(views) != 4 {
+		t.Fatalf("buildHeader() = %d views, want 4", len(views))
+	}
+
+	wantTypes := []string{headerTypeGreeting, headerTypeDatetime, testOpenMeteoType, testKubeMetricsType}
+	for i, want := range wantTypes {
+		if views[i].Type != want {
+			t.Errorf("views[%d].Type = %q, want %q (left widgets first, right widgets after, order preserved within each)", i, views[i].Type, want)
+		}
+	}
+	for i, v := range views {
+		wantPushRight := i == 2 // first right-aligned widget in the reordered list
+		if v.PushRight != wantPushRight {
+			t.Errorf("views[%d] (%s).PushRight = %v, want %v", i, v.Type, v.PushRight, wantPushRight)
+		}
+	}
+}
+
 func TestLayoutTabsAppliesGroupOverridePointers(t *testing.T) {
 	cards := []Card{{Group: "A", ServiceName: "a1"}}
 	header := false
@@ -791,13 +921,54 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{`class="abbr"`, "W2", "<h2>" + testBookmarkGroup + "</h2>"} {
+	for _, want := range []string{`class="abbr"`, "W2", "<h2>", testBookmarkGroup} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
 	}
 	if strings.Contains(body, `data-group-name="bookmark:`) {
 		t.Errorf("fragment body rendered a collapsible bookmark group with DisableCollapse=true:\n%s", body)
+	}
+}
+
+// TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup is the
+// end-to-end version of TestGroupBookmarksAppliesMatchingLayoutGroup: a
+// LayoutGroupSpec sharing a bookmark group's name renders that group with
+// the matching grid-row/grid-template-columns styling, exactly like it
+// would a service group of the same name.
+func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "wiki3", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Group:       testBookmarkGroup,
+			Name:        "Wiki",
+			Href:        "https://example.invalid/wiki3",
+		},
+	}
+	style := testStyleRow
+	columns := int32(3)
+	cfg := &pagev1alpha1.Configuration{
+		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ConfigurationSpec{
+			InstanceRef: pagev1alpha1.InstanceRef{Name: testInstanceName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{Groups: []pagev1alpha1.LayoutGroupSpec{{
+					Name: testBookmarkGroup, Style: &style, Columns: &columns,
+				}}},
+			},
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmark, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{"grid-row", "grid-template-columns: repeat(3, 1fr)"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q, want it applied from the matching LayoutGroupSpec:\n%s", want, body)
+		}
 	}
 }
 
@@ -1044,7 +1215,7 @@ func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: "ns/row/0", Group: testGroup, ServiceName: testServiceName})
 
-	style := "row"
+	style := testStyleRow
 	equalHeights := pagev1alpha1.HeightsEqual
 	cfg := &pagev1alpha1.Configuration{
 		ObjectMeta: metav1.ObjectMeta{Name: testCfgName, Namespace: testNamespace},

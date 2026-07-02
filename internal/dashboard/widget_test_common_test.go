@@ -47,6 +47,34 @@ const (
 	// carries to opt into discovery.go's discovery, built from the same
 	// constants the production code uses so it can't drift from them.
 	testDiscoveryEnabledAnnotation = defaultDiscoveryPrefix + discoveryAnnEnabled
+
+	// Shared literals across openmeteo/openweathermap tests.
+	testCoordsConfig = `{"latitude":1,"longitude":1}`
+	testAPIKey       = "abc123"
+
+	// Shared literals across iframe widget/render tests.
+	testIframeURL    = "https://grafana.example.com/d/abc"
+	testIframeHeight = "40vh"
+
+	// Shared literal across bookmark fixtures.
+	testBookmarkHrefA = "https://example.invalid/a"
+
+	// Shared literals across header-widget alignment/kubemetrics fixtures.
+	testKubeMetricsType = "kubemetrics"
+	testCPUName         = "cpu"
+	testGreetName       = "greet"
+
+	// Shared literals across Ingress/HTTPRoute discovery fixtures.
+	testDiscoveredAppKey        = "app"
+	testDiscoveredBareKey       = "bare"
+	testDiscoverySkipKey        = "skip"
+	testMyAppDisplayName        = "My App"
+	testAnAppDescription        = "An app"
+	testGrafanaIconSlug         = "grafana"
+	testAppExampleHost          = "app.example.invalid"
+	testKubepageNameAnnotation  = "kubepage.io/name"
+	testDiscoveredAppCardName   = "Discovered App"
+	testDiscoveredRouteCardName = "Discovered Route"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.
