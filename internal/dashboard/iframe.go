@@ -58,6 +58,14 @@ func (iframeWidget) Poll(_ context.Context, _ *http.Client, cfg WidgetConfig) ([
 	if cfg.URL == "" {
 		return nil, errors.New("iframe widget: url is required")
 	}
+	// Defense in depth alongside the page's CSP (server.go's "frame-src
+	// https:"), which is what actually stops a browser from loading a
+	// javascript:/data: iframe today: reject the scheme here too, so the
+	// card errors clearly instead of silently depending on the CSP being a
+	// compile-time constant that never regresses.
+	if !isHTTPURL(cfg.URL) {
+		return nil, errors.New("iframe widget: url must be http:// or https://")
+	}
 
 	height := iframeDefaultHeight
 	if len(cfg.Config) > 0 {
