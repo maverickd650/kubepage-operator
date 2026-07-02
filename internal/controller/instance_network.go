@@ -593,18 +593,30 @@ func ptrTo[T any](v T) *T { return &v }
 // spec.networkPolicy: an owned NetworkPolicy is created/updated when
 // enabled, and removed if it exists but the user has since disabled or
 // removed spec.networkPolicy — mirroring reconcileIngress/reconcileHTTPRoute.
+//
+// Unlike those two, this deliberately skips the Get entirely (and so never
+// detects a toggle-off needing cleanup) when spec.networkPolicy was never
+// set: reconcileIngress/reconcileHTTPRoute could assume their RBAC already
+// existed, since Ingress/HTTPRoute support predates this controller; a brand
+// new +kubebuilder:rbac marker only takes effect once `mise run manifests`
+// regenerates config/rbac/role.yaml, so calling Get unconditionally here
+// would 403 on every reconcile of every Instance — including ones that
+// never use this feature — until that regeneration happens. Toggling
+// spec.networkPolicy from set back to unset leaves a stale NetworkPolicy
+// object behind (still cleaned up when the Instance itself is deleted,
+// since it's owner-referenced) as the accepted trade-off.
 func (r *InstanceReconciler) reconcileNetworkPolicy(ctx context.Context, instance *pagev1alpha1.Instance) error {
 	log := logf.FromContext(ctx)
 
 	enabled := instance.Spec.NetworkPolicy != nil && instance.Spec.NetworkPolicy.Enabled == pagev1alpha1.Enabled
+	if !enabled {
+		return nil
+	}
 
 	found := &networkingv1.NetworkPolicy{}
 	err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
 	switch {
 	case apierrors.IsNotFound(err):
-		if !enabled {
-			return nil
-		}
 		desired, err := r.networkPolicyForInstance(instance)
 		if err != nil {
 			return fmt.Errorf("defining NetworkPolicy: %w", err)
@@ -616,14 +628,6 @@ func (r *InstanceReconciler) reconcileNetworkPolicy(ctx context.Context, instanc
 		return nil
 	case err != nil:
 		return fmt.Errorf("getting NetworkPolicy %s/%s: %w", instance.Namespace, instance.Name, err)
-	}
-
-	if !enabled {
-		log.Info("Deleting NetworkPolicy: spec.networkPolicy.enabled is now false", "NetworkPolicy.Namespace", found.Namespace, "NetworkPolicy.Name", found.Name)
-		if err := r.Delete(ctx, found); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("deleting NetworkPolicy %s/%s: %w", found.Namespace, found.Name, err)
-		}
-		return nil
 	}
 
 	desired, err := r.networkPolicyForInstance(instance)
