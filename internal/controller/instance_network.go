@@ -596,15 +596,13 @@ func ptrTo[T any](v T) *T { return &v }
 //
 // Unlike those two, this deliberately skips the Get entirely (and so never
 // detects a toggle-off needing cleanup) when spec.networkPolicy was never
-// set: reconcileIngress/reconcileHTTPRoute could assume their RBAC already
-// existed, since Ingress/HTTPRoute support predates this controller; a brand
-// new +kubebuilder:rbac marker only takes effect once `mise run manifests`
-// regenerates config/rbac/role.yaml, so calling Get unconditionally here
-// would 403 on every reconcile of every Instance — including ones that
-// never use this feature — until that regeneration happens. Toggling
-// spec.networkPolicy from set back to unset leaves a stale NetworkPolicy
-// object behind (still cleaned up when the Instance itself is deleted,
-// since it's owner-referenced) as the accepted trade-off.
+// set: least-privilege in practice, not just in the RBAC grant — an Instance
+// that never opts into this field causes this reconciler to touch the
+// NetworkPolicy API not at all, rather than relying solely on the ClusterRole
+// to stop it from doing anything. Toggling spec.networkPolicy from set back
+// to unset leaves a stale NetworkPolicy object behind (still cleaned up when
+// the Instance itself is deleted, since it's owner-referenced) as the
+// accepted trade-off.
 func (r *InstanceReconciler) reconcileNetworkPolicy(ctx context.Context, instance *pagev1alpha1.Instance) error {
 	log := logf.FromContext(ctx)
 
