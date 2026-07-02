@@ -127,6 +127,16 @@ type ServiceWidget struct {
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
+	// caCert optionally supplies a PEM-encoded CA certificate (or bundle)
+	// used, in addition to the system trust store, to verify this widget's
+	// url. An alternative to Config's per-widget "insecureTLS" escape hatch
+	// (e.g. unifi.go) for self-hosted upstreams with a private CA: this lets
+	// the connection stay verified instead of skipping verification
+	// entirely. Resolved the same way as Secrets (never stored outside this
+	// object beyond the dashboard pod's in-memory TLS config).
+	// +optional
+	CACert *SecretValueSource `json:"caCert,omitempty"`
+
 	// config holds the remaining widget-type-specific options (e.g.
 	// PrometheusMetric's "query", Cloudflared's "accountId"/"tunnelId").
 	// +kubebuilder:pruning:PreserveUnknownFields

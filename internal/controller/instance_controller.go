@@ -84,6 +84,9 @@ const (
 	// reasonHTTPRouteFailed marks Available=False when reconciling the
 	// optional HTTPRoute failed.
 	reasonHTTPRouteFailed = "HTTPRouteReconcileFailed"
+	// reasonNetworkPolicyFailed marks Available=False when reconciling the
+	// optional NetworkPolicy failed.
+	reasonNetworkPolicyFailed = "NetworkPolicyReconcileFailed"
 	// reasonBoundCountsFailed marks Available=False when listing the config
 	// CRDs (Configuration/ServiceEntry/Bookmark/InfoWidget) bound to this
 	// Instance failed.
@@ -126,6 +129,13 @@ type InstanceReconciler struct {
 	// rather than degrade gracefully for the (likely common) case of a user
 	// who only wants Ingress.
 	GatewayAPIEnabled bool
+
+	// DirectReader is an uncached client used the same way cmd/main.go's
+	// ownDashboardImage uses one: to Get individual objects (here, Secrets,
+	// in filterLabeledSecrets) without starting a cluster-wide informer
+	// cache for that type on the manager. See filterLabeledSecrets' doc
+	// comment for why that matters specifically for Secrets.
+	DirectReader client.Reader
 }
 
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
@@ -160,6 +170,7 @@ type InstanceReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -311,6 +322,9 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "HTTPRoute", reasonHTTPRouteFailed, err)
+	}
+	if err := r.reconcileNetworkPolicy(ctx, instance); err != nil {
+		return r.failAvailable(ctx, instance, "NetworkPolicy", reasonNetworkPolicyFailed, err)
 	}
 
 	counts, err := r.boundCountsForInstance(ctx, instance)
@@ -768,13 +782,35 @@ func selectorLabelsForInstance() map[string]string {
 // itself (never on a Selector). image is the dashboard image currently in
 // use (DashboardImage).
 func labelsForInstance(image string) map[string]string {
-	var imageTag string
-	if parts := strings.SplitN(image, ":", 2); len(parts) == 2 {
-		imageTag = parts[1]
-	}
 	labels := selectorLabelsForInstance()
-	labels["app.kubernetes.io/version"] = imageTag
+	labels["app.kubernetes.io/version"] = imageVersionLabel(image)
 	return labels
+}
+
+// maxLabelValueLen is the Kubernetes label value length limit.
+// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+const maxLabelValueLen = 63
+
+// imageVersionLabel extracts a Kubernetes-label-safe "version" string from an
+// image reference. For a tag reference (repo:tag) it returns the tag. For a
+// digest reference (repo@sha256:hash, as produced by digest-pinning) it
+// returns the digest truncated to maxLabelValueLen, since the full 64-hex-char
+// sha256 digest exceeds the label value length limit.
+func imageVersionLabel(image string) string {
+	if at := strings.LastIndex(image, "@"); at != -1 {
+		digest := image[at+1:]
+		if idx := strings.Index(digest, ":"); idx != -1 {
+			digest = digest[idx+1:]
+		}
+		if len(digest) > maxLabelValueLen {
+			digest = digest[:maxLabelValueLen]
+		}
+		return digest
+	}
+	if idx := strings.LastIndex(image, ":"); idx != -1 {
+		return image[idx+1:]
+	}
+	return ""
 }
 
 // SetupWithManager sets up the controller with the Manager.

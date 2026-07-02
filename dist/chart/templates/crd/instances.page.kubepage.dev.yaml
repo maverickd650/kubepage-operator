@@ -70,6 +70,34 @@ spec:
                   the workload and pod
                 minProperties: 1
                 type: object
+              auth:
+                description: |-
+                  auth optionally gates every dashboard route (except /healthz) behind
+                  HTTP Basic authentication. Unset (the default) means the dashboard has
+                  no authentication of its own — see SECURITY.md's trust-model section
+                  for why, and for the recommended alternative of an authenticating
+                  reverse proxy.
+                properties:
+                  basicAuthSecretRef:
+                    description: |-
+                      basicAuthSecretRef names a Secret, in the same namespace as this
+                      Instance, holding an htpasswd-format file (bcrypt-hashed entries,
+                      e.g. produced by `htpasswd -B`) under its ".htpasswd" key. When set,
+                      every dashboard route except /healthz requires HTTP Basic credentials
+                      matching an entry in that file, checked with a constant-time compare.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               containerPort:
                 description: containerPort defines the port the dashboard HTTP server
                   listens on
@@ -753,6 +781,161 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              metrics:
+                description: |-
+                  metrics controls whether the dashboard's /metrics endpoint (per-widget
+                  poll counts/latencies, per-service up/down gauges) is exposed on the
+                  dashboard Service, in addition to the pod itself always serving it
+                  directly (reachable via a PodMonitor or port-forward regardless of
+                  this setting). Off by default: unlike the manager's own /metrics
+                  (which requires authn/authz), the dashboard's has none, so any pod
+                  able to reach the Service port could otherwise read which internal
+                  services this dashboard names and their live status with no RBAC
+                  check at all.
+                properties:
+                  enabled:
+                    default: Disabled
+                    description: enabled exposes port 9090 on the dashboard Service
+                      when "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                type: object
+              networkPolicy:
+                description: |-
+                  networkPolicy optionally creates an owner-referenced NetworkPolicy
+                  scoping which pods may reach this Instance's dashboard/metrics ports
+                  and, when egressCIDRs is set, which addresses its pods may reach. Off
+                  by default: dashboard pods otherwise accept ingress from anywhere in
+                  the cluster and have unrestricted egress, same as any Pod with no
+                  NetworkPolicy selecting it.
+                properties:
+                  egressCIDRs:
+                    description: |-
+                      egressCIDRs additionally allows egress to exactly these CIDR blocks
+                      (e.g. widget upstreams), plus DNS (port 53) and the Kubernetes API
+                      server (port 443) which are always allowed once egress is restricted.
+                      Leave empty to leave egress unrestricted (the non-breaking default)
+                      even with networkPolicy enabled for ingress — widget URLs are
+                      CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
+                      is an opt-in positive scope, not a default deny.
+                    items:
+                      maxLength: 43
+                      minLength: 1
+                      type: string
+                    maxItems: 64
+                    type: array
+                    x-kubernetes-list-type: set
+                  enabled:
+                    default: Disabled
+                    description: |-
+                      enabled creates and manages a NetworkPolicy for this Instance's
+                      dashboard pods when "Enabled".
+                    enum:
+                    - Enabled
+                    - Disabled
+                    type: string
+                  ingressNamespaceSelector:
+                    description: |-
+                      ingressNamespaceSelector selects which namespaces' pods may reach the
+                      dashboard's containerPort. Leave unset to allow ingress from any
+                      namespace (matching the default, unrestricted Service behavior) while
+                      still scoping the metrics port/egress below.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  metricsNamespaceSelector:
+                    description: |-
+                      metricsNamespaceSelector selects which namespaces' pods may reach the
+                      metrics port (9090). Only meaningful when spec.metrics.enabled; leave
+                      unset to allow from any namespace.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               podSecurityContext:
                 description: podSecurityContext is the pod security context
                 properties:
@@ -1208,6 +1391,22 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              secretPolicy:
+                default: Unrestricted
+                description: |-
+                  secretPolicy controls which Secrets a bound ServiceEntry/InfoWidget
+                  widget may reference via secretKeyRef (or caCert):
+                    - "Unrestricted" (default): any Secret in this namespace — the
+                      documented trust model (see SECURITY.md): anyone who can author
+                      these CRDs in a namespace is trusted with every Secret in it.
+                    - "Labeled": only Secrets carrying the
+                      page.kubepage.dev/allow-widgets: "true" label are granted to the
+                      dashboard pod's RBAC; a widget referencing an unlabeled (or
+                      nonexistent) Secret surfaces a clear card error instead.
+                enum:
+                - Unrestricted
+                - Labeled
+                type: string
               size:
                 default: 1
                 description: |-

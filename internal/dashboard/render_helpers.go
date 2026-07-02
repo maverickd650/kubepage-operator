@@ -147,11 +147,43 @@ func cssStringEscape(s string) string {
 // corrupting the URL. Raw element content only passes through escaping
 // once (none, since this is explicitly Raw), so it's the correct place for
 // a value containing literal quote characters.
-func backgroundStyle(bg *Background) string {
+//
+// nonce is the per-request CSP nonce (see server.go's securityHeaders):
+// with script-src/style-src locked to 'nonce-...' instead of
+// 'unsafe-inline', every inline <style>/<script> — including this
+// @templ.Raw one, which templ's own automatic nonce handling (used by
+// @templ.JSONScript and literal <style>/<script> tags parsed from .templ
+// source) doesn't reach — must carry it to render at all. nonce is always
+// server-generated (see server.go's generateNonce), never derived from CRD
+// input, so it needs no HTML-attribute escaping of its own.
+func backgroundStyle(nonce string, bg *Background) string {
 	if bg == nil {
 		return ""
 	}
-	return fmt.Sprintf(`<style>body { background-image: url("%s"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`, cssStringEscape(bg.Image))
+	return fmt.Sprintf(`<style nonce="%s">body { background-image: url("%s"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`,
+		nonce, cssStringEscape(bg.Image))
+}
+
+// customStyle returns a complete "<style>...</style>" element wrapping the
+// Configuration's CustomCSS, nonce-carrying like backgroundStyle above (same
+// reasoning: emitted via @templ.Raw, so templ's automatic nonce handling
+// doesn't reach it). Returns "" when css is empty, so the caller's
+// @templ.Raw call renders nothing.
+func customStyle(nonce, css string) string {
+	if css == "" {
+		return ""
+	}
+	return fmt.Sprintf(`<style nonce="%s">%s</style>`, nonce, cssStringEscape(css))
+}
+
+// customScript returns a complete "<script>...</script>" element wrapping
+// the Configuration's CustomJS, nonce-carrying like backgroundStyle/
+// customStyle above. Returns "" when js is empty.
+func customScript(nonce, js string) string {
+	if js == "" {
+		return ""
+	}
+	return fmt.Sprintf(`<script nonce="%s">%s</script>`, nonce, jsStringEscape(js))
 }
 
 // scriptCloseTag matches a case-insensitive "</script" anywhere in a string,

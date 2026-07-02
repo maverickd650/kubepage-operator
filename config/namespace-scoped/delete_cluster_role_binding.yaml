@@ -1,0 +1,11 @@
+# Deletes config/rbac/role_binding.yaml's cluster-wide ClusterRoleBinding
+# (post config/default's namePrefix transform: manager-rolebinding ->
+# kubepage-operator-manager-rolebinding) — replaced by this directory's
+# rolebinding.yaml, a namespaced RoleBinding instead. See
+# kustomization.yaml's header comment for the full trade-off this overlay
+# makes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubepage-operator-manager-rolebinding
+  $patch: delete

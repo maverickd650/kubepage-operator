@@ -114,6 +114,7 @@ func Run(ctx context.Context, opts Options) error {
 	srv := &Server{
 		Store:          store,
 		Reader:         clu.GetClient(),
+		SecretReader:   secretClient,
 		Namespace:      opts.Namespace,
 		InstanceName:   opts.InstanceName,
 		RefreshSeconds: int(opts.PollInterval.Seconds()),
