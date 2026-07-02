@@ -152,27 +152,47 @@ func (s *Server) Routes() http.Handler {
 // first-party; the only cross-origin loads are icons/backgrounds, which
 // resolve to operator- or CRD-supplied URLs — see icon.go — so img-src alone
 // stays open to https:/data:). script-src/style-src use a per-request nonce
-// (see securityHeaders/generateNonce) rather than 'unsafe-inline': every
-// inline <style>/<script> in index.templ — including the CustomCSS/CustomJS/
-// background-image ones emitted via @templ.Raw (render_helpers.go's
-// customStyle/customScript/backgroundStyle) — carries the same nonce, so a
-// script tag without it (e.g. one smuggled in by a future escaping
-// regression in those @templ.Raw paths) is refused by the browser
-// regardless of what CustomCSS/CustomJS/Background.Image's own escaping
-// does or doesn't catch. frame-src mirrors img-src's "https: and nothing
-// else" scope: without it, an iframe ServiceWidget's <iframe src="...">
-// (cards.templ, iframe.go) falls back to default-src 'self' and every
-// browser refuses to load it — this can't be scoped to just the operator-
-// configured widget URLs without threading per-request state through the
-// page shell; iframe.go's own fixed sandbox attribute (allow-scripts
-// allow-same-origin, no allow-top-navigation) is the actual containment
-// boundary for whatever origin an operator points a widget at.
+// (see securityHeaders/generateNonce) rather than 'unsafe-inline' for
+// *elements*: every inline <style>/<script> in index.templ — including the
+// CustomCSS/CustomJS/background-image ones emitted via @templ.Raw
+// (render_helpers.go's customStyle/customScript/backgroundStyle) — carries
+// the same nonce, so a <script>/<style> tag without it (e.g. one smuggled in
+// by a future escaping regression in those @templ.Raw paths) is refused by
+// the browser regardless of what CustomCSS/CustomJS/Background.Image's own
+// escaping does or doesn't catch.
+//
+// style-src-attr/script-src-attr are a deliberate, narrower exception: per
+// the CSP spec, a nonce only satisfies the check for <script>/<style>
+// *elements* — it has no effect on inline attribute values (style="...",
+// onclick="..."), which the spec routes through a separate "attribute"
+// check that only 'unsafe-inline' (or a hash matching the literal rendered
+// value, impractical here since these are computed per request/element) can
+// satisfy. This codebase renders several: the page's CSS custom properties
+// on <html style=...> (index.templ), grid-template-columns/usage-bar-fill/
+// iframe-height styles and the tab switcher's onclick= (cards.templ). Every
+// value behind those attributes is server-computed from a fixed lookup
+// table, a plain integer, or already-escaped CRD input (see cssStringEscape)
+// — never attacker-controlled free text — so scoping 'unsafe-inline' to
+// *only* the -attr directives (leaving the element directives nonce-only)
+// keeps the actual XSS-relevant surface — a rogue <script>/<style> tag —
+// covered, without silently breaking every inline style/onclick in the app.
+//
+// frame-src mirrors img-src's "https: and nothing else" scope: without it,
+// an iframe ServiceWidget's <iframe src="..."> (cards.templ, iframe.go)
+// falls back to default-src 'self' and every browser refuses to load it —
+// this can't be scoped to just the operator-configured widget URLs without
+// threading per-request state through the page shell; iframe.go's own fixed
+// sandbox attribute (allow-scripts allow-same-origin, no
+// allow-top-navigation) is the actual containment boundary for whatever
+// origin an operator points a widget at.
 func contentSecurityPolicy(nonce string) string {
 	return "default-src 'self'; " +
 		"img-src 'self' https: data:; " +
 		"frame-src https:; " +
 		"style-src 'self' 'nonce-" + nonce + "'; " +
+		"style-src-attr 'unsafe-inline'; " +
 		"script-src 'self' 'nonce-" + nonce + "'; " +
+		"script-src-attr 'unsafe-inline'; " +
 		"connect-src 'self'; " +
 		"frame-ancestors 'none'; " +
 		"base-uri 'self'; " +

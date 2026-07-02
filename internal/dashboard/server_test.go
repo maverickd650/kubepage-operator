@@ -183,9 +183,14 @@ func TestSecurityHeadersAllowsHTTPSFrames(t *testing.T) {
 }
 
 // TestSecurityHeadersUsesNonceNotUnsafeInline verifies script-src/style-src
-// no longer fall back to 'unsafe-inline' (P2.4 in docs/security-review.md):
-// a future escaping regression in a @templ.Raw path should be blocked by
-// the browser, not just relying on server-side escaping.
+// (the directives that govern <script>/<style> *elements*) no longer fall
+// back to 'unsafe-inline' (P2.4 in docs/security-review.md): a future
+// escaping regression in a @templ.Raw path should be blocked by the
+// browser, not just relying on server-side escaping. script-src-attr/
+// style-src-attr are a deliberate, narrower exception — see
+// contentSecurityPolicy's doc comment for why inline attributes (style=,
+// onclick=) need 'unsafe-inline' regardless of the nonce, since CSP nonces
+// don't cover attribute values at all.
 func TestSecurityHeadersUsesNonceNotUnsafeInline(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -193,11 +198,18 @@ func TestSecurityHeadersUsesNonceNotUnsafeInline(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	csp := rec.Header().Get("Content-Security-Policy")
-	if strings.Contains(csp, "unsafe-inline") {
-		t.Errorf("Content-Security-Policy = %q, want no 'unsafe-inline'", csp)
-	}
 	if !strings.Contains(csp, "script-src 'self' 'nonce-") || !strings.Contains(csp, "style-src 'self' 'nonce-") {
 		t.Errorf("Content-Security-Policy = %q, want nonce-based script-src/style-src", csp)
+	}
+	for _, directive := range strings.Split(csp, "; ") {
+		if (strings.HasPrefix(directive, "script-src ") || strings.HasPrefix(directive, "style-src ")) && strings.Contains(directive, "unsafe-inline") {
+			t.Errorf("Content-Security-Policy directive %q must not carry 'unsafe-inline' (only the -attr variants may)", directive)
+		}
+	}
+	for _, want := range []string{"style-src-attr 'unsafe-inline'", "script-src-attr 'unsafe-inline'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("Content-Security-Policy = %q, want %q (CSP nonces don't cover inline attributes like style= or onclick=)", csp, want)
+		}
 	}
 }
 
