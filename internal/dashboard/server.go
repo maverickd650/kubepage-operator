@@ -1,9 +1,14 @@
 package dashboard
 
 import (
+	"bytes"
+	"compress/gzip"
 	"embed"
 	"encoding/json"
+	"hash/fnv"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,8 +27,13 @@ const (
 // binary needs no CDN (D11) and the dashboard keeps working air-gapped or if
 // a third-party CDN is unreachable/compromised.
 //
-//go:embed assets/*.woff2 assets/*.js
+//go:embed assets/*.woff2 assets/*.js assets/*.svg
 var assetFS embed.FS
+
+// pwaIconPath is the app icon's asset path, referenced by handleManifest's
+// icons array — an SVG with "sizes": "any" satisfies every installability
+// checker (Chrome, Android) without needing multiple raster sizes.
+const pwaIconPath = "/assets/icon.svg"
 
 // cardGroup is a display-ready group of cards sharing a ServiceEntry Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
@@ -186,12 +196,23 @@ func securityHeaders(next http.Handler) http.Handler {
 // dashboard be installed as a Progressive Web App (homepage's documented
 // PWA support: https://gethomepage.dev/configs/settings/#progressive-web-app-pwa).
 type pwaManifest struct {
-	Name            string `json:"name"`
-	ShortName       string `json:"short_name"`
-	ThemeColor      string `json:"theme_color"`
-	BackgroundColor string `json:"background_color"`
-	Display         string `json:"display"`
-	StartURL        string `json:"start_url"`
+	Name            string    `json:"name"`
+	ShortName       string    `json:"short_name"`
+	ThemeColor      string    `json:"theme_color"`
+	BackgroundColor string    `json:"background_color"`
+	Display         string    `json:"display"`
+	StartURL        string    `json:"start_url"`
+	Icons           []pwaIcon `json:"icons"`
+}
+
+// pwaIcon is one entry of pwaManifest.Icons. "any" for Sizes tells the
+// installer the (vector) icon scales to whatever size it needs, so a single
+// SVG satisfies Chrome/Android's installability icon requirement without
+// shipping multiple raster sizes.
+type pwaIcon struct {
+	Src   string `json:"src"`
+	Sizes string `json:"sizes"`
+	Type  string `json:"type"`
 }
 
 func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
@@ -212,6 +233,7 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
 		BackgroundColor: bg,
 		Display:         "standalone",
 		StartURL:        site.StartURL,
+		Icons:           []pwaIcon{{Src: pwaIconPath, Sizes: "any", Type: "image/svg+xml"}},
 	}
 
 	w.Header().Set("Content-Type", "application/manifest+json")
@@ -252,6 +274,8 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "font/woff2")
 	case strings.HasSuffix(r.PathValue("file"), ".js"):
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	case strings.HasSuffix(r.PathValue("file"), ".svg"):
+		w.Header().Set("Content-Type", "image/svg+xml")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	_, _ = w.Write(b)
@@ -287,10 +311,58 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := Cards(s.buildFragmentData(site)).Render(r.Context(), w); err != nil {
+	data := s.buildFragmentData(site)
+	if err := writeCachedHTML(w, r, func(buf io.Writer) error { return Cards(data).Render(r.Context(), buf) }); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// writeCachedHTML renders an HTML fragment into a buffer and serves it with
+// a content-hash ETag: unlike a Store generation counter, a hash of the
+// actual rendered bytes stays correct even though /fragment and /header
+// depend on more than the Store (Configuration/Bookmark/InfoWidget changes,
+// read through the cached client, also change the output — see LoadSite).
+// "Cache-Control: no-cache" tells the browser to keep revalidating on every
+// request rather than caching outright, so it automatically sends
+// If-None-Match on htmx's next poll; when that matches, the response is a
+// bare 304 with no body — the common case once a dashboard's data has
+// settled between polls. When the body does need to go out, it's
+// gzip-compressed whenever the client advertises support.
+func writeCachedHTML(w http.ResponseWriter, r *http.Request, render func(io.Writer) error) error {
+	var buf bytes.Buffer
+	if err := render(&buf); err != nil {
+		return err
+	}
+
+	sum := etagFor(buf.Bytes())
+	h := w.Header()
+	h.Set("ETag", sum)
+	h.Set("Cache-Control", "no-cache")
+	if r.Header.Get("If-None-Match") == sum {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		h.Set("Content-Encoding", "gzip")
+		h.Set("Vary", "Accept-Encoding")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		_, err := gz.Write(buf.Bytes())
+		return err
+	}
+	_, err := w.Write(buf.Bytes())
+	return err
+}
+
+// etagFor returns a quoted strong-validator ETag (FNV-1a, not a security
+// hash — this only needs to detect byte differences, not resist tampering)
+// for writeCachedHTML's If-None-Match comparison.
+func etagFor(b []byte) string {
+	sum := fnv.New64a()
+	sum.Write(b) //nolint:errcheck // hash.Hash.Write never returns an error
+	return `"` + strconv.FormatUint(sum.Sum64(), 16) + `"`
 }
 
 // buildFragmentData builds the polled fragment's template data from the
@@ -314,9 +386,8 @@ func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := headerData{Widgets: buildHeader(site.HeaderWidgets, s.Store.Snapshot())}
-	if err := Header(data).Render(r.Context(), w); err != nil {
+	if err := writeCachedHTML(w, r, func(buf io.Writer) error { return Header(data).Render(r.Context(), buf) }); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"compress/gzip"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -45,6 +47,72 @@ func TestServerFragmentRendersCards(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestServerFragmentRevalidatesWithETag(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	first := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/fragment", nil))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", first.Code)
+	}
+	etag := first.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("first response missing ETag header")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.Header.Set("If-None-Match", etag)
+	second := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(second, req)
+	if second.Code != http.StatusNotModified {
+		t.Fatalf("revalidated request status = %d, want 304", second.Code)
+	}
+	if second.Body.Len() != 0 {
+		t.Errorf("304 response body = %q, want empty", second.Body.String())
+	}
+
+	store.Set(Card{Key: "ns/prom/0", Group: testGroup, ServiceName: "Renamed"})
+	third := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(third, httptest.NewRequest(http.MethodGet, "/fragment", nil))
+	if third.Code != http.StatusOK {
+		t.Fatalf("changed-data request status = %d, want 200", third.Code)
+	}
+	if got := third.Header().Get("ETag"); got == etag {
+		t.Error("ETag unchanged after Store content changed")
+	}
+}
+
+func TestServerFragmentGzipsWhenAccepted(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: "ns/prom/0", Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", got)
+	}
+	gz, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	body, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(body), testServiceName) {
+		t.Errorf("decompressed body missing %q:\n%s", testServiceName, body)
 	}
 }
 
@@ -387,10 +455,27 @@ func TestServerManifestRoute(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`"name":"My Lab"`, `"start_url":"/dashboard"`, `"display":"standalone"`} {
+	for _, want := range []string{`"name":"My Lab"`, `"start_url":"/dashboard"`, `"display":"standalone"`, `"src":"/assets/icon.svg"`, `"sizes":"any"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("manifest body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestServerAssetServesSVGIcon(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/assets/icon.svg", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("Content-Type = %q, want image/svg+xml", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "<svg") {
+		t.Errorf("asset body doesn't look like SVG:\n%s", rec.Body.String())
 	}
 }
 
