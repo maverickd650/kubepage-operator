@@ -201,7 +201,7 @@ func TestSecurityHeadersUsesNonceNotUnsafeInline(t *testing.T) {
 	if !strings.Contains(csp, "script-src 'self' 'nonce-") || !strings.Contains(csp, "style-src 'self' 'nonce-") {
 		t.Errorf("Content-Security-Policy = %q, want nonce-based script-src/style-src", csp)
 	}
-	for _, directive := range strings.Split(csp, "; ") {
+	for directive := range strings.SplitSeq(csp, "; ") {
 		if (strings.HasPrefix(directive, "script-src ") || strings.HasPrefix(directive, "style-src ")) && strings.Contains(directive, "unsafe-inline") {
 			t.Errorf("Content-Security-Policy directive %q must not carry 'unsafe-inline' (only the -attr variants may)", directive)
 		}
