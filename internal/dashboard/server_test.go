@@ -94,6 +94,25 @@ func TestServerIndexEmitsPaletteRamp(t *testing.T) {
 	}
 }
 
+// TestServerIndexEmitsCardPixelTuningCSS locks in the visual-parity pass
+// (gap-analysis §3.5/4.4): service card icons render larger than header/
+// bookmark icons, and equal-height cards push their stats row to the bottom
+// via a grid-equal-scoped rule rather than a global one (which would also
+// affect non-equal-height cards).
+func TestServerIndexEmitsCardPixelTuningCSS(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{".card h3 img.icon { width: 2rem; height: 2rem; }", ".grid.grid-equal .card .stats { margin-top: auto; }"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("index body missing %q", want)
+		}
+	}
+}
+
 func TestServerFragmentRendersStatsRow(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{

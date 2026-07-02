@@ -100,10 +100,11 @@ templ Index(data indexData) {
 					transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
 					border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 				}
-				.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+				.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.6rem; }
 				.card h3 a { color: inherit; text-decoration: none; }
 				.card h3 a:hover { color: var(--accent); }
 				img.icon { width: 1.2rem; height: 1.2rem; object-fit: contain; }
+				.card h3 img.icon { width: 2rem; height: 2rem; }
 				.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-left: auto; background: var(--muted); }
 				.status-dot.status-Up { background: #4ade80; }
 				.status-dot.status-Down { background: #f87171; }
@@ -111,6 +112,7 @@ templ Index(data indexData) {
 				.status-pill.status-Up { background: color-mix(in srgb, #4ade80 22%, transparent); color: #4ade80; }
 				.status-pill.status-Down { background: color-mix(in srgb, #f87171 22%, transparent); color: #f87171; }
 				.stats { display: flex; flex-direction: row; width: 100%; margin-top: 0.5rem; }
+				.grid.grid-equal .card .stats { margin-top: auto; }
 				.stat {
 					flex: 1 1 0%; margin: 0.15rem; padding: 0.25rem;
 					background: color-mix(in srgb, var(--muted) 14%, transparent);
