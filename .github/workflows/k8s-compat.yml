@@ -1,0 +1,97 @@
+name: K8s Compatibility
+
+# Floor version: 1.33, not the originally-targeted 1.29 (which would be the
+# oldest version needed for CEL XValidation, GA since 1.29). Kind v0.32.0
+# (pinned in .mise/config.toml) only ships kindest/node images back to
+# v1.33.12 per its release notes — there's no verified 1.29 image to test
+# against without pinning an older, unmaintained Kind release. 1.33 still
+# exercises CEL XValidation (1.29+) and the config/admission
+# ValidatingAdmissionPolicy (1.30+) floors. envtest's own binary index
+# (setup-envtest) does still offer 1.29 binaries, but both matrices are
+# pinned to the same floor here so "the floor this project tests" has one
+# unambiguous answer — see README.md/CLAUDE.md for the documented minimum.
+on:
+  schedule:
+    - cron: "0 4 * * 1" # weekly Monday at 04:00 UTC
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "config/crd/**"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  unit-test-matrix:
+    permissions:
+      contents: read
+    name: Unit Tests (K8s ${{ matrix.k8s-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version: ["1.33", "1.36"]
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go environment
+        uses: ./.github/actions/setup-go-env
+
+      - name: Running Tests (K8s ${{ matrix.k8s-version }})
+        run: mise run test
+        env:
+          ENVTEST_K8S_VERSION: ${{ matrix.k8s-version }}
+
+  e2e-matrix:
+    permissions:
+      contents: read
+    name: E2E Tests (K8s ${{ matrix.k8s-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Digest pinned from the kind v0.32.0 release notes (oldest node
+          # image that release ships) — see the file-level comment above.
+          - k8s-version: "1.33"
+            kind-image: "kindest/node:v1.33.12@sha256:3f5c8443c620245e4d355cfe09e96a91ead32ceaa569d3f1ca9edf0cb2fe2ff4"
+          - k8s-version: "1.36"
+            kind-image: ""
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go environment
+        uses: ./.github/actions/setup-go-env
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Build manager image (cached)
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198f0a0ef4c4e1 # v6.18.0
+        with:
+          context: .
+          load: true
+          tags: example.com/kubepage-operator:v0.0.1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GO_VERSION=1.26.4
+
+      - name: Running E2E Tests (K8s ${{ matrix.k8s-version }})
+        run: mise run test-e2e
+        env:
+          SKIP_IMG_BUILD: "1"
+          KIND_IMAGE: ${{ matrix.kind-image }}

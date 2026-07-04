@@ -1,11 +1,15 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
@@ -289,6 +293,87 @@ func TestDigestPinnedImage(t *testing.T) {
 			}
 			if gotOK && gotImage != tc.wantImage {
 				t.Errorf("digestPinnedImage() = %q, want %q", gotImage, tc.wantImage)
+			}
+		})
+	}
+}
+
+func TestGatewayAPIAvailable(t *testing.T) {
+	const gatewayGroup = "gateway.networking.k8s.io/v1"
+
+	tests := map[string]struct {
+		handler  http.HandlerFunc
+		wantOK   bool
+		wantErr  bool
+	}{
+		"HTTPRoute present": {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				resp := metav1.APIResourceList{
+					GroupVersion: gatewayGroup,
+					APIResources: []metav1.APIResource{
+						{Kind: "Gateway"},
+						{Kind: "HTTPRoute"},
+						{Kind: "GRPCRoute"},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+			},
+			wantOK: true,
+		},
+		"group present but HTTPRoute absent": {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				resp := metav1.APIResourceList{
+					GroupVersion: gatewayGroup,
+					APIResources: []metav1.APIResource{
+						{Kind: "Gateway"},
+						{Kind: "GRPCRoute"},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+			},
+			wantOK: false,
+		},
+		"group not found (404)": {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				status := metav1.Status{
+					Status: metav1.StatusFailure,
+					Reason: metav1.StatusReasonNotFound,
+					Code:   http.StatusNotFound,
+				}
+				json.NewEncoder(w).Encode(status)
+			},
+			wantOK: false,
+		},
+		"server error": {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErr: true,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			cfg := &rest.Config{Host: srv.URL}
+			got, err := gatewayAPIAvailable(cfg)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("gatewayAPIAvailable() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("gatewayAPIAvailable() unexpected error: %v", err)
+			}
+			if got != tc.wantOK {
+				t.Errorf("gatewayAPIAvailable() = %v, want %v", got, tc.wantOK)
 			}
 		})
 	}

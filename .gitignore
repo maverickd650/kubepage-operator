@@ -18,6 +18,10 @@ coverage.*
 *.coverprofile
 profile.cov
 
+# pgregory.net/rapid failure-reproduction caches (auto-written next to the
+# test package on a rapid.Check failure; local debugging artifacts only)
+**/testdata/rapid/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

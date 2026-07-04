@@ -12,6 +12,7 @@ kind = "0.32.0"
 kubectl = "1.36.2"
 cosign = "3.1.1"
 kubebuilder = "4.15.0"
+kubeconform = "0.6.7"
 
 [env]
 # Image used by build/deploy targets; override with `IMG=... mise run docker-build`.
@@ -104,14 +105,56 @@ export KUBEBUILDER_ASSETS="$(setup-envtest use "$k8s_version" --bin-dir "$bin_di
 go test -race -count=5 ./internal/dashboard/...
 '''
 
+[tasks.test-chart-validate]
+description = "Validate rendered Helm templates' built-in-kind manifests against upstream Kubernetes schemas"
+depends = ["manifests"]
+# kubeconform validates against JSON Schema, not the CRD manifests
+# (config/crd/bases/*.yaml) that this chart ships — those are full
+# CustomResourceDefinition objects with an embedded OpenAPI schema, not
+# standalone JSON Schema files kubeconform's -schema-location can address, so
+# there's no CRD schema source to point it at here. This only validates the
+# chart's built-in-kind manifests (Deployment, ClusterRole, RoleBinding,
+# ValidatingAdmissionPolicy, ...) against upstream schemas and skips CRD
+# instances entirely via -ignore-missing-schemas. CRD instance conformance
+# (Dashboard/ServiceCard/etc. samples matching their own schema) is instead
+# covered by internal/controller's server-side dry-run apply test against a
+# real envtest API server (see samples_validation_test.go).
+run = '''
+helm template dist/chart | kubeconform -strict \
+  -schema-location default \
+  -ignore-missing-schemas
+'''
+
+[tasks.test-fuzz]
+description = "Run fuzz tests on widget parsers (default 30s per target)"
+run = '''
+fuzztime="${FUZZ_TIME:-30s}"
+go test ./internal/dashboard/... -fuzz=FuzzWidgetParsers -fuzztime="$fuzztime"
+'''
+
+[tasks.test-browser]
+description = "Run browser smoke tests (requires headless Chrome)"
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
+run = '''
+k8s_version="${ENVTEST_K8S_VERSION:-$(go list -m k8s.io/api | sed -E 's/.*v[0-9]+\.([0-9]+).*/1.\1/')}"
+bin_dir="$PWD/bin"
+mkdir -p "$bin_dir"
+export KUBEBUILDER_ASSETS="$(setup-envtest use "$k8s_version" --bin-dir "$bin_dir" -p path)"
+go test -tags=browser ./internal/dashboard/... -run TestBrowser -v -count=1
+'''
+
 [tasks.test-e2e]
 description = "Run e2e tests against a Kind cluster (Kind must be installed)"
 depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 run = '''
 cluster="${KIND_CLUSTER}"
+kind_args="--name $cluster"
+if [ -n "${KIND_IMAGE:-}" ]; then
+  kind_args="$kind_args --image $KIND_IMAGE"
+fi
 if ! kind get clusters | grep -qx "$cluster"; then
   echo "Creating Kind cluster '$cluster'..."
-  kind create cluster --name "$cluster"
+  kind create cluster $kind_args
 fi
 trap 'kind delete cluster --name "$cluster"' EXIT
 KIND=kind KIND_CLUSTER="$cluster" go test -tags=e2e ./test/e2e/ -v -ginkgo.v
