@@ -184,8 +184,12 @@ run = "go run ./cmd preview -f config/samples"
 [tasks.build-dist]
 description = "Cross-compile release binaries for every supported platform into dist-bin/, with sha256 checksums"
 # VERSION/REVISION mirror docker-build's own fallbacks below; release.yaml
-# sets both explicitly from the release-please tag.
+# sets both explicitly from the release-please tag. Needs a shebang: mise's
+# default task shell is /bin/sh (dash on Ubuntu, which doesn't support
+# `set -o pipefail`) — see tasks.helm-chart-refresh's comment for the same
+# fix applied there first.
 run = '''
+#!/usr/bin/env bash
 set -euo pipefail
 version="${VERSION:-dev}"
 revision="${REVISION:-$(git rev-parse --short HEAD)}"
