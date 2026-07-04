@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -195,6 +196,64 @@ func TestBasicAuthMiddlewareMissingSecretIsInternalError(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500 when the basic-auth Secret is missing", rec.Code)
+	}
+}
+
+// TestInvalidateAuthCacheForcesRefetch verifies InvalidateAuthCache actually
+// clears the cached entry rather than just being a no-op: without calling
+// it, loadBasicAuth keeps serving the stale (pre-Secret-change) entries for
+// up to basicAuthCacheTTL, which is exactly the bug internal/preview.Watch's
+// reload path would otherwise hit — a Secret edited and reloaded would keep
+// enforcing pre-edit credentials.
+func TestInvalidateAuthCacheForcesRefetch(t *testing.T) {
+	resetAuthCache(t)
+	scheme := testScheme(t)
+
+	instance := authTestDashboard("htpasswd-secret")
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+
+	firstHash := mustBcryptHash("first-password")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "htpasswd-secret", Namespace: testNamespace},
+		Data:       map[string][]byte{htpasswdSecretKey: []byte("alice:" + string(firstHash))},
+	}
+	secretCl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+
+	entries, enabled, err := loadBasicAuth(context.Background(), cl, secretCl, testNamespace, testDashboardName)
+	if err != nil || !enabled {
+		t.Fatalf("loadBasicAuth() = %v, %v, %v", entries, enabled, err)
+	}
+	if _, ok := entries["alice"]; !ok {
+		t.Fatalf("expected alice's entry from the first load, got %v", entries)
+	}
+
+	// A fresh reader serving different Secret content under the same key —
+	// what internal/preview.Watch's SwappableReader.Store swap looks like
+	// from loadBasicAuth's perspective after a reload.
+	secondHash := mustBcryptHash("second-password")
+	updatedSecret := secret.DeepCopy()
+	updatedSecret.Data = map[string][]byte{htpasswdSecretKey: []byte("bob:" + string(secondHash))}
+	secretCl2 := fake.NewClientBuilder().WithScheme(scheme).WithObjects(updatedSecret).Build()
+
+	staleEntries, _, err := loadBasicAuth(context.Background(), cl, secretCl2, testNamespace, testDashboardName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := staleEntries["alice"]; !ok {
+		t.Fatalf("expected the cache to still serve alice (stale) before invalidation, got %v", staleEntries)
+	}
+
+	InvalidateAuthCache(testNamespace, testDashboardName)
+
+	freshEntries, _, err := loadBasicAuth(context.Background(), cl, secretCl2, testNamespace, testDashboardName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := freshEntries["bob"]; !ok {
+		t.Errorf("InvalidateAuthCache did not force a re-fetch: entries = %v, want bob's new entry", freshEntries)
+	}
+	if _, ok := freshEntries["alice"]; ok {
+		t.Errorf("InvalidateAuthCache: still serving the stale alice entry after invalidation")
 	}
 }
 
