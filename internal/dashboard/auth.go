@@ -141,6 +141,19 @@ func loadBasicAuth(ctx context.Context, reader, secretReader client.Reader, name
 	return entries, true, nil
 }
 
+// InvalidateAuthCache clears the cached basic-auth htpasswd entries for one
+// Dashboard, so a changed Secret takes effect immediately instead of
+// waiting up to basicAuthCacheTTL. internal/preview's live reload
+// (Watch) calls this after every successful reload: swapping the
+// underlying Reader doesn't otherwise touch this package-level cache, so an
+// edited htpasswd Secret would keep enforcing pre-edit credentials for up
+// to the TTL even though the reload itself already picked up the change.
+func InvalidateAuthCache(namespace, dashboardName string) {
+	authCache.mu.Lock()
+	delete(authCache.entries, namespace+"/"+dashboardName)
+	authCache.mu.Unlock()
+}
+
 // healthzPath is excluded from basicAuthMiddleware so liveness/readiness
 // probes never need credentials, mirroring how the Kubernetes Deployment's
 // own probes (instance_controller.go) never carry auth headers.
