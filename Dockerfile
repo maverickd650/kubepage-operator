@@ -17,7 +17,7 @@ RUN go mod download
 
 # Copy only the Go source the build needs (narrower than .dockerignore alone,
 # and doesn't rely on it to keep test/tooling files out of the build context)
-COPY cmd/main.go cmd/main.go
+COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 
@@ -29,7 +29,7 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -ldflags "-X main.version=${VERSION} -X main.commit=${REVISION}" \
     $(if [ "$COVER" = "1" ]; then echo "-cover -covermode=atomic"; fi) \
-    -o manager cmd/main.go
+    -o manager ./cmd
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details

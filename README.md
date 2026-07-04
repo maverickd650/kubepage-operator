@@ -182,7 +182,7 @@ same dashboard UI code the in-cluster pod runs:
 
 ```sh
 mise run preview                      # serves config/samples on :8080
-go run ./cmd/main.go preview -f ./my-dashboard-manifests --open
+go run ./cmd preview -f ./my-dashboard-manifests --open
 ```
 
 Widget polling still makes real outbound requests to whatever URLs the loaded

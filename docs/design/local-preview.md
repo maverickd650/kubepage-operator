@@ -129,7 +129,7 @@ Plus a dev-loop task so contributors never type the above:
 [tasks.preview]
 description = "Serve the dashboard locally from config/samples (no cluster)"
 depends = ["templ-generate"]
-run = "go run ./cmd/main.go preview -f config/samples --open"
+run = "go run ./cmd preview -f config/samples --open"
 ```
 
 ## Release: attach and sign the binaries

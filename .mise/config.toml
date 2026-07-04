@@ -165,17 +165,21 @@ KIND=kind KIND_CLUSTER="$cluster" go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 [tasks.build]
 description = "Build manager binary"
 depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
-run = "go build -o bin/manager cmd/main.go"
+# ./cmd (the package), not cmd/main.go (a single file) — `go build`/`go run`
+# on one file excludes any sibling file in the same package (e.g.
+# cmd/browser.go), silently building a binary missing whatever those files
+# define.
+run = "go build -o bin/manager ./cmd"
 
 [tasks.run]
 description = "Run a controller from your host"
 depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
-run = "go run ./cmd/main.go"
+run = "go run ./cmd"
 
 [tasks.preview]
 description = "Serve the dashboard locally from config/samples, no cluster required"
 depends = ["templ-generate"]
-run = "go run ./cmd/main.go preview -f config/samples"
+run = "go run ./cmd preview -f config/samples"
 
 [tasks.docker-build]
 description = "Build docker image with the manager"

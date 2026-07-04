@@ -35,8 +35,9 @@ mise run lint-fix       # same, with --fix
 mise run test           # unit tests: go test $(go list ./... | grep -v /e2e) -race, via envtest (real API server + etcd)
 mise run test-e2e       # e2e tests against an ephemeral Kind cluster (creates/deletes it automatically)
 
-mise run build          # go build -o bin/manager cmd/main.go
-mise run run            # go run ./cmd/main.go (manager mode, against your current kubeconfig context)
+mise run build          # go build -o bin/manager ./cmd
+mise run run            # go run ./cmd (manager mode, against your current kubeconfig context)
+mise run preview        # go run ./cmd preview -f config/samples (no cluster required)
 ```
 
 `mise run test` depends on `manifests`, `generate`, `templ-generate`, `fmt`,

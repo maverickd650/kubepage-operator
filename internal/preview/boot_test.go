@@ -70,8 +70,14 @@ func TestPreviewServesConfigSamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "Plex") {
-		t.Errorf("GET / body missing the sample ServiceCard's name %q", "Plex")
+	// Bookmarks render straight from LoadSite (a cached-reader read),
+	// independent of the Poller's own ticker — unlike a ServiceCard's
+	// widget/siteMonitor fields, which only appear once the Poller's first
+	// cycle actually completes its outbound probes. Asserting on the sample
+	// Bookmark keeps this test deterministic instead of racing a real
+	// network round-trip to config/samples' (nonexistent) plex.example.com.
+	if !strings.Contains(string(body), "Github") {
+		t.Errorf("GET / body missing the sample Bookmark's name %q", "Github")
 	}
 
 	cancel()
