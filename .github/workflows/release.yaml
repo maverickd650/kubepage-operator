@@ -118,34 +118,7 @@ jobs:
           cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE}@${DIGEST}"
 
       - name: Generate SLSA build provenance predicate
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          COMMIT: ${{ github.sha }}
-          REPO: ${{ github.repository }}
-          SERVER_URL: ${{ github.server_url }}
-        run: |
-          jq -n \
-            --arg builderId "${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}" \
-            --arg buildType "https://github.com/${REPO}/.github/workflows/release.yaml" \
-            --arg uri "git+${SERVER_URL}/${REPO}@refs/heads/main" \
-            --arg sha1 "${COMMIT}" \
-            --arg entryPoint ".github/workflows/release.yaml" \
-            --arg invocationId "${RUN_ID}-${RUN_ATTEMPT}" \
-            '{
-              builder: {id: $builderId},
-              buildType: $buildType,
-              invocation: {
-                configSource: {uri: $uri, digest: {sha1: $sha1}, entryPoint: $entryPoint}
-              },
-              metadata: {
-                buildInvocationId: $invocationId,
-                completeness: {parameters: true, environment: false, materials: false},
-                reproducible: false
-              },
-              materials: [{uri: $uri, digest: {sha1: $sha1}}]
-            }' > provenance.json
+        uses: ./.github/actions/slsa-provenance
 
       - name: Attest image SLSA build provenance (keyless)
         env:
@@ -186,3 +159,72 @@ jobs:
           DIGEST: ${{ steps.chart_push.outputs.digest }}
         run: |
           cosign attest --yes --type slsaprovenance --predicate provenance.json "${CHART_REPO#oci://}/kubepage-operator@${DIGEST}"
+
+  binaries:
+    name: Release Binaries
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to upload release assets to the GitHub Release release-please created
+      id-token: write # for keyless cosign signing
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Setup Mise
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install_args: --locked
+          cache: false
+
+      - name: Cross-compile release binaries
+        env:
+          REVISION: ${{ github.sha }}
+        run: mise run build-dist
+
+      - name: Sign checksums.txt (keyless)
+        run: cosign sign-blob --yes --bundle dist-bin/checksums.txt.cosign.bundle dist-bin/checksums.txt
+
+      - name: Generate SLSA build provenance predicate
+        uses: ./.github/actions/slsa-provenance
+
+      - name: Attest checksums.txt SLSA build provenance (keyless)
+        run: |
+          cosign attest-blob --yes --type slsaprovenance \
+            --predicate provenance.json \
+            --bundle dist-bin/checksums.txt.slsa.bundle \
+            dist-bin/checksums.txt
+
+      - name: Generate SBOM for release binaries
+        # One SBOM for the whole dist-bin directory rather than one per
+        # archive: every archive is built from the identical go.mod/
+        # go.sum dependency set (only GOOS/GOARCH differ), so per-archive
+        # SBOMs would be near-duplicates: cosign attesting distinct
+        # per-artifact predicates only earns its complexity when the
+        # predicates can actually differ, unlike the image SBOM (a single
+        # artifact) this mirrors.
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: dist-bin
+          format: spdx-json
+          output-file: dist-bin/kubepage-operator-binaries.spdx.json
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${TAG}" \
+            dist-bin/*.tar.gz dist-bin/*.zip \
+            dist-bin/checksums.txt \
+            dist-bin/checksums.txt.cosign.bundle \
+            dist-bin/checksums.txt.slsa.bundle \
+            dist-bin/kubepage-operator-binaries.spdx.json \
+            --repo "${{ github.repository }}" \
+            --clobber
