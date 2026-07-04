@@ -64,9 +64,9 @@ committed, like the CRD YAML).
 
 ## Architecture
 
-### Two binaries in one: manager vs. dashboard
+### One binary, three modes: manager, dashboard, preview
 
-`cmd/main.go` is the single entrypoint for both modes:
+`cmd/main.go` is the single entrypoint for all three:
 - **Manager mode** (default): the standard Kubebuilder controller-runtime
   manager — reconciles CRDs, creates/owns Deployments/Services/Ingresses/RBAC.
 - **Dashboard mode** (`<binary> dashboard --namespace=... --dashboard-name=...`):
@@ -76,6 +76,15 @@ committed, like the CRD YAML).
   `POD_NAMESPACE` downward-API env vars — see `ownDashboardImage` in
   `cmd/main.go` — since there's no way for a pod to look up its own image
   otherwise).
+- **Preview mode** (`<binary> preview -f <path>`, `mise run preview`): serves
+  the same dashboard UI against CRD YAML loaded from local files instead of a
+  live cluster, so a Dashboard's look can be checked without installing the
+  operator anywhere. `internal/preview` decodes the files into an in-memory
+  `client.Client` (`sigs.k8s.io/controller-runtime/pkg/client/fake`) and
+  `dashboard.RunPreview` wires it into the same `Server`/`Poller` dashboard
+  mode uses — see `internal/dashboard/dashboard.go`'s `serve` helper, shared
+  by both `Run` (real cluster) and `RunPreview` (in-memory), and
+  `docs/design/local-preview.md` for the full design.
 
 ### CRDs (`api/v1alpha1`) and their relationship
 

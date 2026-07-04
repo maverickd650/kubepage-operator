@@ -97,32 +97,66 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("building cluster client: %w", err)
 	}
 
-	store := NewStore()
-	poller := &Poller{
-		Reader:            clu.GetClient(),
-		SecretReader:      secretClient,
-		KubeReader:        kubeClient,
+	return serve(ctx, serveParams{
 		Namespace:         opts.Namespace,
 		DashboardName:     opts.DashboardName,
-		Interval:          opts.PollInterval,
+		Addr:              opts.Addr,
+		MetricsAddr:       opts.MetricsAddr,
+		PollInterval:      opts.PollInterval,
+		Version:           opts.Version,
+		Commit:            opts.Commit,
+		GatewayAPIEnabled: opts.GatewayAPIEnabled,
+	}, clu.GetClient(), secretClient, kubeClient)
+}
+
+// serveParams is the subset of Options/PreviewOptions needed once the three
+// client.Readers (CRD cache, secrets, cluster-scoped) already exist — shared
+// by Run, which builds them from a live rest.Config, and RunPreview
+// (preview.go), which builds them from local YAML manifests (see
+// internal/preview) instead.
+type serveParams struct {
+	Namespace     string
+	DashboardName string
+
+	Addr         string
+	MetricsAddr  string
+	PollInterval time.Duration
+
+	Version string
+	Commit  string
+
+	GatewayAPIEnabled bool
+}
+
+// serve wires Store/Poller/Server together and blocks serving the dashboard
+// HTTP and metrics servers until ctx is done.
+func serve(ctx context.Context, p serveParams, reader, secretReader, kubeReader client.Reader) error {
+	store := NewStore()
+	poller := &Poller{
+		Reader:            reader,
+		SecretReader:      secretReader,
+		KubeReader:        kubeReader,
+		Namespace:         p.Namespace,
+		DashboardName:     p.DashboardName,
+		Interval:          p.PollInterval,
 		HTTPClient:        newGuardedHTTPClient(10 * time.Second),
 		Store:             store,
-		GatewayAPIEnabled: opts.GatewayAPIEnabled,
+		GatewayAPIEnabled: p.GatewayAPIEnabled,
 	}
 	go poller.Run(ctx)
 
 	srv := &Server{
 		Store:          store,
-		Reader:         clu.GetClient(),
-		SecretReader:   secretClient,
-		Namespace:      opts.Namespace,
-		DashboardName:  opts.DashboardName,
-		RefreshSeconds: int(opts.PollInterval.Seconds()),
-		Version:        opts.Version,
-		Commit:         opts.Commit,
+		Reader:         reader,
+		SecretReader:   secretReader,
+		Namespace:      p.Namespace,
+		DashboardName:  p.DashboardName,
+		RefreshSeconds: int(p.PollInterval.Seconds()),
+		Version:        p.Version,
+		Commit:         p.Commit,
 	}
 	httpServer := &http.Server{
-		Addr:              opts.Addr,
+		Addr:              p.Addr,
 		Handler:           srv.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
@@ -137,7 +171,7 @@ func Run(ctx context.Context, opts Options) error {
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	metricsAddr := opts.MetricsAddr
+	metricsAddr := p.MetricsAddr
 	if metricsAddr == "" {
 		metricsAddr = defaultMetricsAddr
 	}
@@ -159,7 +193,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
-	setupLog.Info("Starting dashboard", "addr", opts.Addr, "namespace", opts.Namespace, "instance", opts.DashboardName)
+	setupLog.Info("Starting dashboard", "addr", p.Addr, "namespace", p.Namespace, "instance", p.DashboardName)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}

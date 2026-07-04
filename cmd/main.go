@@ -34,6 +34,7 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 	"github.com/maverickd650/kubepage-operator/internal/controller"
 	"github.com/maverickd650/kubepage-operator/internal/dashboard"
+	"github.com/maverickd650/kubepage-operator/internal/preview"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -69,9 +70,15 @@ func init() {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "dashboard" {
-		runDashboard(os.Args[2:])
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "dashboard":
+			runDashboard(os.Args[2:])
+			return
+		case "preview":
+			runPreview(os.Args[2:])
+			return
+		}
 	}
 	runManager()
 }
@@ -500,6 +507,80 @@ func runDashboard(args []string) {
 		GatewayAPIEnabled: gatewayAPIEnabled,
 	}); err != nil {
 		setupLog.Error(err, "Failed to run dashboard")
+		os.Exit(1)
+	}
+}
+
+// stringSliceFlag implements flag.Value to collect a repeatable -f flag
+// (preview's manifest paths) into a slice, the same way `kubectl apply -f`
+// accepts more than one path.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ",") }
+
+func (s *stringSliceFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// runPreview serves the dashboard against manifests loaded from local files
+// instead of a live cluster, for previewing what a Dashboard renders as
+// without installing the operator anywhere. See internal/preview for how
+// -f's paths are turned into a Dashboard/DashboardStyle/ServiceCard/
+// Bookmark/InfoWidget/Secret set and internal/dashboard.RunPreview for how
+// that's served.
+func runPreview(args []string) {
+	fs := flag.NewFlagSet("preview", flag.ExitOnError)
+	var paths stringSliceFlag
+	var namespace, dashboardName, addr, metricsAddr string
+	var pollInterval time.Duration
+	var recursive bool
+	fs.Var(&paths, "f", "Path to a YAML file or directory of manifests to preview (repeatable).")
+	fs.BoolVar(&recursive, "recursive", false, "Recurse into directories passed via -f.")
+	fs.StringVar(&namespace, "namespace", "",
+		"Namespace of the Dashboard to preview; only needed if -f contains more than one Dashboard.")
+	fs.StringVar(&dashboardName, "dashboard-name", "",
+		"Name of the Dashboard to preview; only needed if -f contains more than one Dashboard.")
+	fs.StringVar(&addr, "addr", "127.0.0.1:8080", "The address the preview HTTP server binds to.")
+	fs.StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:0", "The address the /metrics endpoint binds to.")
+	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
+	opts := zap.Options{Development: true}
+	opts.BindFlags(fs)
+	_ = fs.Parse(args)
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if len(paths) == 0 {
+		setupLog.Error(nil, "-f is required (path to a YAML file or directory of manifests)")
+		os.Exit(1)
+	}
+
+	result, err := preview.Load(preview.Config{
+		Scheme:        scheme,
+		Paths:         paths,
+		Recursive:     recursive,
+		Namespace:     namespace,
+		DashboardName: dashboardName,
+	})
+	if err != nil {
+		setupLog.Error(err, "Failed to load preview manifests", "paths", []string(paths))
+		os.Exit(1)
+	}
+
+	setupLog.Info("Starting preview", "version", version, "commit", commit,
+		"namespace", result.Namespace, "dashboardName", result.DashboardName, "addr", addr)
+
+	if err := dashboard.RunPreview(ctrl.SetupSignalHandler(), dashboard.PreviewOptions{
+		Reader:        result.Reader,
+		Namespace:     result.Namespace,
+		DashboardName: result.DashboardName,
+		Addr:          addr,
+		MetricsAddr:   metricsAddr,
+		PollInterval:  pollInterval,
+		Version:       version,
+		Commit:        commit,
+	}); err != nil {
+		setupLog.Error(err, "Failed to run preview")
 		os.Exit(1)
 	}
 }

@@ -172,6 +172,11 @@ description = "Run a controller from your host"
 depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 run = "go run ./cmd/main.go"
 
+[tasks.preview]
+description = "Serve the dashboard locally from config/samples, no cluster required"
+depends = ["templ-generate"]
+run = "go run ./cmd/main.go preview -f config/samples"
+
 [tasks.docker-build]
 description = "Build docker image with the manager"
 run = '''
