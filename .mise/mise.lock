@@ -241,6 +241,38 @@ url = "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.15.0/
 checksum = "sha256:c1e2fd86b7e2e392cd26b77a72bb9665511435ecdeefb16712820ba5da3e666b"
 url = "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.15.0/kubebuilder_darwin_amd64"
 
+[[tools.kubeconform]]
+version = "0.6.7"
+backend = "aqua:yannh/kubeconform"
+
+[tools.kubeconform."platforms.linux-arm64"]
+checksum = "sha256:dc82f79bb03c5479b1ae5fd4af221e4b5a3111f62bf01a2795d9c5c20fa96644"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-arm64.tar.gz"
+
+[tools.kubeconform."platforms.linux-arm64-musl"]
+checksum = "sha256:dc82f79bb03c5479b1ae5fd4af221e4b5a3111f62bf01a2795d9c5c20fa96644"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-arm64.tar.gz"
+
+[tools.kubeconform."platforms.linux-x64"]
+checksum = "sha256:95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz"
+
+[tools.kubeconform."platforms.linux-x64-musl"]
+checksum = "sha256:95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz"
+
+[tools.kubeconform."platforms.macos-arm64"]
+checksum = "sha256:cbb47d938a8d18eb5f79cb33663b2cecdee0c8ac0bf562ebcfca903df5f0802f"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-darwin-arm64.tar.gz"
+
+[tools.kubeconform."platforms.macos-x64"]
+checksum = "sha256:3b5324ac4fd38ac60a49823b4051ff42ff7eb70144f1e9741fed1d14bc4fdb4e"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-darwin-amd64.tar.gz"
+
+[tools.kubeconform."platforms.windows-x64"]
+checksum = "sha256:450a561ae833cbd1fc41201f7ebb64395c56e7d01e2dc954332143bff81277a3"
+url = "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-windows-amd64.zip"
+
 [[tools.kubectl]]
 version = "1.36.2"
 backend = "aqua:kubernetes/kubernetes/kubectl"

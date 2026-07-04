@@ -35,18 +35,22 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	By("building the manager image")
-	// Tools and tasks are managed by mise; IMG is read from the environment by the
-	// mise tasks (utils.Run rebuilds cmd.Env from os.Environ, so this propagates).
-	ExpectWithOffset(1, os.Setenv("IMG", managerImage)).To(Succeed(), "Failed to set IMG")
-	cmd := exec.Command("mise", "run", "docker-build")
-	_, err := utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
+	if os.Getenv("SKIP_IMG_BUILD") != "1" {
+		By("building the manager image")
+		// Tools and tasks are managed by mise; IMG is read from the environment by the
+		// mise tasks (utils.Run rebuilds cmd.Env from os.Environ, so this propagates).
+		ExpectWithOffset(1, os.Setenv("IMG", managerImage)).To(Succeed(), "Failed to set IMG")
+		cmd := exec.Command("mise", "run", "docker-build")
+		_, err := utils.Run(cmd)
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
+	} else {
+		By("skipping image build (SKIP_IMG_BUILD=1, image pre-built by CI)")
+	}
 
 	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
 	By("loading the manager image on Kind")
-	err = utils.LoadImageToKindClusterWithName(managerImage)
+	err := utils.LoadImageToKindClusterWithName(managerImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 
 	configureKubectlKubeRC()

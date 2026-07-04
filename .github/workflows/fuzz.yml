@@ -1,0 +1,32 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # nightly at 03:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  fuzz:
+    permissions:
+      contents: read
+    name: Fuzz Widget Parsers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go environment
+        uses: ./.github/actions/setup-go-env
+
+      - name: Run fuzz tests
+        run: mise run test-fuzz
+        env:
+          FUZZ_TIME: "2m"
