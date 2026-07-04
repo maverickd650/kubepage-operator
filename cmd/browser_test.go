@@ -1,34 +1,23 @@
 package main
 
-import (
-	"net"
-	"testing"
-	"time"
-)
+import "testing"
 
-func TestWaitForAddrSucceedsOnceListening(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
+const wantLoopbackURL = "http://127.0.0.1:8080"
 
-	if !waitForAddr(ln.Addr().String(), time.Second) {
-		t.Error("waitForAddr = false, want true for an already-listening address")
+func TestBrowserURL(t *testing.T) {
+	tests := []struct {
+		addr string
+		want string
+	}{
+		{"127.0.0.1:8080", wantLoopbackURL},
+		{"0.0.0.0:8080", wantLoopbackURL},
+		{"[::]:8080", wantLoopbackURL},
+		{"192.168.1.5:53214", "http://192.168.1.5:53214"},
+		{"not-a-valid-addr", "http://not-a-valid-addr"},
 	}
-}
-
-func TestWaitForAddrTimesOutWhenNothingListens(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	if err := ln.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	if waitForAddr(addr, 200*time.Millisecond) {
-		t.Error("waitForAddr = true, want false: nothing is listening on this address")
+	for _, tt := range tests {
+		if got := browserURL(tt.addr); got != tt.want {
+			t.Errorf("browserURL(%q) = %q, want %q", tt.addr, got, tt.want)
+		}
 	}
 }

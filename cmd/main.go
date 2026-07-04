@@ -13,6 +13,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/cli/browser"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -576,21 +577,14 @@ func runPreview(args []string) {
 	ctx := ctrl.SetupSignalHandler()
 
 	reader := preview.NewSwappableReader(result.Reader)
-	if err := preview.Watch(ctx, previewConfig, result.Namespace, result.DashboardName, reader); err != nil {
+	// previewConfig.Namespace (not result.Namespace) is passed deliberately:
+	// it's the user's original --namespace filter, possibly empty, rather
+	// than the post-default value Load resolved — see Watch's doc comment.
+	if err := preview.Watch(ctx, previewConfig, previewConfig.Namespace, result.DashboardName, reader); err != nil {
 		setupLog.Error(err, "Failed to start file watcher; continuing without live reload")
 	}
 
-	if openInBrowser {
-		go func() {
-			if waitForAddr(addr, 10*time.Second) {
-				if err := openBrowser("http://" + addr); err != nil {
-					setupLog.Info("Could not open browser automatically", "error", err.Error())
-				}
-			}
-		}()
-	}
-
-	if err := dashboard.RunPreview(ctx, dashboard.PreviewOptions{
+	previewOpts := dashboard.PreviewOptions{
 		Reader:        reader,
 		Namespace:     result.Namespace,
 		DashboardName: result.DashboardName,
@@ -599,7 +593,20 @@ func runPreview(args []string) {
 		PollInterval:  pollInterval,
 		Version:       version,
 		Commit:        commit,
-	}); err != nil {
+	}
+	if openInBrowser {
+		// Ready fires with the real bound address (e.g. from a ":0" Addr,
+		// or with a 0.0.0.0/:: host rewritten to loopback by browserURL) —
+		// see dashboard.Options.Ready's doc comment for why polling the
+		// configured Addr string isn't enough.
+		previewOpts.Ready = func(boundAddr string) {
+			if err := browser.OpenURL(browserURL(boundAddr)); err != nil {
+				setupLog.Info("Could not open browser automatically", "error", err.Error())
+			}
+		}
+	}
+
+	if err := dashboard.RunPreview(ctx, previewOpts); err != nil {
 		setupLog.Error(err, "Failed to run preview")
 		os.Exit(1)
 	}

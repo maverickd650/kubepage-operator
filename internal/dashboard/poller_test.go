@@ -44,6 +44,10 @@ const (
 	testStyleRow      = "row"
 	testColor         = "blue"
 	testDoesNotExist  = "does-not-exist"
+
+	// testEphemeralAddr requests an OS-assigned port, for tests that don't
+	// care which one they get.
+	testEphemeralAddr = "127.0.0.1:0"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {

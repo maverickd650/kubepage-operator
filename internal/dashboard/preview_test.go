@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func TestRunPreviewServesAndShutsDown(t *testing.T) {
 			Namespace:     testNamespace,
 			DashboardName: testDashboardName,
 			Addr:          addr,
-			MetricsAddr:   "127.0.0.1:0",
+			MetricsAddr:   testEphemeralAddr,
 			PollInterval:  50 * time.Millisecond,
 			Version:       "test",
 			Commit:        "test",
@@ -71,6 +72,58 @@ func TestRunPreviewServesAndShutsDown(t *testing.T) {
 		if err != nil {
 			t.Errorf("RunPreview() returned error %v, want nil after context cancel", err)
 		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunPreview() did not return within 5s of context cancellation")
+	}
+}
+
+// TestRunPreviewReadyReceivesActualBoundAddress verifies the fix for
+// --open breaking on a ":0" (OS-assigned) Addr: Ready must fire with the
+// real resolved address (dialable), not the literal configured Addr string
+// — which for ":0" can never be dialed directly.
+func TestRunPreviewReadyReceivesActualBoundAddress(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	readyAddr := make(chan string, 1)
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- RunPreview(ctx, PreviewOptions{
+			Reader:        cl,
+			Namespace:     testNamespace,
+			DashboardName: testDashboardName,
+			Addr:          testEphemeralAddr,
+			MetricsAddr:   testEphemeralAddr,
+			PollInterval:  time.Hour,
+			Ready:         func(addr string) { readyAddr <- addr },
+		})
+	}()
+
+	var addr string
+	select {
+	case addr = <-readyAddr:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Ready was never called")
+	}
+	if addr == testEphemeralAddr || strings.HasSuffix(addr, ":0") {
+		t.Fatalf("Ready received %q, want a real resolved port, not the literal :0 Addr", addr)
+	}
+
+	resp, err := http.Get("http://" + addr + "/") //nolint:gosec,noctx // fixed loopback test address
+	if err != nil {
+		t.Fatalf("GET %s: %v", addr, err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET %s status = %d, want 200", addr, resp.StatusCode)
+	}
+
+	cancel()
+	select {
+	case <-runErr:
 	case <-time.After(5 * time.Second):
 		t.Fatal("RunPreview() did not return within 5s of context cancellation")
 	}

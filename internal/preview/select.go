@@ -114,9 +114,28 @@ func selectDashboard(objs []client.Object, namespace, dashboardName string) (*pa
 	case 1:
 		return candidates[0], nil
 	default:
-		return nil, fmt.Errorf("multiple Dashboards found, pass --namespace/--dashboard-name to select one: %s",
-			describeDashboards(candidates))
+		hint := "pass --namespace/--dashboard-name to select one"
+		if !anyNamespaced(candidates) {
+			// --namespace can't disambiguate these: selectDashboard treats
+			// an empty metadata.namespace as compatible with any --namespace
+			// value (see this function's own doc comment), so every one of
+			// these candidates would still match regardless of what's
+			// passed. Only --dashboard-name actually narrows the set.
+			hint = "pass --dashboard-name to select one (none of these set metadata.namespace, so --namespace can't tell them apart)"
+		}
+		return nil, fmt.Errorf("multiple Dashboards found, %s: %s", hint, describeDashboards(candidates))
 	}
+}
+
+// anyNamespaced reports whether at least one Dashboard in ds sets its own
+// metadata.namespace, for selectDashboard's ambiguous-match error message.
+func anyNamespaced(ds []*pagev1alpha1.Dashboard) bool {
+	for _, d := range ds {
+		if d.Namespace != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func describeDashboards(ds []*pagev1alpha1.Dashboard) string {

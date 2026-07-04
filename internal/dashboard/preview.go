@@ -28,6 +28,10 @@ type PreviewOptions struct {
 	// DashboardStyle sets HideVersion.
 	Version string
 	Commit  string
+
+	// Ready, if set, is called once the main HTTP listener is bound, with
+	// the actual resolved address — see Options.Ready's doc comment.
+	Ready func(addr string)
 }
 
 // errNoCluster is returned by noopClusterReader for every Get/List, so
@@ -58,7 +62,7 @@ func (noopClusterReader) List(context.Context, client.ObjectList, ...client.List
 // GatewayAPIEnabled is always false: HTTPRoute discovery has no meaning
 // without a cluster.
 func RunPreview(ctx context.Context, opts PreviewOptions) error {
-	return serve(ctx, serveParams{
+	return serve(ctx, Options{
 		Namespace:         opts.Namespace,
 		DashboardName:     opts.DashboardName,
 		Addr:              opts.Addr,
@@ -67,5 +71,6 @@ func RunPreview(ctx context.Context, opts PreviewOptions) error {
 		Version:           opts.Version,
 		Commit:            opts.Commit,
 		GatewayAPIEnabled: false,
+		Ready:             opts.Ready,
 	}, opts.Reader, opts.Reader, noopClusterReader{})
 }

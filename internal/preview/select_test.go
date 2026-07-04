@@ -41,6 +41,34 @@ func TestSelectDashboardMultipleRequiresDisambiguation(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "multiple Dashboards found") {
 		t.Fatalf("err = %v, want a %q error", err, "multiple Dashboards found")
 	}
+	if !strings.Contains(err.Error(), "--namespace") {
+		t.Errorf("err = %v, want it to mention --namespace: these candidates set distinct namespaces, so it can help", err)
+	}
+}
+
+// TestSelectDashboardMultipleNamespaceLessDoesNotSuggestNamespaceFlag covers
+// the case --namespace structurally can't help with: two candidates that
+// both leave metadata.namespace unset are treated as matching any
+// --namespace value (see selectDashboard's doc comment), so no value passed
+// to --namespace would ever narrow them down. The error should say so
+// instead of suggesting a flag that can't work.
+func TestSelectDashboardMultipleNamespaceLessDoesNotSuggestNamespaceFlag(t *testing.T) {
+	a := newDashboard("", "dash-a")
+	b := newDashboard("", "dash-b")
+	_, err := selectDashboard([]client.Object{a, b}, "some-namespace", "")
+	if err == nil || !strings.Contains(err.Error(), "multiple Dashboards found") {
+		t.Fatalf("err = %v, want a %q error", err, "multiple Dashboards found")
+	}
+	// The message may still mention "--namespace" while explaining that it
+	// won't help (see the actual hint text); what it must NOT do is repeat
+	// the generic "--namespace/--dashboard-name to select one" phrasing that
+	// implies passing --namespace is a viable fix here.
+	if strings.Contains(err.Error(), "--namespace/--dashboard-name") {
+		t.Errorf("err = %v, should not offer --namespace as a fix: none of these candidates set metadata.namespace", err)
+	}
+	if !strings.Contains(err.Error(), "--dashboard-name") {
+		t.Errorf("err = %v, want it to suggest --dashboard-name", err)
+	}
 }
 
 func TestSelectDashboardDisambiguatedByNamespace(t *testing.T) {
