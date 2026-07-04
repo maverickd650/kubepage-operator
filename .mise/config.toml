@@ -183,6 +183,12 @@ run = "go run ./cmd preview -f config/samples"
 
 [tasks.build-dist]
 description = "Cross-compile release binaries for every supported platform into dist-bin/, with sha256 checksums"
+# Same depends as tasks.build: build-dist ships a compiled binary too, so
+# stale zz_generated.*.go/*_templ.go would silently ship in the release
+# archives just as it would in `mise run build`'s output — see
+# tasks.build's own depends for why each of these matters to a build, not
+# just to tests.
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
 # VERSION/REVISION mirror docker-build's own fallbacks below; release.yaml
 # sets both explicitly from the release-please tag. Needs a shebang: mise's
 # default task shell is /bin/sh (dash on Ubuntu, which doesn't support
