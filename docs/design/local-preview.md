@@ -1,6 +1,7 @@
 # Design: `preview` — local dashboard rendering without a cluster
 
-Status: proposed (design only — no implementation in this PR)
+Status: phases 1–2 implemented (`preview` subcommand, manifest loader, live
+reload, `--open`); phase 3 (signed release binaries) not yet started.
 
 ## Problem
 
@@ -216,12 +217,23 @@ sha256sum -c checksums.txt --ignore-missing
 
 ## Phasing
 
-| Phase | Deliverable | Commits |
-|-------|-------------|---------|
-| 1 | `preview` subcommand, manifest loader, in-memory reader wiring, `mise run preview`, README + CLAUDE.md ("three modes in one") | `feat(preview): …` |
-| 2 | fsnotify live reload, `--open` | `feat(preview): …` |
-| 3 | `build-dist` task, `binaries` release job, signing/attestation, SECURITY.md verification docs | `build: …`, `ci(release): …`, `docs(security): …` |
-| 4 (stretch) | `--sample-data` placeholder fields per widget type; client-side CEL validation warnings | separate design |
+| Phase | Deliverable | Commits | Status |
+|-------|-------------|---------|--------|
+| 1 | `preview` subcommand, manifest loader, in-memory reader wiring, `mise run preview`, README + CLAUDE.md ("three modes in one") | `feat(preview): …` | done |
+| 2 | fsnotify live reload, `--open` | `feat(preview): …` | done |
+| 3 | `build-dist` task, `binaries` release job, signing/attestation, SECURITY.md verification docs | `build: …`, `ci(release): …`, `docs(security): …` | not started |
+| 4 (stretch) | `--sample-data` placeholder fields per widget type; client-side CEL validation warnings | separate design | not started |
+
+Phase 2 landed as designed: `internal/preview.Watch` fsnotify-watches every
+directory reachable from `-f`'s paths (a plain file's own parent directory,
+since editors replace files via rename rather than in-place write) and
+reloads through a `SwappableReader` (`sync/atomic.Pointer`-backed) that
+`Server`/`Poller` hold without ever knowing it can change underneath them. A
+reload is pinned to the already-resolved Dashboard's namespace/name, and a
+parse failure logs and keeps serving the last-good config rather than
+tearing anything down. `--open` polls the bound address until it accepts a
+connection, then best-effort shells out to the OS's default-browser opener
+(`xdg-open`/`open`/`rundll32`).
 
 Phases 1–2 are pure additions to `cmd/main.go` + a new `internal/preview`
 package; nothing in `internal/dashboard` or `internal/controller` changes,

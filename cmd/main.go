@@ -544,6 +544,8 @@ func runPreview(args []string) {
 	fs.StringVar(&addr, "addr", "127.0.0.1:8080", "The address the preview HTTP server binds to.")
 	fs.StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:0", "The address the /metrics endpoint binds to.")
 	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
+	var openInBrowser bool
+	fs.BoolVar(&openInBrowser, "open", false, "Open the default browser once the preview server is ready.")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(fs)
 	_ = fs.Parse(args)
@@ -555,13 +557,14 @@ func runPreview(args []string) {
 		os.Exit(1)
 	}
 
-	result, err := preview.Load(preview.Config{
+	previewConfig := preview.Config{
 		Scheme:        scheme,
 		Paths:         paths,
 		Recursive:     recursive,
 		Namespace:     namespace,
 		DashboardName: dashboardName,
-	})
+	}
+	result, err := preview.Load(previewConfig)
 	if err != nil {
 		setupLog.Error(err, "Failed to load preview manifests", "paths", []string(paths))
 		os.Exit(1)
@@ -570,8 +573,25 @@ func runPreview(args []string) {
 	setupLog.Info("Starting preview", "version", version, "commit", commit,
 		"namespace", result.Namespace, "dashboardName", result.DashboardName, "addr", addr)
 
-	if err := dashboard.RunPreview(ctrl.SetupSignalHandler(), dashboard.PreviewOptions{
-		Reader:        result.Reader,
+	ctx := ctrl.SetupSignalHandler()
+
+	reader := preview.NewSwappableReader(result.Reader)
+	if err := preview.Watch(ctx, previewConfig, result.Namespace, result.DashboardName, reader); err != nil {
+		setupLog.Error(err, "Failed to start file watcher; continuing without live reload")
+	}
+
+	if openInBrowser {
+		go func() {
+			if waitForAddr(addr, 10*time.Second) {
+				if err := openBrowser("http://" + addr); err != nil {
+					setupLog.Info("Could not open browser automatically", "error", err.Error())
+				}
+			}
+		}()
+	}
+
+	if err := dashboard.RunPreview(ctx, dashboard.PreviewOptions{
+		Reader:        reader,
 		Namespace:     result.Namespace,
 		DashboardName: result.DashboardName,
 		Addr:          addr,

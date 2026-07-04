@@ -182,12 +182,14 @@ same dashboard UI code the in-cluster pod runs:
 
 ```sh
 mise run preview                      # serves config/samples on :8080
-go run ./cmd/main.go preview -f ./my-dashboard-manifests
+go run ./cmd/main.go preview -f ./my-dashboard-manifests --open
 ```
 
 Widget polling still makes real outbound requests to whatever URLs the loaded
 `ServiceCard`s name, so reachable upstreams (e.g. a Grafana on your LAN) show
-live data; unreachable ones render their normal error state. See
+live data; unreachable ones render their normal error state. Editing and
+saving a manifest under `-f` live-reloads it into the running preview — no
+restart, no browser reload, just the next poll picking up the change. See
 [`docs/design/local-preview.md`](docs/design/local-preview.md) for the full
 design.
 
