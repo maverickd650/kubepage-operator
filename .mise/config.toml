@@ -181,6 +181,45 @@ description = "Serve the dashboard locally from config/samples, no cluster requi
 depends = ["templ-generate"]
 run = "go run ./cmd preview -f config/samples"
 
+[tasks.build-dist]
+description = "Cross-compile release binaries for every supported platform into dist-bin/, with sha256 checksums"
+# VERSION/REVISION mirror docker-build's own fallbacks below; release.yaml
+# sets both explicitly from the release-please tag.
+run = '''
+set -euo pipefail
+version="${VERSION:-dev}"
+revision="${REVISION:-$(git rev-parse --short HEAD)}"
+outdir="$(pwd)/dist-bin"
+rm -rf "$outdir"
+mkdir -p "$outdir"
+
+# Matches the platforms golang.org/dl and most Go-based CLI releases cover;
+# add a target here (and to the dry-run matrix in test.yml) to extend it.
+for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+  os="${target%/*}"
+  arch="${target#*/}"
+  ext=""
+  [ "$os" = "windows" ] && ext=".exe"
+
+  workdir="$(mktemp -d)"
+  echo "Building ${os}/${arch}..."
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+    -ldflags "-X main.version=${version} -X main.commit=${revision}" \
+    -o "${workdir}/kubepage-operator${ext}" ./cmd
+  cp LICENSE README.md "$workdir/"
+
+  archive="kubepage-operator_${version}_${os}_${arch}"
+  if [ "$os" = "windows" ]; then
+    (cd "$workdir" && zip -q -r "${outdir}/${archive}.zip" .)
+  else
+    tar -czf "${outdir}/${archive}.tar.gz" -C "$workdir" .
+  fi
+  rm -rf "$workdir"
+done
+
+(cd "$outdir" && sha256sum -- * > checksums.txt)
+'''
+
 [tasks.docker-build]
 description = "Build docker image with the manager"
 run = '''

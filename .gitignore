@@ -34,6 +34,7 @@ go.work.sum
 
 # mise task output / local tool binaries
 /bin/
+/dist-bin/
 
 # Local-only working notes, never pushed
 /IMPLEMENTATION_PLAN.md
