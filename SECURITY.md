@@ -153,6 +153,32 @@ verify-attestation` against the GitHub Actions OIDC identity
 `permissions:` block (`{}` unless a job needs otherwise), granting write
 scopes only on the specific jobs that need them.
 
+### Verifying a release binary
+
+Each GitHub Release also carries cross-compiled `preview`-capable binaries
+(see [`docs/design/local-preview.md`](docs/design/local-preview.md)) for
+linux/darwin on amd64/arm64 and windows/amd64, alongside `checksums.txt` and
+an SPDX SBOM. `checksums.txt` is keyless cosign-signed and carries a SLSA
+build-provenance attestation, the same trust chain as the image/chart — so
+rather than trusting each archive individually, verify `checksums.txt` once
+and let its own sha256 sums vouch for every archive:
+
+```sh
+VERSION=vX.Y.Z # the release you downloaded
+cosign verify-blob \
+  --bundle checksums.txt.cosign.bundle \
+  --certificate-identity-regexp 'https://github.com/maverickd650/kubepage-operator/\.github/workflows/release\.yaml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+
+sha256sum -c checksums.txt --ignore-missing
+```
+
+`cosign verify-blob-attestation --type slsaprovenance --bundle
+checksums.txt.slsa.bundle checksums.txt` (with the same `--certificate-*`
+flags) additionally confirms the binaries were produced by
+`release.yaml` itself, not hand-uploaded to the release.
+
 An [OpenSSF Scorecard](https://github.com/ossf/scorecard) workflow is a
 worthwhile follow-up not yet wired in — adding it needs a third-party
 GitHub Action pinned to a commit SHA per this repo's own convention above.

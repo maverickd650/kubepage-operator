@@ -173,6 +173,26 @@ IMG=<some-registry>/kubepage-operator:tag mise run deploy
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself
 > cluster-admin privileges or be logged in as admin.
 
+### Local preview (no cluster required)
+
+To see what a `Dashboard` actually renders as without installing the operator
+anywhere, `preview` mode loads `Dashboard`/`DashboardStyle`/`ServiceCard`/
+`Bookmark`/`InfoWidget`/`Secret` YAML straight from local files and serves the
+same dashboard UI code the in-cluster pod runs:
+
+```sh
+mise run preview                      # serves config/samples on :8080
+go run ./cmd preview -f ./my-dashboard-manifests --open
+```
+
+Widget polling still makes real outbound requests to whatever URLs the loaded
+`ServiceCard`s name, so reachable upstreams (e.g. a Grafana on your LAN) show
+live data; unreachable ones render their normal error state. Editing and
+saving a manifest under `-f` live-reloads it into the running preview — no
+restart, no browser reload, just the next poll picking up the change. See
+[`docs/design/local-preview.md`](docs/design/local-preview.md) for the full
+design.
+
 After editing `*_types.go` or `+kubebuilder` markers, regenerate CRDs/RBAC and
 DeepCopy methods, then lint and test:
 

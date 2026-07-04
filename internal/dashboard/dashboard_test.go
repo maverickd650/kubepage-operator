@@ -110,7 +110,7 @@ func TestRunStopsAllGoroutinesOnContextCancel(t *testing.T) {
 // port, suitable for handing to Options.Addr.
 func freeTCPAddr(t *testing.T) string {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", testEphemeralAddr)
 	if err != nil {
 		t.Fatalf("finding a free port: %v", err)
 	}

@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -59,6 +60,14 @@ type Options struct {
 	// without it a List would just fail on missing RBAC or, if Gateway API
 	// truly isn't installed, on a nonexistent Kind.
 	GatewayAPIEnabled bool
+
+	// Ready, if set, is called once the main HTTP listener is bound (before
+	// it starts serving) with the actual resolved address — e.g.
+	// "127.0.0.1:53214" for an Addr of "127.0.0.1:0". cmd/main.go's preview
+	// --open uses this to open the real bound port rather than guessing at
+	// the configured Addr string, which can't be dialed directly when it
+	// asks for an OS-assigned port.
+	Ready func(addr string)
 }
 
 // Run wires the CRD cache, secret-resolving client, background poller, and
@@ -97,11 +106,19 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("building cluster client: %w", err)
 	}
 
+	return serve(ctx, opts, clu.GetClient(), secretClient, kubeClient)
+}
+
+// serve wires Store/Poller/Server together and blocks serving the dashboard
+// HTTP and metrics servers until ctx is done. opts.RestConfig/opts.Scheme are
+// unused here — Run has already consumed them to build reader/secretReader/
+// kubeReader by this point, and RunPreview (preview.go) never sets them.
+func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader client.Reader) error {
 	store := NewStore()
 	poller := &Poller{
-		Reader:            clu.GetClient(),
-		SecretReader:      secretClient,
-		KubeReader:        kubeClient,
+		Reader:            reader,
+		SecretReader:      secretReader,
+		KubeReader:        kubeReader,
 		Namespace:         opts.Namespace,
 		DashboardName:     opts.DashboardName,
 		Interval:          opts.PollInterval,
@@ -113,16 +130,21 @@ func Run(ctx context.Context, opts Options) error {
 
 	srv := &Server{
 		Store:          store,
-		Reader:         clu.GetClient(),
-		SecretReader:   secretClient,
+		Reader:         reader,
+		SecretReader:   secretReader,
 		Namespace:      opts.Namespace,
 		DashboardName:  opts.DashboardName,
 		RefreshSeconds: int(opts.PollInterval.Seconds()),
 		Version:        opts.Version,
 		Commit:         opts.Commit,
 	}
+
+	ln, err := net.Listen("tcp", opts.Addr)
+	if err != nil {
+		return fmt.Errorf("binding %s: %w", opts.Addr, err)
+	}
+
 	httpServer := &http.Server{
-		Addr:              opts.Addr,
 		Handler:           srv.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
@@ -159,8 +181,12 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
-	setupLog.Info("Starting dashboard", "addr", opts.Addr, "namespace", opts.Namespace, "instance", opts.DashboardName)
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	boundAddr := ln.Addr().String()
+	setupLog.Info("Starting dashboard", "addr", boundAddr, "namespace", opts.Namespace, "instance", opts.DashboardName)
+	if opts.Ready != nil {
+		opts.Ready(boundAddr)
+	}
+	if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil

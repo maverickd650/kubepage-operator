@@ -1,0 +1,51 @@
+name: Generate SLSA provenance predicate
+description: >
+  Writes a SLSA v0.2 build-provenance predicate to provenance.json,
+  describing the calling workflow run rather than any one artifact — none
+  of its fields vary per artifact (it's built entirely from the run's own
+  context), so every job in the same workflow that needs a predicate can
+  share this one instead of each generating their own. buildType/entryPoint
+  are derived from github.workflow_ref, so the predicate always names
+  whichever workflow actually invoked this action, not a hardcoded one —
+  safe to call from any workflow, not just release.yaml.
+
+runs:
+  using: composite
+  steps:
+    - name: Generate SLSA build provenance predicate
+      shell: bash
+      env:
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        COMMIT: ${{ github.sha }}
+        REPO: ${{ github.repository }}
+        SERVER_URL: ${{ github.server_url }}
+        # e.g. "owner/repo/.github/workflows/release.yaml@refs/heads/main" —
+        # parsed below into just the ".github/workflows/release.yaml" part,
+        # so entryPoint/buildType reflect whatever workflow actually called
+        # this action rather than a name baked into the action itself.
+        WORKFLOW_REF: ${{ github.workflow_ref }}
+      run: |
+        entry_point="${WORKFLOW_REF#"${REPO}/"}"
+        entry_point="${entry_point%%@*}"
+
+        jq -n \
+          --arg builderId "${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}" \
+          --arg buildType "${SERVER_URL}/${REPO}/${entry_point}" \
+          --arg uri "git+${SERVER_URL}/${REPO}@refs/heads/main" \
+          --arg sha1 "${COMMIT}" \
+          --arg entryPoint "${entry_point}" \
+          --arg invocationId "${RUN_ID}-${RUN_ATTEMPT}" \
+          '{
+            builder: {id: $builderId},
+            buildType: $buildType,
+            invocation: {
+              configSource: {uri: $uri, digest: {sha1: $sha1}, entryPoint: $entryPoint}
+            },
+            metadata: {
+              buildInvocationId: $invocationId,
+              completeness: {parameters: true, environment: false, materials: false},
+              reproducible: false
+            },
+            materials: [{uri: $uri, digest: {sha1: $sha1}}]
+          }' > provenance.json

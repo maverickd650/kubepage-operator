@@ -39,6 +39,17 @@ jobs:
       - name: Flake-check internal/dashboard under -race -count=5
         run: mise run test-flaky-check
 
+      - name: Dry-run cross-compiling release binaries
+        # Catches a platform-specific build break (e.g. a GOOS-guarded file,
+        # or a dependency without arm64/windows support) on the PR that
+        # introduces it, rather than at release time when release.yaml's own
+        # `mise run build-dist` runs for real. dist-bin/ is gitignored, so
+        # nothing here needs cleaning up.
+        env:
+          VERSION: 0.0.0-dryrun
+          REVISION: dryrun
+        run: mise run build-dist
+
       - name: Check generated files are committed and up to date
         # `mise run test` already regenerates manifests/deepcopy/templ/fmt
         # output above but never touches dist/, so also run
