@@ -5,17 +5,18 @@ metadata:
     app.kubernetes.io/name: kubepage-operator
     app.kubernetes.io/managed-by: kustomize
   name: dashboard-sample
-spec:
-  # replicas and containerPort both default (1, 8080) and can be omitted
-  # entirely for a minimal Dashboard.
-  # Expose the dashboard outside the cluster via one of:
-  # ingress:
-  #   enabled: true
-  #   host: dashboard.example.com
-  #   ingressClassName: nginx
-  # gateway:
-  #   enabled: true
-  #   hostnames: [dashboard.example.com]
-  #   parentRef:
-  #     name: my-gateway
-  #     namespace: gateway-system
+# replicas and containerPort both default (1, 8080) and can be omitted
+# entirely for a minimal Dashboard.
+# Expose the dashboard outside the cluster via one of:
+# spec:
+#   ingress:
+#     enabled: true
+#     host: dashboard.example.com
+#     ingressClassName: nginx
+#   gateway:
+#     enabled: true
+#     hostnames: [dashboard.example.com]
+#     parentRef:
+#       name: my-gateway
+#       namespace: gateway-system
+spec: {}

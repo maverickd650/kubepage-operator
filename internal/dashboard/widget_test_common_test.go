@@ -82,6 +82,11 @@ const (
 	testKubepageNameAnnotation  = "kubepage.io/name"
 	testDiscoveredAppCardName   = "Discovered App"
 	testDiscoveredRouteCardName = "Discovered Route"
+
+	// Shared literals across server/golden fragment fixtures.
+	testBrokenServiceName = "Broken"
+	testUnreachableErr    = "unreachable"
+	testGrafanaVersion    = "10.0.0"
 )
 
 // errBoom is returned by errInjectingReader when a predicate matches.

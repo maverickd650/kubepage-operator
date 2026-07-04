@@ -94,10 +94,10 @@ func diffFirstMismatch(want, got string) string {
 func TestGoldenFragment(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/grafana/0", Group: "Monitoring", ServiceName: "Grafana",
+		Key: "ns/grafana/0", Group: testGroup, ServiceName: "Grafana",
 		Fields: []Field{
-			{Label: "Status", Value: "Healthy", Highlight: HighlightGood},
-			{Label: "Version", Value: "10.0.0"},
+			{Label: labelStatus, Value: statusHealthy, Highlight: HighlightGood},
+			{Label: "Version", Value: testGrafanaVersion},
 		},
 	})
 	store.Set(Card{
@@ -107,8 +107,8 @@ func TestGoldenFragment(t *testing.T) {
 		},
 	})
 	store.Set(Card{
-		Key: "ns/broken/0", Group: "Monitoring", ServiceName: "Broken",
-		Err: "unreachable",
+		Key: "ns/broken/0", Group: testGroup, ServiceName: testBrokenServiceName,
+		Err: testUnreachableErr,
 	})
 
 	style := &pagev1alpha1.DashboardStyle{
@@ -144,24 +144,24 @@ func TestGoldenFragmentEmpty(t *testing.T) {
 func TestGoldenHeader(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "ns/clock/0", Header: true, ServiceName: "clock",
+		Key: "ns/clock/0", Header: true, ServiceName: testClockName,
 		Fields: []Field{{Label: "Time", Value: "12:00"}},
 	})
 	store.Set(Card{
-		Key: "ns/greet/0", Header: true, ServiceName: "greet",
+		Key: "ns/greet/0", Header: true, ServiceName: testGreetName,
 		Fields: []Field{{Label: "Greeting", Value: "Good afternoon"}},
 	})
 
 	objs := []client.Object{
 		&pagev1alpha1.InfoWidget{
-			ObjectMeta: metav1.ObjectMeta{Name: "clock", Namespace: testNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Type:         "datetime",
 			},
 		},
 		&pagev1alpha1.InfoWidget{
-			ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: testGreetName, Namespace: testNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Type:         "greeting",

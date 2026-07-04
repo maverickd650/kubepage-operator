@@ -31,8 +31,8 @@ func TestServerFragmentRendersCards(t *testing.T) {
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy}},
 	})
 	store.Set(Card{
-		Key: "ns/broken/0", Group: testGroup, ServiceName: "Broken",
-		Err: "unreachable",
+		Key: "ns/broken/0", Group: testGroup, ServiceName: testBrokenServiceName,
+		Err: testUnreachableErr,
 	})
 
 	srv := newTestServer(t, store)
@@ -44,7 +44,7 @@ func TestServerFragmentRendersCards(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Monitoring", "Prometheus", "Healthy", "Broken", "unreachable"} {
+	for _, want := range []string{testGroup, "Prometheus", statusHealthy, testBrokenServiceName, testUnreachableErr} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}

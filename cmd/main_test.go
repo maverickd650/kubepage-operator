@@ -302,9 +302,9 @@ func TestGatewayAPIAvailable(t *testing.T) {
 	const gatewayGroup = "gateway.networking.k8s.io/v1"
 
 	tests := map[string]struct {
-		handler  http.HandlerFunc
-		wantOK   bool
-		wantErr  bool
+		handler http.HandlerFunc
+		wantOK  bool
+		wantErr bool
 	}{
 		"HTTPRoute present": {
 			handler: func(w http.ResponseWriter, r *http.Request) {
@@ -317,7 +317,7 @@ func TestGatewayAPIAvailable(t *testing.T) {
 					},
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			},
 			wantOK: true,
 		},
@@ -331,7 +331,7 @@ func TestGatewayAPIAvailable(t *testing.T) {
 					},
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			},
 			wantOK: false,
 		},
@@ -344,7 +344,7 @@ func TestGatewayAPIAvailable(t *testing.T) {
 					Reason: metav1.StatusReasonNotFound,
 					Code:   http.StatusNotFound,
 				}
-				json.NewEncoder(w).Encode(status)
+				_ = json.NewEncoder(w).Encode(status)
 			},
 			wantOK: false,
 		},

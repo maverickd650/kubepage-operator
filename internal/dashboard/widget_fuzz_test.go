@@ -7,6 +7,11 @@ import (
 	"testing"
 )
 
+// fuzzSecretValue is a placeholder value for every widget's expected
+// secret fields; the fuzz target only exercises response parsing, not
+// authentication, so a single shared value is fine.
+const fuzzSecretValue = "fuzz"
+
 func FuzzWidgetParsers(f *testing.F) {
 	seeds := [][]byte{
 		// grafana
@@ -65,9 +70,13 @@ func FuzzWidgetParsers(f *testing.F) {
 		defer srv.Close()
 
 		cfg := WidgetConfig{
-			URL:     srv.URL,
-			Secrets: map[string]string{"token": "fuzz", "username": "fuzz", "password": "fuzz"},
-			Config:  json.RawMessage(`{"fields":[{"path":"status"}]}`),
+			URL: srv.URL,
+			Secrets: map[string]string{
+				testSecretField:     fuzzSecretValue,
+				unifiSecretUsername: fuzzSecretValue,
+				unifiSecretPassword: fuzzSecretValue,
+			},
+			Config: json.RawMessage(`{"fields":[{"path":"status"}]}`),
 		}
 
 		for _, wtype := range RegisteredTypes() {

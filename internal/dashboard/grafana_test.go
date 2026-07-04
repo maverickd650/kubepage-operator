@@ -14,19 +14,19 @@ func TestGrafanaWidgetPoll(t *testing.T) {
 		want       []Field
 	}{
 		"healthy": {
-			response:   `{"database":"ok","version":"10.0.0"}`,
+			response:   `{"database":"ok","version":"` + testGrafanaVersion + `"}`,
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelStatus, Value: statusHealthy},
-				{Label: labelVersion, Value: "10.0.0"},
+				{Label: labelVersion, Value: testGrafanaVersion},
 			},
 		},
 		"database degraded": {
-			response:   `{"database":"failing","version":"10.0.0"}`,
+			response:   `{"database":"failing","version":"` + testGrafanaVersion + `"}`,
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelStatus, Value: statusDegraded},
-				{Label: labelVersion, Value: "10.0.0"},
+				{Label: labelVersion, Value: testGrafanaVersion},
 			},
 		},
 		testCaseNon200: {
