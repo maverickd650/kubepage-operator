@@ -165,6 +165,8 @@ metadata:
   name: plex-credentials
 stringData:
   token: hunter2
+data:
+  existing: dW50b3VjaGVk
 `)
 
 	objs, err := decodeFiles(testScheme(t), []string{f})
@@ -178,7 +180,17 @@ stringData:
 	if !ok {
 		t.Fatalf("objs[0] = %T, want *Secret", objs[0])
 	}
-	if secret.StringData["token"] != "hunter2" {
-		t.Errorf("token = %q, want hunter2", secret.StringData["token"])
+	// stringData is normalized into Data (mirroring the apiserver's own
+	// create strategy, which the fake client never runs) since every
+	// consumer (poller.go's resolveSecret, auth.go's loadBasicAuth) reads
+	// only Data — see normalizeSecretStringData.
+	if string(secret.Data["token"]) != "hunter2" {
+		t.Errorf("Data[token] = %q, want hunter2", secret.Data["token"])
+	}
+	if string(secret.Data["existing"]) != "untouched" {
+		t.Errorf("Data[existing] = %q, want untouched (base64-decoded, untouched)", secret.Data["existing"])
+	}
+	if secret.StringData != nil {
+		t.Errorf("StringData = %v, want nil after normalization", secret.StringData)
 	}
 }

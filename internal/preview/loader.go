@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
@@ -125,8 +126,33 @@ func decodeFiles(scheme *runtime.Scheme, files []string) ([]client.Object, error
 				log.Info("Skipped non-object kind", "file", f, "kind", gvk.Kind)
 				continue
 			}
+			if secret, ok := co.(*corev1.Secret); ok {
+				normalizeSecretStringData(secret)
+			}
 			objs = append(objs, co)
 		}
 	}
 	return objs, nil
+}
+
+// normalizeSecretStringData copies secret.StringData into secret.Data,
+// mirroring the apiserver's own create/update strategy — a step that never
+// runs here, since preview only decodes client-side and stores straight into
+// a fake client. Without this, a Secret authored the idiomatic way
+// (stringData:, not base64 data:) would decode with an empty Data map, and
+// every consumer (poller.go's resolveSecret, auth.go's loadBasicAuth) reads
+// only .Data, so widgets/basic-auth referencing it would fail as if the key
+// didn't exist. StringData is cleared afterward to match the apiserver's own
+// behavior, where it's a write-only convenience field never persisted back.
+func normalizeSecretStringData(secret *corev1.Secret) {
+	if len(secret.StringData) == 0 {
+		return
+	}
+	if secret.Data == nil {
+		secret.Data = map[string][]byte{}
+	}
+	for k, v := range secret.StringData {
+		secret.Data[k] = []byte(v)
+	}
+	secret.StringData = nil
 }
