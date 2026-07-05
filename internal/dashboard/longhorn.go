@@ -61,3 +61,11 @@ func (longhornWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wid
 		{Label: labelStorage, Value: fmt.Sprintf("%s / %s GiB (%d%%)", trimFloat(usedGiB), trimFloat(totalGiB), pct), Percent: &pct, Highlight: usageHighlight(&pct)},
 	}, nil
 }
+
+func (longhornWidget) Sample(WidgetConfig) []Field {
+	usedGiB, totalGiB := 750.0, 1000.0
+	pct := int(usedGiB/totalGiB*100 + 0.5)
+	return []Field{
+		{Label: labelStorage, Value: fmt.Sprintf("%s / %s GiB (%d%%)", trimFloat(usedGiB), trimFloat(totalGiB), pct), Percent: &pct, Highlight: usageHighlight(&pct)},
+	}
+}

@@ -80,3 +80,13 @@ func TestGrafanaWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestGrafanaWidgetSample(t *testing.T) {
+	got := (grafanaWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelVersion {
+		t.Errorf("Sample() = %+v, want Status/Version fields", got)
+	}
+	if !reflect.DeepEqual(got, (grafanaWidget{}).Sample(WidgetConfig{})) {
+		t.Error("Sample() is not deterministic")
+	}
+}

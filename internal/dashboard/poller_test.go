@@ -1201,6 +1201,97 @@ func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
 	}
 }
 
+// failingRoundTripper fails the test immediately if RoundTrip is ever
+// called, proving SampleData mode makes no real network calls.
+type failingRoundTripper struct{ t *testing.T }
+
+func (f failingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	f.t.Fatalf("unexpected network request in SampleData mode: %s %s", req.Method, req.URL)
+	return nil, nil
+}
+
+// TestPollerSampleDataSkipsNetworkAndSecrets is SampleData mode's core
+// contract test: a ServiceCard with a monitor, a widget referencing a
+// nonexistent Secret, and an InfoWidget of a ClusterWidget type (kubemetrics,
+// with KubeReader deliberately nil) must all render populated, error-free
+// cards without ever dialing the network, resolving a secret, or touching
+// KubeReader — see Poller.SampleData's doc comment.
+func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
+	monitorURL := testUnreachableAddr
+	widgetURL := testUnreachableAddr
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testGroup,
+			Name:         testSvcDisplayName,
+			SiteMonitor:  &monitorURL,
+			Widgets: []pagev1alpha1.ServiceWidget{{
+				Type: testWidgetType,
+				URL:  &widgetURL,
+				Secrets: map[string]pagev1alpha1.SecretValueSource{
+					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+						Key:                  testSecretField,
+					}},
+				},
+			}},
+		},
+	}
+	iw := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testKubeMetricsType,
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, iw).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, KubeReader: nil,
+		Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval:   time.Hour,
+		HTTPClient: &http.Client{Transport: failingRoundTripper{t: t}},
+		Store:      store,
+		SampleData: true,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 2 {
+		t.Fatalf("Snapshot() = %d cards, want 2 (one ServiceCard widget, one InfoWidget)", len(cards))
+	}
+
+	var serviceCard, headerCard Card
+	for _, c := range cards {
+		if c.Header {
+			headerCard = c
+		} else {
+			serviceCard = c
+		}
+	}
+
+	if serviceCard.Err != "" {
+		t.Errorf("serviceCard.Err = %q, want empty (no real secret resolution attempted)", serviceCard.Err)
+	}
+	if serviceCard.Status != "Up" || serviceCard.Latency != sampleMonitorLatency {
+		t.Errorf("serviceCard monitor = (%q, %q), want (Up, %q)", serviceCard.Status, serviceCard.Latency, sampleMonitorLatency)
+	}
+	if len(serviceCard.Fields) == 0 {
+		t.Error("serviceCard.Fields = empty, want the prometheus widget's Sample output")
+	}
+
+	if headerCard.Err != "" {
+		t.Errorf("headerCard.Err = %q, want empty (KubeReader is nil but never touched)", headerCard.Err)
+	}
+	if len(headerCard.Fields) == 0 {
+		t.Error("headerCard.Fields = empty, want kubemetrics' Sample output")
+	}
+}
+
 func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	scheme := testScheme(t)
 	instance := &pagev1alpha1.Dashboard{

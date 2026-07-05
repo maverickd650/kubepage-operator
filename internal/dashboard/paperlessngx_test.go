@@ -72,3 +72,13 @@ func TestPaperlessngxWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestPaperlessngxWidgetSample(t *testing.T) {
+	got := (paperlessngxWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != "Documents" || got[1].Label != "Inbox" {
+		t.Errorf("Sample() = %+v, want Documents/Inbox fields", got)
+	}
+	if !reflect.DeepEqual(got, (paperlessngxWidget{}).Sample(WidgetConfig{})) {
+		t.Error("Sample() is not deterministic")
+	}
+}

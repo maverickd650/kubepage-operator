@@ -46,3 +46,10 @@ func (paperlessngxWidget) Poll(ctx context.Context, httpClient *http.Client, cfg
 		{Label: "Inbox", Value: fmt.Sprintf("%d", parsed.DocumentsInbox)},
 	}, nil
 }
+
+func (paperlessngxWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: "Documents", Value: "1234"},
+		{Label: "Inbox", Value: "12"},
+	}
+}

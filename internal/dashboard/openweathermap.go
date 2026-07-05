@@ -101,3 +101,25 @@ func (openWeatherMapWidget) Poll(ctx context.Context, httpClient *http.Client, c
 		{Label: labelConditions, Value: conditions},
 	}, nil
 }
+
+// Sample honors cfg.Config's label/units overrides the same way Poll does,
+// and never requires secrets.apiKey (sample mode skips secret resolution
+// entirely — see Poller.SampleData).
+func (openWeatherMapWidget) Sample(cfg WidgetConfig) []Field {
+	var c openWeatherMapConfig
+	if len(cfg.Config) > 0 {
+		_ = json.Unmarshal(cfg.Config, &c)
+	}
+	label := c.Label
+	if label == "" {
+		label = labelWeather
+	}
+	tempSuffix := "°C"
+	if c.Units == unitsImperial {
+		tempSuffix = "°F"
+	}
+	return []Field{
+		{Label: label, Value: "21" + tempSuffix},
+		{Label: labelConditions, Value: "Clouds"},
+	}
+}

@@ -88,3 +88,16 @@ func TestGlancesWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestGlancesWidgetSample(t *testing.T) {
+	got := (glancesWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelCPU || got[1].Label != labelMemory {
+		t.Fatalf("Sample() = %+v, want CPU/Memory fields", got)
+	}
+	if got[0].Percent == nil || got[1].Percent == nil {
+		t.Error("Sample() fields have no Percent, want usage bars in a preview")
+	}
+	if !reflect.DeepEqual(got, (glancesWidget{}).Sample(WidgetConfig{})) {
+		t.Error("Sample() is not deterministic")
+	}
+}

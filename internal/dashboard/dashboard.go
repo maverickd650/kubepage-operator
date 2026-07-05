@@ -68,6 +68,11 @@ type Options struct {
 	// the configured Addr string, which can't be dialed directly when it
 	// asks for an OS-assigned port.
 	Ready func(addr string)
+
+	// SampleData is always false for in-cluster dashboard mode; only
+	// RunPreview's PreviewOptions.SampleData ever sets it. See
+	// Poller.SampleData's doc comment.
+	SampleData bool
 }
 
 // Run wires the CRD cache, secret-resolving client, background poller, and
@@ -125,6 +130,7 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		HTTPClient:        newGuardedHTTPClient(10 * time.Second),
 		Store:             store,
 		GatewayAPIEnabled: opts.GatewayAPIEnabled,
+		SampleData:        opts.SampleData,
 	}
 	go poller.Run(ctx)
 
@@ -137,6 +143,7 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		RefreshSeconds: int(opts.PollInterval.Seconds()),
 		Version:        opts.Version,
 		Commit:         opts.Commit,
+		SampleData:     opts.SampleData,
 	}
 
 	ln, err := net.Listen("tcp", opts.Addr)

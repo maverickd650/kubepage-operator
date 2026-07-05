@@ -84,6 +84,28 @@ func (iframeWidget) Poll(_ context.Context, _ *http.Client, cfg WidgetConfig) ([
 	}, nil
 }
 
+// Sample mirrors Poll: an iframe widget never contacts its upstream (the
+// browser loads the embed directly), so the "sample" is just the same
+// config-derived src/height Poll would have produced, falling back to a
+// placeholder URL when cfg.URL is unset.
+func (iframeWidget) Sample(cfg WidgetConfig) []Field {
+	url := cfg.URL
+	if url == "" {
+		url = "https://example.invalid/embed"
+	}
+	height := iframeDefaultHeight
+	if len(cfg.Config) > 0 {
+		var c iframeConfig
+		if err := json.Unmarshal(cfg.Config, &c); err == nil && c.Height != "" {
+			height = c.Height
+		}
+	}
+	return []Field{
+		{Label: labelIframeSrc, Value: url},
+		{Label: labelIframeHeight, Value: height},
+	}
+}
+
 // iframeSrc and iframeHeight read back the Fields iframeWidget.Poll produced
 // for a Card whose WidgetType is "iframe", for cards.templ to render an
 // actual <iframe> instead of the usual stats grid.

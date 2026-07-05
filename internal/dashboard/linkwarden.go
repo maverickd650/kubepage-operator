@@ -44,3 +44,7 @@ func (linkwardenWidget) Poll(ctx context.Context, httpClient *http.Client, cfg W
 		{Label: labelLinks, Value: fmt.Sprintf("%d", len(parsed.Response))},
 	}, nil
 }
+
+func (linkwardenWidget) Sample(WidgetConfig) []Field {
+	return []Field{{Label: labelLinks, Value: "128"}}
+}

@@ -69,3 +69,29 @@ func TestLookupUnknownType(t *testing.T) {
 		t.Error("Lookup() of an unregistered type = (_, true), want false")
 	}
 }
+
+// TestEveryRegisteredWidgetHasASample guards preview mode's --sample-data
+// feature against silent drift: every widget registered via Register (i.e.
+// every real widget type in internal/dashboard) must also implement Sampler
+// and return at least one Field from a zero-value WidgetConfig, or a future
+// widget addition would render an empty/error card under --sample-data
+// instead of a populated preview. Mirrors
+// internal/controller/widget_type_policy_test.go's
+// TestRegisteredWidgetTypesCoveredByPolicy, which guards the same registry
+// against a different kind of drift (the CRD schema's Enum allow-list).
+func TestEveryRegisteredWidgetHasASample(t *testing.T) {
+	for _, widgetType := range RegisteredTypes() {
+		impl, ok := Lookup(widgetType)
+		if !ok {
+			t.Fatalf("Lookup(%q) = false right after RegisteredTypes() reported it", widgetType)
+		}
+		sampler, ok := impl.(Sampler)
+		if !ok {
+			t.Errorf("widget type %q does not implement Sampler; add a Sample method so --sample-data can preview it", widgetType)
+			continue
+		}
+		if len(sampler.Sample(WidgetConfig{})) == 0 {
+			t.Errorf("widget type %q's Sample(WidgetConfig{}) returned no Fields, want at least one", widgetType)
+		}
+	}
+}

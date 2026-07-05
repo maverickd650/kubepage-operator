@@ -72,3 +72,13 @@ func TestMealieWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestMealieWidgetSample(t *testing.T) {
+	got := (mealieWidget{}).Sample(WidgetConfig{})
+	if len(got) != 1 || got[0].Label != labelRecipes {
+		t.Errorf("Sample() = %+v, want a single Recipes field", got)
+	}
+	if !reflect.DeepEqual(got, (mealieWidget{}).Sample(WidgetConfig{})) {
+		t.Error("Sample() is not deterministic")
+	}
+}

@@ -55,3 +55,11 @@ func (stashWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		{Label: labelGalleries, Value: fmt.Sprintf("%d", parsed.Data.Stats.GalleryCount)},
 	}, nil
 }
+
+func (stashWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelScenes, Value: "512"},
+		{Label: labelImages, Value: "10234"},
+		{Label: labelGalleries, Value: "87"},
+	}
+}

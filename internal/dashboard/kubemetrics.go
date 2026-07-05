@@ -87,6 +87,30 @@ func (kubeMetricsWidget) PollCluster(ctx context.Context, reader client.Reader, 
 	}, nil
 }
 
+// Sample honors cfg.Config's cpuLabel/memoryLabel overrides the same way
+// PollCluster does, so a preview reflects the operator's own configured
+// labels rather than a generic fallback.
+func (kubeMetricsWidget) Sample(cfg WidgetConfig) []Field {
+	cpuLabel, memoryLabel := labelCPU, labelMemory
+	if len(cfg.Config) > 0 {
+		var c kubeMetricsConfig
+		if err := json.Unmarshal(cfg.Config, &c); err == nil {
+			if c.CPULabel != "" {
+				cpuLabel = c.CPULabel
+			}
+			if c.MemoryLabel != "" {
+				memoryLabel = c.MemoryLabel
+			}
+		}
+	}
+
+	cpuPct, memPct := 65, 92
+	return []Field{
+		{Label: cpuLabel, Value: "2.6 / 4 cores (65%)", Percent: &cpuPct, Highlight: usageHighlight(&cpuPct)},
+		{Label: memoryLabel, Value: "11 / 12 GiB (92%)", Percent: &memPct, Highlight: usageHighlight(&memPct)},
+	}
+}
+
 // usageHighlight flags a usage percentage as "warn" (>=75%) or "danger"
 // (>=90%), or "" below that or when pct is unknown (nil, no capacity data).
 func usageHighlight(pct *int) string {

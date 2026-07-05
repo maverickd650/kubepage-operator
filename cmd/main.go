@@ -547,6 +547,9 @@ func runPreview(args []string) {
 	fs.DurationVar(&pollInterval, "poll-interval", 15*time.Second, "How often to poll each widget's upstream.")
 	var openInBrowser bool
 	fs.BoolVar(&openInBrowser, "open", false, "Open the default browser once the preview server is ready.")
+	var sampleData bool
+	fs.BoolVar(&sampleData, "sample-data", false,
+		"Render every widget/monitor with placeholder sample data instead of polling real upstreams or resolving secrets.")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(fs)
 	_ = fs.Parse(args)
@@ -593,6 +596,7 @@ func runPreview(args []string) {
 		PollInterval:  pollInterval,
 		Version:       version,
 		Commit:        commit,
+		SampleData:    sampleData,
 	}
 	if openInBrowser {
 		// Ready fires with the real bound address (e.g. from a ":0" Addr,

@@ -90,3 +90,105 @@ func TestPreviewServesConfigSamples(t *testing.T) {
 		t.Fatal("RunPreview did not shut down within 5s of context cancellation")
 	}
 }
+
+// TestPreviewSampleDataServesConfigSamples is TestPreviewServesConfigSamples'
+// --sample-data counterpart: boots preview against config/samples with
+// SampleData set and asserts the sample-data banner renders and at least one
+// widget's placeholder Fields show up in /fragment — proving --sample-data
+// works end to end against the repo's own shipped samples, not just against
+// synthetic fixtures in internal/dashboard's own tests.
+func TestPreviewSampleDataServesConfigSamples(t *testing.T) {
+	result, err := Load(Config{Scheme: testScheme(t), Paths: []string{"../../config/samples"}})
+	if err != nil {
+		t.Fatalf("Load(config/samples): %v", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- dashboard.RunPreview(ctx, dashboard.PreviewOptions{
+			Reader:        result.Reader,
+			Namespace:     result.Namespace,
+			DashboardName: result.DashboardName,
+			Addr:          addr,
+			MetricsAddr:   "127.0.0.1:0",
+			PollInterval:  100 * time.Millisecond,
+			Version:       "test",
+			Commit:        "test",
+			SampleData:    true,
+		})
+	}()
+
+	baseURL := "http://" + addr
+	var resp *http.Response
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err = http.Get(baseURL + "/") //nolint:gosec,noctx // fixed loopback test address, no external input
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("dashboard never became reachable at %s: %v", baseURL, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET / status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "Sample data") {
+		t.Error("GET / body missing the sample-data banner")
+	}
+
+	// Give the Poller at least one sample cycle before checking /fragment.
+	deadline = time.Now().Add(5 * time.Second)
+	var fragmentBody string
+	for {
+		fragResp, err := http.Get(baseURL + "/fragment") //nolint:gosec,noctx // fixed loopback test address
+		if err == nil {
+			b, _ := io.ReadAll(fragResp.Body)
+			_ = fragResp.Body.Close()
+			fragmentBody = string(b)
+			if strings.Contains(fragmentBody, statusHealthyText) {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET /fragment never showed sample widget data; last body:\n%s", fragmentBody)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("RunPreview returned an error after shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunPreview did not shut down within 5s of context cancellation")
+	}
+}
+
+// statusHealthyText is the literal "Status: Healthy" rendering config/
+// samples' plex ServiceCard's widget shows under --sample-data (see
+// internal/dashboard's plexWidget.Sample) — plain text, not a Go constant
+// import, since internal/preview intentionally has no dependency on
+// internal/dashboard's unexported widget internals.
+const statusHealthyText = "Healthy"

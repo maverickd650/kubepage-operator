@@ -44,3 +44,7 @@ func (mealieWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widge
 		{Label: labelRecipes, Value: fmt.Sprintf("%d", parsed.Total)},
 	}, nil
 }
+
+func (mealieWidget) Sample(WidgetConfig) []Field {
+	return []Field{{Label: labelRecipes, Value: "87"}}
+}

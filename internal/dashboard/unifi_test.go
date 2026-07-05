@@ -297,3 +297,13 @@ func TestUnifiWidgetPollMissingCredentials(t *testing.T) {
 		t.Fatal("Poll() expected error for missing credentials, got nil")
 	}
 }
+
+func TestUnifiWidgetSample(t *testing.T) {
+	got := (unifiWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelClients {
+		t.Errorf("Sample() = %+v, want Status/Clients fields", got)
+	}
+	if !reflect.DeepEqual(got, (unifiWidget{}).Sample(WidgetConfig{})) {
+		t.Error("Sample() is not deterministic")
+	}
+}

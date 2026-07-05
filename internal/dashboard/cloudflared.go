@@ -84,3 +84,10 @@ func (cloudflaredWidget) Poll(ctx context.Context, httpClient *http.Client, cfg 
 		{Label: labelTunnel, Value: parsed.Result.Name},
 	}, nil
 }
+
+func (cloudflaredWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelTunnel, Value: "sample-tunnel"},
+	}
+}

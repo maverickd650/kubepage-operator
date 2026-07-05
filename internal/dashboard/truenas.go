@@ -47,6 +47,13 @@ func (truenasWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 	}, nil
 }
 
+func (truenasWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelVersion, Value: "TrueNAS-24.04.0"},
+		{Label: labelUptime, Value: formatUptime(370000)},
+	}
+}
+
 func formatUptime(seconds int64) string {
 	days := seconds / 86400
 	hours := (seconds % 86400) / 3600

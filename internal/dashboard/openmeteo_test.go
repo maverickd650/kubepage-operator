@@ -86,6 +86,30 @@ func TestOpenMeteoWidgetPollUnreachable(t *testing.T) {
 	}
 }
 
+func TestOpenMeteoWidgetSample(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   []Field
+	}{
+		"no config falls back to defaults": {
+			want: []Field{{Label: labelWeather, Value: "18°C"}, {Label: labelConditions, Value: condClear}},
+		},
+		"custom label and imperial units": {
+			config: `{"units":"imperial","label":"NYC"}`,
+			want:   []Field{{Label: "NYC", Value: "18°F"}, {Label: labelConditions, Value: condClear}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (openMeteoWidget{}).Sample(WidgetConfig{Config: []byte(tc.config)})
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("Sample() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWeatherCondition(t *testing.T) {
 	tests := map[string]struct {
 		code int

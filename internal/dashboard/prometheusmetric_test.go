@@ -82,6 +82,34 @@ func TestPrometheusMetricWidgetPollMissingURL(t *testing.T) {
 	}
 }
 
+func TestPrometheusMetricWidgetSample(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   []Field
+	}{
+		"no config falls back to the default label": {
+			want: []Field{{Label: labelValue, Value: "42"}},
+		},
+		"echoes the configured label": {
+			config: `{"query":"up","label":"Up Targets"}`,
+			want:   []Field{{Label: "Up Targets", Value: "42"}},
+		},
+		"malformed config falls back": {
+			config: `{not valid json`,
+			want:   []Field{{Label: labelValue, Value: "42"}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (prometheusMetricWidget{}).Sample(WidgetConfig{Config: []byte(tc.config)})
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("Sample() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPrometheusMetricWidgetPollUnreachable(t *testing.T) {
 	got, err := (prometheusMetricWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		URL:    testUnreachableAddr,

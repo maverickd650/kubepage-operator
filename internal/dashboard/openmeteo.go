@@ -93,6 +93,26 @@ func (openMeteoWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 	}, nil
 }
 
+// Sample honors cfg.Config's label/units overrides the same way Poll does.
+func (openMeteoWidget) Sample(cfg WidgetConfig) []Field {
+	var c openMeteoConfig
+	if len(cfg.Config) > 0 {
+		_ = json.Unmarshal(cfg.Config, &c)
+	}
+	label := c.Label
+	if label == "" {
+		label = labelWeather
+	}
+	tempSuffix := "°C"
+	if c.Units == unitsImperial {
+		tempSuffix = "°F"
+	}
+	return []Field{
+		{Label: label, Value: "18" + tempSuffix},
+		{Label: labelConditions, Value: condClear},
+	}
+}
+
 // weatherCondition maps a WMO weather-interpretation code (as returned by
 // Open-Meteo) to a short human-readable condition.
 func weatherCondition(code int) string {

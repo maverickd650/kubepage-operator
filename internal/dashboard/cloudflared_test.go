@@ -9,6 +9,16 @@ import (
 
 const testTunnelName = "home-tunnel"
 
+func TestCloudflaredWidgetSample(t *testing.T) {
+	got := (cloudflaredWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelTunnel {
+		t.Errorf("Sample() = %+v, want Status/Tunnel fields", got)
+	}
+	if !reflect.DeepEqual(got, (cloudflaredWidget{}).Sample(WidgetConfig{})) {
+		t.Error("Sample() is not deterministic")
+	}
+}
+
 func TestCloudflaredWidgetPoll(t *testing.T) {
 	tests := map[string]struct {
 		response   string
