@@ -1,8 +1,9 @@
 # kubepage-operator - AI Agent Guide
 
-> **Building the homepage operator?** Read [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
-> first — it holds the locked design decisions, architecture, and the phased slice you should
-> be working on. This file (AGENTS.md) covers kubebuilder mechanics; the plan covers *what* to build.
+> **Building the homepage operator?** Read [`CLAUDE.md`](CLAUDE.md) first — it
+> holds the architecture overview and the CRD/controller/dashboard package
+> relationships. This file (AGENTS.md) covers kubebuilder mechanics; CLAUDE.md
+> covers *what* the codebase is and how it fits together.
 
 ## Project Structure
 
