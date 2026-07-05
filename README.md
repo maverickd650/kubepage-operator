@@ -230,9 +230,20 @@ Widget polling still makes real outbound requests to whatever URLs the loaded
 `ServiceCard`s name, so reachable upstreams (e.g. a Grafana on your LAN) show
 live data; unreachable ones render their normal error state. Editing and
 saving a manifest under `-f` live-reloads it into the running preview — no
-restart, no browser reload, just the next poll picking up the change. See
-[`docs/design/local-preview.md`](docs/design/local-preview.md) for the full
-design.
+restart, no browser reload, just the next poll picking up the change.
+
+Add `--sample-data` to render every widget/monitor with placeholder data
+instead — no network calls, no secrets resolved, so you can see how a
+`Dashboard` looks fully populated without any upstream reachable at all (a
+visible banner marks the page so a screenshot is never mistaken for live
+data):
+
+```sh
+go run ./cmd preview -f config/samples --sample-data --open
+```
+
+See [`docs/design/local-preview.md`](docs/design/local-preview.md) for the
+full design.
 
 After editing `*_types.go` or `+kubebuilder` markers, regenerate CRDs/RBAC and
 DeepCopy methods, then lint and test:

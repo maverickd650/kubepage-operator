@@ -1,8 +1,10 @@
 # Design: `preview` — local dashboard rendering without a cluster
 
 Status: phases 1–3 implemented (`preview` subcommand, manifest loader, live
-reload, `--open`, signed cross-compiled release binaries). Phase 4
-(`--sample-data`, client-side CEL validation) is a stretch goal, not started.
+reload, `--open`, signed cross-compiled release binaries). Phase 4's
+`--sample-data` is now implemented too (see the phasing table below);
+client-side CEL validation, phase 4's other stretch item, is still not
+started.
 
 ## Problem
 
@@ -109,9 +111,6 @@ has. A failed re-parse logs and keeps serving the last good config.
 
 ### Explicit non-goals
 
-- No mock/sample widget data in v1 (a `--sample-data` mode with representative
-  `[]Field` per widget type is a nice phase-4 stretch, but needs a per-widget
-  sample registry — separate design).
 - Not a substitute for e2e: no controller, no Deployment/RBAC/Ingress logic is
   exercised. This previews the *dashboard*, not the operator.
 - No `--kubeconfig` hybrid mode (real cluster reads + local overrides) in v1.
@@ -121,7 +120,7 @@ has. A failed re-parse logs and keeps serving the last good config.
 ```sh
 kubepage-operator preview -f ./config/samples [-f more.yaml] \
   [--dashboard-name NAME --namespace NS] \
-  [--addr 127.0.0.1:8080] [--poll-interval 15s] [--open]
+  [--addr 127.0.0.1:8080] [--poll-interval 15s] [--open] [--sample-data]
 ```
 
 Plus a dev-loop task so contributors never type the above:
@@ -201,17 +200,53 @@ cosign verify-blob \
 sha256sum -c checksums.txt --ignore-missing
 ```
 
+### Sample data (phase 4's `--sample-data`)
+
+`--sample-data` replaces every widget/monitor's real poll with a
+deterministic placeholder result, so a preview shows fully populated cards
+with no reachable upstream and no local secret material at all:
+
+- Every registered `Widget` (`internal/dashboard`) also implements a
+  `Sampler` interface — `Sample(cfg WidgetConfig) []Field` — living in the
+  same file as its `Poll`/`PollCluster`, so "adding a widget = one new file"
+  still holds (CLAUDE.md). A config-driven widget (`customapi`,
+  `prometheusmetric`) reads `cfg.Config` and echoes the operator's own
+  configured labels back with a placeholder value, rather than a generic
+  fallback that reveals nothing about their setup.
+  `TestEveryRegisteredWidgetHasASample` (`widget_test.go`) fails the build if
+  a widget is missing one — the same drift-guard pattern
+  `internal/controller/widget_type_policy_test.go` already uses for the CRD
+  enum allow-list.
+- `Poller.SampleData` (set from `dashboard.PreviewOptions.SampleData`, itself
+  set only by `--sample-data`) intercepts widget polling, header-widget
+  polling, and monitor probing before any secret resolution, CA-cert
+  handling, HTTP request, or Kubernetes API read happens — sample mode
+  can't leak real secret material or hit a real network by construction, not
+  just by convention. A configured `fields` filter and `highlight` rules
+  still apply to sampled output, so those parts of a `ServiceCard`/
+  `InfoWidget`'s config preview accurately too. No poll metrics are recorded
+  for sampled polls, since the "success" they'd report isn't real.
+- A visible banner ("Sample data — no live upstreams polled") renders in the
+  page shell whenever sample mode is on, so a screenshot can never be
+  mistaken for a live dashboard.
+- In-cluster dashboard mode has no `--sample-data` equivalent: the flag only
+  exists on the `preview` subcommand.
+
 ## Testing
 
 - **Loader unit tests** (`internal/preview`): multi-doc parsing, directory
   walking, unknown-kind skip, namespace defaulting, zero/multiple-Dashboard
   selection errors, Secret resolution end-to-end through the existing
   `SecretValueSource` path.
-- **Boot smoke test**: start preview against `config/samples/`, assert `GET /`
-  returns 200 and contains the sample Dashboard's title — doubles as a
-  regression guard that the samples stay loadable.
+- **Boot smoke tests**: start preview against `config/samples/`, assert
+  `GET /` returns 200 and contains the sample Dashboard's title — doubles as
+  a regression guard that the samples stay loadable. A `--sample-data`
+  variant additionally asserts the banner renders and a widget's sample
+  Fields show up in `/fragment`.
 - Rendering itself is already covered by the golden and `//go:build browser`
-  chromedp tests; preview adds no new render paths by construction.
+  chromedp tests; preview adds no new render paths by construction, and
+  `--sample-data` is covered by a dedicated `Server`-level test for the
+  banner plus per-widget `Sample` table tests.
 - Release job: dry-run the build-dist task in the existing `test.yml` (build
   all targets, no upload) so cross-compilation breakage surfaces on PRs, not
   at release time.
@@ -223,7 +258,8 @@ sha256sum -c checksums.txt --ignore-missing
 | 1 | `preview` subcommand, manifest loader, in-memory reader wiring, `mise run preview`, README + CLAUDE.md ("three modes in one") | `feat(preview): …` | done |
 | 2 | fsnotify live reload, `--open` | `feat(preview): …` | done |
 | 3 | `build-dist` task, `binaries` release job, signing/attestation, SECURITY.md verification docs | `build: …`, `ci(release): …`, `docs(security): …` | done |
-| 4 (stretch) | `--sample-data` placeholder fields per widget type; client-side CEL validation warnings | separate design | not started |
+| 4 | `--sample-data` placeholder fields per widget type | `feat(preview): …` | done |
+| 4 (stretch, remaining) | client-side CEL validation warnings | separate design | not started |
 
 Phase 3 landed with one deliberate simplification from the original plan:
 GoReleaser was still passed over in favor of a `mise` task (`build-dist`) for
