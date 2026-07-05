@@ -87,10 +87,12 @@ func (iframeWidget) Poll(_ context.Context, _ *http.Client, cfg WidgetConfig) ([
 // Sample mirrors Poll: an iframe widget never contacts its upstream (the
 // browser loads the embed directly), so the "sample" is just the same
 // config-derived src/height Poll would have produced, falling back to a
-// placeholder URL when cfg.URL is unset.
+// placeholder URL when cfg.URL is unset or fails Poll's own scheme check —
+// a preview must never embed a javascript:/data: URL Poll would have
+// rejected outright.
 func (iframeWidget) Sample(cfg WidgetConfig) []Field {
 	url := cfg.URL
-	if url == "" {
+	if url == "" || !isHTTPURL(url) {
 		url = "https://example.invalid/embed"
 	}
 	height := iframeDefaultHeight

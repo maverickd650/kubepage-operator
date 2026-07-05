@@ -163,6 +163,10 @@ func TestCustomAPIWidgetSample(t *testing.T) {
 			config: `{"mappings":[{"jsonpath":"status"}]}`,
 			want:   []Field{{Label: labelValue, Value: sampleCustomAPIValue}},
 		},
+		"mappings missing jsonpath are skipped, matching Poll's own skip condition": {
+			config: `{"mappings":[{"label":"Foo"},{"label":"Status","jsonpath":"status"}]}`,
+			want:   []Field{{Label: labelStatus, Value: sampleCustomAPIValue}},
+		},
 		"malformed config falls back": {
 			config: `{not valid json`,
 			want:   []Field{{Label: labelValue, Value: sampleCustomAPIValue}},

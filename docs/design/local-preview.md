@@ -219,11 +219,14 @@ with no reachable upstream and no local secret material at all:
   enum allow-list.
 - `Poller.SampleData` (set from `dashboard.PreviewOptions.SampleData`, itself
   set only by `--sample-data`) intercepts widget polling, header-widget
-  polling, and monitor probing before any secret resolution, CA-cert
-  handling, HTTP request, or Kubernetes API read happens — sample mode
-  can't leak real secret material or hit a real network by construction, not
-  just by convention. A configured `fields` filter and `highlight` rules
-  still apply to sampled output, so those parts of a `ServiceCard`/
+  polling, monitor probing, and Ingress/HTTPRoute discovery-card probing
+  before any secret resolution, CA-cert handling, HTTP request, or
+  Kubernetes API read happens. This is enforced per call site (`pollWidget`,
+  `pollInfoWidget`, `monitor`, `pollDiscoveredService` each check
+  `p.SampleData` before doing any real I/O), not by a single structural
+  guarantee — a future poll path needs its own check to keep the "no real
+  network access" property. A configured `fields` filter and `highlight`
+  rules still apply to sampled output, so those parts of a `ServiceCard`/
   `InfoWidget`'s config preview accurately too. No poll metrics are recorded
   for sampled polls, since the "success" they'd report isn't real.
 - A visible banner ("Sample data — no live upstreams polled") renders in the

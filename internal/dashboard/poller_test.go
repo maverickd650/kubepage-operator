@@ -1394,6 +1394,56 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	}
 }
 
+// TestPollerPollOnceDiscoveredServiceSampleDataSkipsNetwork closes the gap
+// found in review: pollDiscoveredService is a separate poll path from
+// pollWidget/pollInfoWidget/monitor, so it needs its own SampleData check.
+// A Ping-enabled discovered Ingress must render a fabricated "Up" status
+// without ever dialing the network or touching the monitorUp metric under
+// SampleData — see probeURL's doc comment for the same guarantee on
+// monitor-based probes.
+func TestPollerPollOnceDiscoveredServiceSampleDataSkipsNetwork(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+	ing := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{
+				testDiscoveryEnabledAnnotation:            annotationValueTrue,
+				testKubepageNameAnnotation:                testDiscoveredAppCardName,
+				defaultDiscoveryPrefix + discoveryAnnHref: testUnreachableAddr,
+				defaultDiscoveryPrefix + discoveryAnnPing: annotationValueTrue,
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, ing).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: &http.Client{Transport: failingRoundTripper{t: t}}, Store: store,
+		SampleData: true,
+	}
+	p.pollOnce(t.Context())
+
+	var found *Card
+	for _, c := range store.Snapshot() {
+		if c.ServiceName == testDiscoveredAppCardName {
+			c := c
+			found = &c
+		}
+	}
+	if found == nil {
+		t.Fatalf("Snapshot() = %+v, want a card for the annotated Ingress", store.Snapshot())
+	}
+	if found.Status != "Up" || found.Latency != sampleMonitorLatency {
+		t.Errorf("discovered card monitor = (%q, %q), want (Up, %q)", found.Status, found.Latency, sampleMonitorLatency)
+	}
+}
+
 // TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled verifies
 // pollOnce also discovers annotated HTTPRoutes when GatewayAPIEnabled is
 // set (gap-analysis §4.7), reusing the same discovery-enabled Dashboard as

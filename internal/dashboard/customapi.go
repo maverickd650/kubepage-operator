@@ -90,23 +90,28 @@ const sampleCustomAPIValue = "42"
 // stats, whatever labels) rather than a generic one. Falls back to a single
 // canned field when config.mappings is absent or invalid.
 func (customAPIWidget) Sample(cfg WidgetConfig) []Field {
+	fallback := []Field{{Label: labelValue, Value: sampleCustomAPIValue}}
+
 	var apiCfg customAPIConfig
 	if len(cfg.Config) == 0 {
-		return []Field{{Label: labelValue, Value: sampleCustomAPIValue}}
+		return fallback
 	}
 	if err := json.Unmarshal(cfg.Config, &apiCfg); err != nil || len(apiCfg.Mappings) == 0 {
-		return []Field{{Label: labelValue, Value: sampleCustomAPIValue}}
+		return fallback
 	}
 
 	fields := make([]Field, 0, len(apiCfg.Mappings))
 	for _, m := range apiCfg.Mappings {
-		if m.Label == "" {
+		// Mirrors Poll's own skip condition (both label and jsonpath
+		// required) so a preview never shows a stat the live dashboard
+		// would never render for this config.
+		if m.Label == "" || m.JSONPath == "" {
 			continue
 		}
 		fields = append(fields, Field{Label: m.Label, Value: sampleCustomAPIValue + m.Suffix})
 	}
 	if len(fields) == 0 {
-		return []Field{{Label: labelValue, Value: sampleCustomAPIValue}}
+		return fallback
 	}
 	return fields
 }

@@ -766,15 +766,20 @@ func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredServic
 		UpdatedAt:   time.Now(),
 	}
 	if svc.Ping && svc.Href != "" {
-		card.Status, card.Latency = monitorResult(ctx, p.HTTPClient, svc.Href)
+		card.Status, card.Latency = p.probeURL(ctx, svc.Href)
 		card.StatusStyle = statusStyleDot
-		label := "discovery/" + svc.Key
-		up := 0.0
-		if card.Status == "Up" {
-			up = 1
+		// Sample-mode monitor results are fabricated, not observed, so they
+		// don't get recorded into the monitorUp Prometheus gauge either —
+		// see SampleData's doc comment and monitor()'s identical gate.
+		if !p.SampleData {
+			label := "discovery/" + svc.Key
+			up := 0.0
+			if card.Status == "Up" {
+				up = 1
+			}
+			monitorUp.WithLabelValues(label).Set(up)
+			record(label)
 		}
-		monitorUp.WithLabelValues(label).Set(up)
-		record(label)
 	}
 	p.Store.Set(card)
 }

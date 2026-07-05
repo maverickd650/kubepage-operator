@@ -71,6 +71,10 @@ func TestIframeWidgetSample(t *testing.T) {
 		"no url falls back to a placeholder": {
 			want: []Field{{Label: labelIframeSrc, Value: "https://example.invalid/embed"}, {Label: labelIframeHeight, Value: iframeDefaultHeight}},
 		},
+		"non-http scheme falls back to a placeholder": {
+			url:  testJSSchemeURL,
+			want: []Field{{Label: labelIframeSrc, Value: "https://example.invalid/embed"}, {Label: labelIframeHeight, Value: iframeDefaultHeight}},
+		},
 	}
 
 	for name, tc := range tests {
