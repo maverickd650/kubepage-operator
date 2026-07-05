@@ -12,7 +12,7 @@ kind = "0.32.0"
 kubectl = "1.36.2"
 cosign = "3.1.1"
 kubebuilder = "4.15.0"
-kubeconform = "0.6.7"
+kubeconform = "0.8.0"
 
 [env]
 # Image used by build/deploy targets; override with `IMG=... mise run docker-build`.
