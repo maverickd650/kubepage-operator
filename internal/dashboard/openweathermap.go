@@ -64,15 +64,10 @@ func (openWeatherMapWidget) Poll(ctx context.Context, httpClient *http.Client, c
 		return nil, errors.New("openweathermap widget: secrets.apiKey is required")
 	}
 
-	label := c.Label
-	if label == "" {
-		label = labelWeather
-	}
+	label, tempSuffix := weatherLabelAndSuffix(c.Label, c.Units)
 	units := "metric"
-	tempSuffix := "°C"
 	if c.Units == unitsImperial {
 		units = unitsImperial
-		tempSuffix = "°F"
 	}
 
 	base := cfg.URL
@@ -114,14 +109,7 @@ func (openWeatherMapWidget) Sample(cfg WidgetConfig) []Field {
 	if len(cfg.Config) > 0 {
 		_ = json.Unmarshal(cfg.Config, &c)
 	}
-	label := c.Label
-	if label == "" {
-		label = labelWeather
-	}
-	tempSuffix := "°C"
-	if c.Units == unitsImperial {
-		tempSuffix = "°F"
-	}
+	label, tempSuffix := weatherLabelAndSuffix(c.Label, c.Units)
 	return []Field{
 		{Label: label, Value: "21" + tempSuffix},
 		{Label: labelConditions, Value: sampleWeatherCondition},

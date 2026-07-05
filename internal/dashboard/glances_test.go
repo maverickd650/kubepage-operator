@@ -97,7 +97,5 @@ func TestGlancesWidgetSample(t *testing.T) {
 	if got[0].Percent == nil || got[1].Percent == nil {
 		t.Error("Sample() fields have no Percent, want usage bars in a preview")
 	}
-	if !reflect.DeepEqual(got, (glancesWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, glancesWidget{})
 }

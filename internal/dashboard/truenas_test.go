@@ -86,7 +86,5 @@ func TestTruenasWidgetSample(t *testing.T) {
 	if len(got) != 2 || got[0].Label != labelVersion || got[1].Label != labelUptime {
 		t.Errorf("Sample() = %+v, want Version/Uptime fields", got)
 	}
-	if !reflect.DeepEqual(got, (truenasWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, truenasWidget{})
 }

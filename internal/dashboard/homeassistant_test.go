@@ -76,7 +76,5 @@ func TestHomeassistantWidgetSample(t *testing.T) {
 	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelVersion {
 		t.Errorf("Sample() = %+v, want Status/Version fields", got)
 	}
-	if !reflect.DeepEqual(got, (homeassistantWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, homeassistantWidget{})
 }

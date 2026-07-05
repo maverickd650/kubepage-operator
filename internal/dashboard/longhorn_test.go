@@ -77,7 +77,5 @@ func TestLonghornWidgetSample(t *testing.T) {
 	if len(got) != 1 || got[0].Label != labelStorage || got[0].Percent == nil {
 		t.Fatalf("Sample() = %+v, want a single Storage field with Percent set", got)
 	}
-	if !reflect.DeepEqual(got, (longhornWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, longhornWidget{})
 }

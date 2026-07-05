@@ -78,7 +78,5 @@ func TestMealieWidgetSample(t *testing.T) {
 	if len(got) != 1 || got[0].Label != labelRecipes {
 		t.Errorf("Sample() = %+v, want a single Recipes field", got)
 	}
-	if !reflect.DeepEqual(got, (mealieWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, mealieWidget{})
 }

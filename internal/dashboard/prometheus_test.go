@@ -92,7 +92,5 @@ func TestPrometheusWidgetSample(t *testing.T) {
 	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelTargetsUp {
 		t.Errorf("Sample() = %+v, want Status/Targets Up fields", got)
 	}
-	if !reflect.DeepEqual(got, (prometheusWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, prometheusWidget{})
 }

@@ -86,7 +86,5 @@ func TestPlexWidgetSample(t *testing.T) {
 	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelStreams {
 		t.Errorf("Sample() = %+v, want Status/Streams fields", got)
 	}
-	if !reflect.DeepEqual(got, (plexWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, plexWidget{})
 }

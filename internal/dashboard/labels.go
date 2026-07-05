@@ -27,3 +27,19 @@ const (
 	// is metric/Celsius).
 	unitsImperial = "imperial"
 )
+
+// weatherLabelAndSuffix resolves a weather widget's display label (falling
+// back to labelWeather when unset) and temperature suffix (°C, or °F for
+// unitsImperial) from its config — the one piece of config-decode logic
+// openmeteo.go and openweathermap.go's Poll and Sample all four share, kept
+// here so they can't drift out of sync with each other.
+func weatherLabelAndSuffix(label, units string) (resolvedLabel, tempSuffix string) {
+	if label == "" {
+		label = labelWeather
+	}
+	tempSuffix = "°C"
+	if units == unitsImperial {
+		tempSuffix = "°F"
+	}
+	return label, tempSuffix
+}

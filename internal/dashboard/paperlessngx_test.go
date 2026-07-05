@@ -78,7 +78,5 @@ func TestPaperlessngxWidgetSample(t *testing.T) {
 	if len(got) != 2 || got[0].Label != labelDocuments || got[1].Label != labelInbox {
 		t.Errorf("Sample() = %+v, want Documents/Inbox fields", got)
 	}
-	if !reflect.DeepEqual(got, (paperlessngxWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, paperlessngxWidget{})
 }

@@ -3,6 +3,8 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"reflect"
+	"testing"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -89,6 +91,17 @@ const (
 	testUnreachableErr    = "unreachable"
 	testGrafanaVersion    = "10.0.0"
 )
+
+// assertSampleDeterministic calls sampler.Sample(WidgetConfig{}) twice and
+// fails t if the two results differ — every widget's Sample must be
+// deterministic (see the Sampler interface's doc comment in widget.go),
+// since it's asserted against directly in golden fixtures.
+func assertSampleDeterministic(t *testing.T, sampler Sampler) {
+	t.Helper()
+	if got := sampler.Sample(WidgetConfig{}); !reflect.DeepEqual(got, sampler.Sample(WidgetConfig{})) {
+		t.Errorf("Sample() is not deterministic: %+v", got)
+	}
+}
 
 // errBoom is returned by errInjectingReader when a predicate matches.
 var errBoom = errors.New("boom")

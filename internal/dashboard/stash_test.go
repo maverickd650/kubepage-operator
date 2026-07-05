@@ -92,7 +92,5 @@ func TestStashWidgetSample(t *testing.T) {
 	if len(got) != 3 || got[0].Label != labelScenes || got[1].Label != labelImages || got[2].Label != labelGalleries {
 		t.Errorf("Sample() = %+v, want Scenes/Images/Galleries fields", got)
 	}
-	if !reflect.DeepEqual(got, (stashWidget{}).Sample(WidgetConfig{})) {
-		t.Error("Sample() is not deterministic")
-	}
+	assertSampleDeterministic(t, stashWidget{})
 }
