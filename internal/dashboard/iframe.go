@@ -41,6 +41,10 @@ const (
 	// embedded dashboard needing its own JS; no allow-forms, allow-popups,
 	// allow-top-navigation, or allow-modals.
 	iframeSandbox = "allow-scripts allow-same-origin"
+
+	// sampleIframeURL is iframeWidget.Sample's placeholder embed URL, used
+	// whenever cfg.URL is unset or fails the same scheme check Poll enforces.
+	sampleIframeURL = "https://example.invalid/embed"
 )
 
 // iframeWidget embeds cfg.URL directly rather than fetching it: an iframe's
@@ -93,7 +97,7 @@ func (iframeWidget) Poll(_ context.Context, _ *http.Client, cfg WidgetConfig) ([
 func (iframeWidget) Sample(cfg WidgetConfig) []Field {
 	url := cfg.URL
 	if url == "" || !isHTTPURL(url) {
-		url = "https://example.invalid/embed"
+		url = sampleIframeURL
 	}
 	height := iframeDefaultHeight
 	if len(cfg.Config) > 0 {
