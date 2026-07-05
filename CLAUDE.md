@@ -120,7 +120,10 @@ and show up in `kubectl explain`. The one thing that *is* still a
 K8s 1.30+) is a `Warn`-action heuristic — flagging a credential-shaped field
 name (`token`, `apiKey`, ...) that uses an inline `value` instead of
 `secretKeyRef` — that can't be expressed as a hard schema rule since it's a
-naming heuristic, not an invariant.
+naming heuristic, not an invariant. 1.29+/1.30+ are the floors required by
+the API surface in use; the CI-tested floor is higher, **1.33** — the
+`k8s-compat` workflow only exercises 1.33 since Kind v0.32.0 ships no older
+node image, so older versions are expected to work but aren't exercised.
 
 ### Controller package (`internal/controller`)
 

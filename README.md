@@ -21,8 +21,43 @@ The dashboard process resolves any Secret-backed credentials (a `ServiceCard`
 widget's API key, etc.) itself, in-process — the plaintext value never
 appears in pod env, a ConfigMap, or a projected file; it only ever exists in
 the dashboard pod's memory for the duration of the poll. See
-[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the full design
-rationale (kept local-only; ask in-repo if you need a copy).
+[`CLAUDE.md`](CLAUDE.md) for the full architecture overview and
+[`SECURITY.md`](SECURITY.md) for the secret-handling rationale.
+
+### Supported widgets
+
+`ServiceCard`/`InfoWidget` widget `type`s, kept in sync with the registry in
+`internal/dashboard/*.go` by
+[`TestRegisteredWidgetTypesCoveredByPolicy`](internal/controller/widget_type_policy_test.go):
+
+| Type | Shows | Notable config |
+|------|-------|-----------------|
+| `plex` | Current Plex stream count | `Secrets["token"]` (Plex `X-Plex-Token`) |
+| `stash` | Stash library stats (GraphQL) | `Secrets["token"]` (Stash API key) |
+| `paperlessngx` | Paperless-ngx document statistics | `Secrets["token"]` (Paperless API token) |
+| `grafana` | Grafana database/version health | `Secrets["token"]` optional Bearer token |
+| `prometheus` | Prometheus target health summary | none (open API) |
+| `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
+| `unifi` | UniFi Network controller site health | `Secrets["username"/"password"]`, `config: {site, insecureTLS}` |
+| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key) |
+| `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
+| `linkwarden` | Linkwarden saved-link count | `Secrets["token"]` (Linkwarden API token) |
+| `homeassistant` | Home Assistant version/reachability | `Secrets["token"]` (long-lived access token) |
+| `mealie` | Mealie recipe count | `Secrets["token"]` (Mealie API token) |
+| `customapi` | Arbitrary JSON endpoint, JSONPath-mapped fields | `Secrets["token"]` optional, `config: {mappings: [...]}` |
+| `iframe` | An embedded `<iframe>` on the card instead of stat chips | widget `url` is the embed source, `config: {height}` |
+| `openweathermap` | Current weather via OpenWeatherMap (header only) | `Secrets["apiKey"]` required, `config: {latitude, longitude, units, label}` |
+| `kubemetrics` | Cluster-wide CPU/memory usage (header only) | `config: {cpuLabel, memoryLabel}`; reads the Kubernetes API, not HTTP |
+| `glances` | Host CPU/memory usage via Glances (header only) | `config: {apiVersion}` |
+| `longhorn` | Aggregate Longhorn cluster storage usage (header only) | none beyond `URL` |
+| `openmeteo` | Current weather, keyless (header only) | `config: {latitude, longitude, units, label}` |
+| `datetime` | Client-side clock (header only) | static, not polled |
+| `greeting` | Static greeting text (header only) | static, not polled |
+
+Every `ServiceWidget`/`InfoWidget` also accepts an optional `caCert`
+(`SecretValueSource`) to trust a self-hosted upstream's private CA instead of
+a widget-specific `insecureTLS` escape hatch. "(header only)" types are valid
+on `InfoWidget` but not `ServiceCard`; all others work on both.
 
 ## CRDs
 
@@ -54,7 +89,9 @@ reject) when a credential-shaped field name (`token`, `apiKey`, ...) uses an
 inline `value` instead of `secretKeyRef` — a naming heuristic rather than a
 hard invariant, so it can't live in the schema. This requires **Kubernetes
 v1.30+** (`ValidatingAdmissionPolicy` is GA from 1.30); on the Helm chart it
-can be turned off with `--set admissionPolicies.enabled=false`.
+can be turned off with `--set admissionPolicies.enabled=false`. These are
+the floors implied by the API surface used; the CI-tested floor is higher —
+see [Development](#development).
 
 ### Exposing the dashboard
 
@@ -156,6 +193,10 @@ prerequisites — v1.29+ for the CRDs' own CEL schema validation, v1.30+ to
 additionally get the `ValidatingAdmissionPolicy`-based credential-shaped-value
 warning (see [Admission validation](#admission-validation)); older clusters
 work too with `--set admissionPolicies.enabled=false` on the Helm chart.
+Those are the floors required by the API surface in use; the **CI-tested
+floor is 1.33** (the `k8s-compat` workflow only exercises 1.33, since Kind
+v0.32.0 ships no older node image) — versions between 1.29/1.30 and 1.33 are
+expected to work but aren't exercised in CI.
 
 ```sh
 curl https://mise.run | sh   # one-time: install mise
