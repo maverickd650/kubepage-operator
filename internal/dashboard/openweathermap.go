@@ -18,6 +18,10 @@ func init() {
 const (
 	openWeatherMapDefaultBase  = "https://api.openweathermap.org"
 	openWeatherMapSecretAPIKey = "apiKey"
+
+	// sampleWeatherCondition is openWeatherMapWidget.Sample's canned
+	// labelConditions value.
+	sampleWeatherCondition = "Clouds"
 )
 
 // openWeatherMapWidget is a header InfoWidget that shows current weather
@@ -120,6 +124,6 @@ func (openWeatherMapWidget) Sample(cfg WidgetConfig) []Field {
 	}
 	return []Field{
 		{Label: label, Value: "21" + tempSuffix},
-		{Label: labelConditions, Value: "Clouds"},
+		{Label: labelConditions, Value: sampleWeatherCondition},
 	}
 }

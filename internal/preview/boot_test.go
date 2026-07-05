@@ -43,8 +43,8 @@ func TestPreviewServesConfigSamples(t *testing.T) {
 			Addr:          addr,
 			MetricsAddr:   "127.0.0.1:0",
 			PollInterval:  time.Hour,
-			Version:       "test",
-			Commit:        "test",
+			Version:       testVersion,
+			Commit:        testVersion,
 		})
 	}()
 
@@ -124,8 +124,8 @@ func TestPreviewSampleDataServesConfigSamples(t *testing.T) {
 			Addr:          addr,
 			MetricsAddr:   "127.0.0.1:0",
 			PollInterval:  100 * time.Millisecond,
-			Version:       "test",
-			Commit:        "test",
+			Version:       testVersion,
+			Commit:        testVersion,
 			SampleData:    true,
 		})
 	}()
@@ -192,3 +192,7 @@ func TestPreviewSampleDataServesConfigSamples(t *testing.T) {
 // import, since internal/preview intentionally has no dependency on
 // internal/dashboard's unexported widget internals.
 const statusHealthyText = "Healthy"
+
+// testVersion is the placeholder dashboard.PreviewOptions.Version/Commit
+// this file's boot tests pass; the value itself is never asserted on.
+const testVersion = "test"

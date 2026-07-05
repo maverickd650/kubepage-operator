@@ -1220,7 +1220,7 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 	monitorURL := testUnreachableAddr
 	widgetURL := testUnreachableAddr
 	entry := &pagev1alpha1.ServiceCard{
-		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testGroup,

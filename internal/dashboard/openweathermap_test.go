@@ -28,7 +28,7 @@ func TestOpenWeatherMapWidgetPoll(t *testing.T) {
 			secrets:    map[string]string{openWeatherMapSecretAPIKey: testAPIKey},
 			response:   `{"main":{"temp":61},"weather":[{"main":"Rain"}]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: "Rain"}},
+			want:       []Field{{Label: testCityLabel, Value: "61°F"}, {Label: labelConditions, Value: "Rain"}},
 		},
 		testCaseNon200: {
 			config:     testCoordsConfig,
@@ -103,11 +103,11 @@ func TestOpenWeatherMapWidgetSampleNeedsNoAPIKey(t *testing.T) {
 		want   []Field
 	}{
 		"no config falls back to defaults": {
-			want: []Field{{Label: labelWeather, Value: "21°C"}, {Label: labelConditions, Value: "Clouds"}},
+			want: []Field{{Label: labelWeather, Value: "21°C"}, {Label: labelConditions, Value: sampleWeatherCondition}},
 		},
 		"custom label and imperial units": {
 			config: `{"units":"imperial","label":"NYC"}`,
-			want:   []Field{{Label: "NYC", Value: "21°F"}, {Label: labelConditions, Value: "Clouds"}},
+			want:   []Field{{Label: testCityLabel, Value: "21°F"}, {Label: labelConditions, Value: sampleWeatherCondition}},
 		},
 	}
 

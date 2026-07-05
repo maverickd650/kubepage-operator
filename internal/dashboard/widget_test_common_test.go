@@ -50,6 +50,7 @@ const (
 	// Shared literals across openmeteo/openweathermap tests.
 	testCoordsConfig = `{"latitude":1,"longitude":1}`
 	testAPIKey       = "abc123"
+	testCityLabel    = "NYC"
 
 	// Shared literals across iframe widget/render tests.
 	testIframeURL    = "https://grafana.example.com/d/abc"

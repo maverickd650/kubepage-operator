@@ -25,7 +25,7 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 			config:     `{"latitude":40.7,"longitude":-74,"units":"imperial","label":"NYC"}`,
 			response:   `{"current_weather":{"temperature":61,"weathercode":63}}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: condRain}},
+			want:       []Field{{Label: testCityLabel, Value: "61°F"}, {Label: labelConditions, Value: condRain}},
 		},
 		"thunderstorm": {
 			config:     testCoordsConfig,
@@ -96,7 +96,7 @@ func TestOpenMeteoWidgetSample(t *testing.T) {
 		},
 		"custom label and imperial units": {
 			config: `{"units":"imperial","label":"NYC"}`,
-			want:   []Field{{Label: "NYC", Value: "18°F"}, {Label: labelConditions, Value: condClear}},
+			want:   []Field{{Label: testCityLabel, Value: "18°F"}, {Label: labelConditions, Value: condClear}},
 		},
 	}
 

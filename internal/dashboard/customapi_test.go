@@ -19,7 +19,7 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 			config:     `{"mappings":[{"label":"Status","jsonpath":"status"},{"label":"Used","jsonpath":"disk.used","suffix":"%"}]}`,
 			response:   `{"status":"ok","disk":{"used":42.5}}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "Status", Value: "ok"}, {Label: "Used", Value: "42.5%"}},
+			want:       []Field{{Label: labelStatus, Value: "ok"}, {Label: "Used", Value: "42.5%"}},
 		},
 		"array index": {
 			config:     `{"mappings":[{"label":"First","jsonpath":"items.0.name"}]}`,
@@ -37,7 +37,7 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 			config:     `{"mappings":[{"label":"","jsonpath":"status"},{"label":"Status","jsonpath":"status"}]}`,
 			response:   `{"status":"ok"}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "Status", Value: "ok"}},
+			want:       []Field{{Label: labelStatus, Value: "ok"}},
 		},
 		testCaseNon200: {
 			config:     `{"mappings":[{"label":"Status","jsonpath":"status"}]}`,
@@ -157,7 +157,7 @@ func TestCustomAPIWidgetSample(t *testing.T) {
 		},
 		"echoes configured labels with a placeholder value": {
 			config: `{"mappings":[{"label":"Status","jsonpath":"status"},{"label":"Used","jsonpath":"disk.used","suffix":"%"}]}`,
-			want:   []Field{{Label: "Status", Value: sampleCustomAPIValue}, {Label: "Used", Value: sampleCustomAPIValue + "%"}},
+			want:   []Field{{Label: labelStatus, Value: sampleCustomAPIValue}, {Label: "Used", Value: sampleCustomAPIValue + "%"}},
 		},
 		"unlabeled mappings are skipped, falling back if none remain": {
 			config: `{"mappings":[{"jsonpath":"status"}]}`,
