@@ -1292,6 +1292,74 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 	}
 }
 
+// TestPollerProbePodSelectorSampleData verifies probePodSelector's
+// SampleData branch: a fabricated "Up" status with no Reader/pod list at
+// all, proving preview mode never needs pod RBAC for a PodSelector-monitored
+// ServiceCard.
+func TestPollerProbePodSelectorSampleData(t *testing.T) {
+	entry := pagev1alpha1.ServiceCard{
+		Spec: pagev1alpha1.ServiceCardSpec{
+			PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
+		},
+	}
+	p := &Poller{SampleData: true}
+
+	status, text := p.probePodSelector(t.Context(), entry)
+	if status != "Up" || text != sampleMonitorReadyText {
+		t.Errorf("probePodSelector() = (%q, %q), want (Up, %q)", status, text, sampleMonitorReadyText)
+	}
+}
+
+// TestPollerPollWidgetSampleUnsupportedType exercises pollWidgetSample's
+// defensive "impl doesn't implement Sampler" branch — unreachable for any
+// real registered widget (TestEveryRegisteredWidgetHasASample guarantees
+// that), but still a real code path worth a direct test, mirroring
+// TestPollerUnsupportedWidgetType's coverage of the analogous real-Poll
+// branch in pollWidget.
+func TestPollerPollWidgetSampleUnsupportedType(t *testing.T) {
+	const stubType = "test-stub-no-sampler"
+	Register(stubType, stubWidget{})
+	t.Cleanup(func() { delete(registry, stubType) })
+
+	url := testExampleURL
+	entry := pagev1alpha1.ServiceCard{Spec: pagev1alpha1.ServiceCardSpec{Group: testGroup, Name: testSvcAName}}
+	widget := &pagev1alpha1.ServiceWidget{Type: stubType, URL: &url}
+
+	store := NewStore()
+	p := &Poller{Store: store, SampleData: true}
+	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err == "" {
+		t.Fatalf("Snapshot() = %+v, want one card with a non-empty Err for a widget type with no Sample method", cards)
+	}
+}
+
+// TestPollerPollInfoWidgetSampleUnsupportedType is
+// TestPollerPollWidgetSampleUnsupportedType's pollInfoWidget analog.
+func TestPollerPollInfoWidgetSampleUnsupportedType(t *testing.T) {
+	const stubType = "test-stub-no-sampler-info"
+	Register(stubType, stubWidget{})
+	t.Cleanup(func() { delete(registry, stubType) })
+
+	iw := pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "stub", Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         stubType,
+		},
+	}
+
+	store := NewStore()
+	p := &Poller{Store: store, SampleData: true}
+	p.pollInfoWidget(t.Context(), "header/stub", iw)
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err == "" {
+		t.Fatalf("Snapshot() = %+v, want one card with a non-empty Err for a widget type with no Sample method", cards)
+	}
+}
+
 func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	scheme := testScheme(t)
 	instance := &pagev1alpha1.Dashboard{
