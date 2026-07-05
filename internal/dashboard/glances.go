@@ -67,3 +67,11 @@ func (glancesWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 		{Label: labelMemory, Value: fmt.Sprintf("%d%%", memPct), Percent: &memPct, Highlight: usageHighlight(&memPct)},
 	}, nil
 }
+
+func (glancesWidget) Sample(WidgetConfig) []Field {
+	cpuPct, memPct := 45, 82
+	return []Field{
+		{Label: labelCPU, Value: fmt.Sprintf("%d%%", cpuPct), Percent: &cpuPct, Highlight: usageHighlight(&cpuPct)},
+		{Label: labelMemory, Value: fmt.Sprintf("%d%%", memPct), Percent: &memPct, Highlight: usageHighlight(&memPct)},
+	}
+}

@@ -67,6 +67,17 @@ type Poller struct {
 	// discovery.
 	GatewayAPIEnabled bool
 
+	// SampleData, when set, replaces every real upstream poll and monitor
+	// probe with a widget's Sampler.Sample output (or a canned "Up" status),
+	// so preview mode (internal/preview) can render fully populated cards
+	// without a reachable upstream. Set only by dashboard.RunPreview's
+	// --sample-data plumbing — never true for the in-cluster dashboard mode.
+	// Sample polling skips secret resolution, CA-cert handling, and poll
+	// metrics entirely: the data isn't real, so it shouldn't require secret
+	// material to be present locally, and it shouldn't pollute Prometheus
+	// metrics as if a real poll succeeded.
+	SampleData bool
+
 	// monitorLabels is the set of ServiceCard "namespace/name" labels
 	// monitorUp reported on the previous poll cycle. pollOnce diffs the
 	// current cycle's set against this to delete a label series for an
@@ -287,11 +298,11 @@ func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
 func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceCard, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
 	switch {
 	case entry.Spec.PodSelector != nil:
-		status, latency = p.podStatus(ctx, entry)
+		status, latency = p.probePodSelector(ctx, entry)
 	case entry.Spec.SiteMonitor != nil && *entry.Spec.SiteMonitor != "":
-		status, latency = monitorResult(ctx, p.HTTPClient, *entry.Spec.SiteMonitor)
+		status, latency = p.probeURL(ctx, *entry.Spec.SiteMonitor)
 	case entry.Spec.Ping != nil && *entry.Spec.Ping != "":
-		status, latency = monitorResult(ctx, p.HTTPClient, *entry.Spec.Ping)
+		status, latency = p.probeURL(ctx, *entry.Spec.Ping)
 	default:
 		return "", "", ""
 	}
@@ -299,6 +310,12 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceCard, de
 	style := defaultStatusStyle
 	if entry.Spec.StatusStyle != nil {
 		style = *entry.Spec.StatusStyle
+	}
+	// Sample-mode monitor results are fabricated, not observed, so they
+	// don't get recorded into the monitorUp Prometheus gauge either — see
+	// SampleData's doc comment.
+	if p.SampleData {
+		return status, style, latency
 	}
 	up := 0.0
 	if status == "Up" {
@@ -308,6 +325,33 @@ func (p *Poller) monitor(ctx context.Context, entry pagev1alpha1.ServiceCard, de
 	monitorUp.WithLabelValues(label).Set(up)
 	record(label)
 	return status, style, latency
+}
+
+// sampleMonitorLatency and sampleMonitorReadyText are the canned monitor
+// results SampleData mode reports for a configured ping/siteMonitor/
+// podSelector, respectively — see probeURL/probePodSelector.
+const (
+	sampleMonitorLatency   = "12 ms"
+	sampleMonitorReadyText = "2/2 ready"
+)
+
+// probePodSelector returns a fabricated "Up" status in SampleData mode
+// instead of actually listing pods, so preview mode never needs pod RBAC to
+// render a populated status.
+func (p *Poller) probePodSelector(ctx context.Context, entry pagev1alpha1.ServiceCard) (status, text string) {
+	if p.SampleData {
+		return "Up", sampleMonitorReadyText
+	}
+	return p.podStatus(ctx, entry)
+}
+
+// probeURL returns a fabricated "Up" status in SampleData mode instead of
+// actually probing url.
+func (p *Poller) probeURL(ctx context.Context, url string) (status, latency string) {
+	if p.SampleData {
+		return "Up", sampleMonitorLatency
+	}
+	return monitorResult(ctx, p.HTTPClient, url)
 }
 
 // podStatus computes an up/down status from entry's PodSelector: pods are
@@ -416,6 +460,12 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 	if widget.Config != nil {
 		cfg.Config = widget.Config.Raw
 	}
+
+	if p.SampleData {
+		p.pollWidgetSample(card, impl, cfg, widget)
+		return
+	}
+
 	for field, src := range widget.Secrets {
 		value, err := p.resolveSecret(ctx, entry.Namespace, src)
 		if err != nil {
@@ -445,6 +495,27 @@ func (p *Poller) pollWidget(ctx context.Context, key string, entry pagev1alpha1.
 		card.Err = err.Error()
 	case err == nil && card.ShowStats:
 		card.Fields = applyHighlights(filterFields(fields, widget.Fields), widget.Highlight)
+	}
+	p.Store.Set(card)
+}
+
+// pollWidgetSample fills card from impl's Sampler.Sample instead of polling
+// the real upstream: no secret resolution, no CA-cert/HTTP client, and no
+// poll metrics recorded (see SampleData's doc comment). Every registered
+// Widget is required to implement Sampler (enforced by
+// TestEveryRegisteredWidgetHasASample in widget_test.go), so the "no sample"
+// branch below should be unreachable outside a broken future registration.
+func (p *Poller) pollWidgetSample(card Card, impl Widget, cfg WidgetConfig, widget *pagev1alpha1.ServiceWidget) {
+	sampler, ok := impl.(Sampler)
+	if !ok {
+		if !card.HideErrors {
+			card.Err = fmt.Sprintf("no sample data for widget type %q", widget.Type)
+		}
+		p.Store.Set(card)
+		return
+	}
+	if card.ShowStats {
+		card.Fields = applyHighlights(filterFields(sampler.Sample(cfg), widget.Fields), widget.Highlight)
 	}
 	p.Store.Set(card)
 }
@@ -555,6 +626,12 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 			cfg.URL = opts.URL
 		}
 	}
+
+	if p.SampleData {
+		p.pollInfoWidgetSample(card, impl, cfg)
+		return
+	}
+
 	for field, src := range iw.Spec.Secrets {
 		value, err := p.resolveSecret(ctx, iw.Namespace, src)
 		if err != nil {
@@ -585,6 +662,21 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 	} else {
 		card.Fields = fields
 	}
+	p.Store.Set(card)
+}
+
+// pollInfoWidgetSample is pollInfoWidget's SampleData counterpart: it never
+// calls PollCluster or Poll, so it needs neither KubeReader nor an HTTP
+// client, and it records no poll metrics. impl is guaranteed non-nil by
+// pollOnce's caller-side Lookup check.
+func (p *Poller) pollInfoWidgetSample(card Card, impl Widget, cfg WidgetConfig) {
+	sampler, ok := impl.(Sampler)
+	if !ok {
+		card.Err = fmt.Sprintf("no sample data for widget type %q", card.WidgetType)
+		p.Store.Set(card)
+		return
+	}
+	card.Fields = sampler.Sample(cfg)
 	p.Store.Set(card)
 }
 
@@ -674,15 +766,20 @@ func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredServic
 		UpdatedAt:   time.Now(),
 	}
 	if svc.Ping && svc.Href != "" {
-		card.Status, card.Latency = monitorResult(ctx, p.HTTPClient, svc.Href)
+		card.Status, card.Latency = p.probeURL(ctx, svc.Href)
 		card.StatusStyle = statusStyleDot
-		label := "discovery/" + svc.Key
-		up := 0.0
-		if card.Status == "Up" {
-			up = 1
+		// Sample-mode monitor results are fabricated, not observed, so they
+		// don't get recorded into the monitorUp Prometheus gauge either —
+		// see SampleData's doc comment and monitor()'s identical gate.
+		if !p.SampleData {
+			label := "discovery/" + svc.Key
+			up := 0.0
+			if card.Status == "Up" {
+				up = 1
+			}
+			monitorUp.WithLabelValues(label).Set(up)
+			record(label)
 		}
-		monitorUp.WithLabelValues(label).Set(up)
-		record(label)
 	}
 	p.Store.Set(card)
 }

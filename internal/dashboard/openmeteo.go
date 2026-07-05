@@ -55,15 +55,10 @@ func (openMeteoWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 		return nil, errors.New("openmeteo widget: config.latitude/longitude are required")
 	}
 
-	label := c.Label
-	if label == "" {
-		label = labelWeather
-	}
+	label, tempSuffix := weatherLabelAndSuffix(c.Label, c.Units)
 	tempUnit := "celsius"
-	tempSuffix := "°C"
 	if c.Units == unitsImperial {
 		tempUnit = "fahrenheit"
-		tempSuffix = "°F"
 	}
 
 	base := cfg.URL
@@ -91,6 +86,19 @@ func (openMeteoWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 		{Label: label, Value: temp},
 		{Label: labelConditions, Value: weatherCondition(parsed.CurrentWeather.WeatherCode)},
 	}, nil
+}
+
+// Sample honors cfg.Config's label/units overrides the same way Poll does.
+func (openMeteoWidget) Sample(cfg WidgetConfig) []Field {
+	var c openMeteoConfig
+	if len(cfg.Config) > 0 {
+		_ = json.Unmarshal(cfg.Config, &c)
+	}
+	label, tempSuffix := weatherLabelAndSuffix(c.Label, c.Units)
+	return []Field{
+		{Label: label, Value: "18" + tempSuffix},
+		{Label: labelConditions, Value: condClear},
+	}
 }
 
 // weatherCondition maps a WMO weather-interpretation code (as returned by

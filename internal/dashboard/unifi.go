@@ -207,6 +207,13 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 	}, nil
 }
 
+func (unifiWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelClients, Value: "24"},
+	}
+}
+
 // unifiInsecureClientCache holds one *http.Client per baseURL for
 // insecureTLS controllers, so unifiHTTPClient builds (and keeps open
 // connections in) a fresh *http.Transport once per target rather than on

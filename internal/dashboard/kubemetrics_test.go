@@ -64,6 +64,33 @@ func TestKubeMetricsWidgetPollNeverCalledInProduction(t *testing.T) {
 	}
 }
 
+func TestKubeMetricsWidgetSample(t *testing.T) {
+	tests := map[string]struct {
+		config       string
+		wantCPULabel string
+		wantMemLabel string
+	}{
+		"default labels": {wantCPULabel: labelCPU, wantMemLabel: labelMemory},
+		"custom labels": {
+			config:       `{"cpuLabel":"Compute","memoryLabel":"RAM"}`,
+			wantCPULabel: "Compute",
+			wantMemLabel: "RAM",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (kubeMetricsWidget{}).Sample(WidgetConfig{Config: []byte(tc.config)})
+			if len(got) != 2 || got[0].Label != tc.wantCPULabel || got[1].Label != tc.wantMemLabel {
+				t.Fatalf("Sample() = %+v, want labels %q/%q", got, tc.wantCPULabel, tc.wantMemLabel)
+			}
+			if got[0].Percent == nil || got[1].Percent == nil {
+				t.Error("Sample() fields have no Percent, want usage bars in a preview")
+			}
+		})
+	}
+}
+
 func TestUsageHighlight(t *testing.T) {
 	tests := map[string]struct {
 		pct  *int

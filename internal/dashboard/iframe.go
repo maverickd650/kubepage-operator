@@ -41,6 +41,10 @@ const (
 	// embedded dashboard needing its own JS; no allow-forms, allow-popups,
 	// allow-top-navigation, or allow-modals.
 	iframeSandbox = "allow-scripts allow-same-origin"
+
+	// sampleIframeURL is iframeWidget.Sample's placeholder embed URL, used
+	// whenever cfg.URL is unset or fails the same scheme check Poll enforces.
+	sampleIframeURL = "https://example.invalid/embed"
 )
 
 // iframeWidget embeds cfg.URL directly rather than fetching it: an iframe's
@@ -82,6 +86,30 @@ func (iframeWidget) Poll(_ context.Context, _ *http.Client, cfg WidgetConfig) ([
 		{Label: labelIframeSrc, Value: cfg.URL},
 		{Label: labelIframeHeight, Value: height},
 	}, nil
+}
+
+// Sample mirrors Poll: an iframe widget never contacts its upstream (the
+// browser loads the embed directly), so the "sample" is just the same
+// config-derived src/height Poll would have produced, falling back to a
+// placeholder URL when cfg.URL is unset or fails Poll's own scheme check —
+// a preview must never embed a javascript:/data: URL Poll would have
+// rejected outright.
+func (iframeWidget) Sample(cfg WidgetConfig) []Field {
+	url := cfg.URL
+	if url == "" || !isHTTPURL(url) {
+		url = sampleIframeURL
+	}
+	height := iframeDefaultHeight
+	if len(cfg.Config) > 0 {
+		var c iframeConfig
+		if err := json.Unmarshal(cfg.Config, &c); err == nil && c.Height != "" {
+			height = c.Height
+		}
+	}
+	return []Field{
+		{Label: labelIframeSrc, Value: url},
+		{Label: labelIframeHeight, Value: height},
+	}
 }
 
 // iframeSrc and iframeHeight read back the Fields iframeWidget.Poll produced

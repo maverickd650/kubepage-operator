@@ -82,3 +82,16 @@ func (prometheusMetricWidget) Poll(ctx context.Context, httpClient *http.Client,
 
 	return []Field{{Label: label, Value: strconv.FormatFloat(num, 'f', -1, 64)}}, nil
 }
+
+// Sample echoes the operator's own configured label back with a placeholder
+// numeric value, same reasoning as customapi's Sample.
+func (prometheusMetricWidget) Sample(cfg WidgetConfig) []Field {
+	label := labelValue
+	if len(cfg.Config) > 0 {
+		var metricCfg prometheusMetricConfig
+		if err := json.Unmarshal(cfg.Config, &metricCfg); err == nil && metricCfg.Label != "" {
+			label = metricCfg.Label
+		}
+	}
+	return []Field{{Label: label, Value: "42"}}
+}

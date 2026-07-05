@@ -80,3 +80,11 @@ func TestPlexWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestPlexWidgetSample(t *testing.T) {
+	got := (plexWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelStreams {
+		t.Errorf("Sample() = %+v, want Status/Streams fields", got)
+	}
+	assertSampleDeterministic(t, plexWidget{})
+}

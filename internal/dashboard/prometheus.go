@@ -72,3 +72,10 @@ func (prometheusWidget) Poll(ctx context.Context, httpClient *http.Client, cfg W
 		{Label: labelTargetsUp, Value: fmt.Sprintf("%d / %d", up, total)},
 	}, nil
 }
+
+func (prometheusWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelTargetsUp, Value: "8 / 8"},
+	}
+}

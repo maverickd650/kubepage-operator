@@ -51,3 +51,10 @@ func (grafanaWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 		{Label: labelVersion, Value: parsed.Version},
 	}, nil
 }
+
+func (grafanaWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelVersion, Value: "10.4.2"},
+	}
+}

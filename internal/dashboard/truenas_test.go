@@ -80,3 +80,11 @@ func TestTruenasWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestTruenasWidgetSample(t *testing.T) {
+	got := (truenasWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelVersion || got[1].Label != labelUptime {
+		t.Errorf("Sample() = %+v, want Version/Uptime fields", got)
+	}
+	assertSampleDeterministic(t, truenasWidget{})
+}

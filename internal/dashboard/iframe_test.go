@@ -53,6 +53,40 @@ func TestIframeWidgetPoll(t *testing.T) {
 	}
 }
 
+func TestIframeWidgetSample(t *testing.T) {
+	tests := map[string]struct {
+		url    string
+		config string
+		want   []Field
+	}{
+		"url and default height": {
+			url:  testIframeURL,
+			want: []Field{{Label: labelIframeSrc, Value: testIframeURL}, {Label: labelIframeHeight, Value: iframeDefaultHeight}},
+		},
+		"custom height": {
+			url:    testIframeURL,
+			config: `{"height":"50vh"}`,
+			want:   []Field{{Label: labelIframeSrc, Value: testIframeURL}, {Label: labelIframeHeight, Value: "50vh"}},
+		},
+		"no url falls back to a placeholder": {
+			want: []Field{{Label: labelIframeSrc, Value: sampleIframeURL}, {Label: labelIframeHeight, Value: iframeDefaultHeight}},
+		},
+		"non-http scheme falls back to a placeholder": {
+			url:  testJSSchemeURL,
+			want: []Field{{Label: labelIframeSrc, Value: sampleIframeURL}, {Label: labelIframeHeight, Value: iframeDefaultHeight}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (iframeWidget{}).Sample(WidgetConfig{URL: tc.url, Config: []byte(tc.config)})
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("Sample() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIframeSrcAndHeight(t *testing.T) {
 	fields := []Field{{Label: labelIframeSrc, Value: testExampleURL}, {Label: labelIframeHeight, Value: testIframeHeight}}
 	if got := iframeSrc(fields); got != testExampleURL {

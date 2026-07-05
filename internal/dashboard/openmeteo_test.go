@@ -25,7 +25,7 @@ func TestOpenMeteoWidgetPoll(t *testing.T) {
 			config:     `{"latitude":40.7,"longitude":-74,"units":"imperial","label":"NYC"}`,
 			response:   `{"current_weather":{"temperature":61,"weathercode":63}}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: condRain}},
+			want:       []Field{{Label: testCityLabel, Value: "61°F"}, {Label: labelConditions, Value: condRain}},
 		},
 		"thunderstorm": {
 			config:     testCoordsConfig,
@@ -83,6 +83,30 @@ func TestOpenMeteoWidgetPollUnreachable(t *testing.T) {
 	want := []Field{{Label: labelStatus, Value: statusUnreach}}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+func TestOpenMeteoWidgetSample(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   []Field
+	}{
+		"no config falls back to defaults": {
+			want: []Field{{Label: labelWeather, Value: "18°C"}, {Label: labelConditions, Value: condClear}},
+		},
+		"custom label and imperial units": {
+			config: `{"units":"imperial","label":"NYC"}`,
+			want:   []Field{{Label: testCityLabel, Value: "18°F"}, {Label: labelConditions, Value: condClear}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (openMeteoWidget{}).Sample(WidgetConfig{Config: []byte(tc.config)})
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("Sample() = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 

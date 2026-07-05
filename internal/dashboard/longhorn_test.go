@@ -71,3 +71,11 @@ func TestLonghornWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestLonghornWidgetSample(t *testing.T) {
+	got := (longhornWidget{}).Sample(WidgetConfig{})
+	if len(got) != 1 || got[0].Label != labelStorage || got[0].Percent == nil {
+		t.Fatalf("Sample() = %+v, want a single Storage field with Percent set", got)
+	}
+	assertSampleDeterministic(t, longhornWidget{})
+}

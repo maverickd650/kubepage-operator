@@ -216,6 +216,32 @@ func TestServerIndexEmitsCardPixelTuningCSS(t *testing.T) {
 	}
 }
 
+// TestServerIndexSampleDataBanner verifies the visible --sample-data marker
+// (docs/design/local-preview.md phase 4): a preview running with
+// Server.SampleData set must render an unmistakable banner, so a screenshot
+// of sample data is never confused for a live dashboard; the ordinary
+// in-cluster/preview path (SampleData false, the zero value) must not.
+func TestServerIndexSampleDataBanner(t *testing.T) {
+	const banner = "Sample data"
+
+	plain := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	plain.Routes().ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), banner) {
+		t.Error("index body contains the sample-data banner when SampleData is false")
+	}
+
+	sampled := newTestServer(t, NewStore())
+	sampled.SampleData = true
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rec = httptest.NewRecorder()
+	sampled.Routes().ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), banner) {
+		t.Error("index body missing the sample-data banner when SampleData is true")
+	}
+}
+
 func TestServerFragmentRendersStatsRow(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{

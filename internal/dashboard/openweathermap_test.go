@@ -28,7 +28,7 @@ func TestOpenWeatherMapWidgetPoll(t *testing.T) {
 			secrets:    map[string]string{openWeatherMapSecretAPIKey: testAPIKey},
 			response:   `{"main":{"temp":61},"weather":[{"main":"Rain"}]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "NYC", Value: "61°F"}, {Label: labelConditions, Value: "Rain"}},
+			want:       []Field{{Label: testCityLabel, Value: "61°F"}, {Label: labelConditions, Value: "Rain"}},
 		},
 		testCaseNon200: {
 			config:     testCoordsConfig,
@@ -91,5 +91,32 @@ func TestOpenWeatherMapWidgetPollUnreachable(t *testing.T) {
 	want := []Field{{Label: labelStatus, Value: statusUnreach}}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+// TestOpenWeatherMapWidgetSampleNeedsNoAPIKey proves sample mode never
+// requires secrets.apiKey, unlike Poll — Sample takes no Secrets at all
+// (sample mode skips secret resolution entirely, see Poller.SampleData).
+func TestOpenWeatherMapWidgetSampleNeedsNoAPIKey(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   []Field
+	}{
+		"no config falls back to defaults": {
+			want: []Field{{Label: labelWeather, Value: "21°C"}, {Label: labelConditions, Value: sampleWeatherCondition}},
+		},
+		"custom label and imperial units": {
+			config: `{"units":"imperial","label":"NYC"}`,
+			want:   []Field{{Label: testCityLabel, Value: "21°F"}, {Label: labelConditions, Value: sampleWeatherCondition}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (openWeatherMapWidget{}).Sample(WidgetConfig{Config: []byte(tc.config)})
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("Sample() = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }

@@ -80,6 +80,42 @@ func (customAPIWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 	return fields, nil
 }
 
+// sampleCustomAPIValue is customAPIWidget.Sample's placeholder value, used
+// for every configured mapping since customapi's JSON paths give no hint of
+// the upstream's real value shape.
+const sampleCustomAPIValue = "42"
+
+// Sample echoes the operator's own configured mapping labels back with a
+// placeholder value, so a preview shows the real card layout (however many
+// stats, whatever labels) rather than a generic one. Falls back to a single
+// canned field when config.mappings is absent or invalid.
+func (customAPIWidget) Sample(cfg WidgetConfig) []Field {
+	fallback := []Field{{Label: labelValue, Value: sampleCustomAPIValue}}
+
+	var apiCfg customAPIConfig
+	if len(cfg.Config) == 0 {
+		return fallback
+	}
+	if err := json.Unmarshal(cfg.Config, &apiCfg); err != nil || len(apiCfg.Mappings) == 0 {
+		return fallback
+	}
+
+	fields := make([]Field, 0, len(apiCfg.Mappings))
+	for _, m := range apiCfg.Mappings {
+		// Mirrors Poll's own skip condition (both label and jsonpath
+		// required) so a preview never shows a stat the live dashboard
+		// would never render for this config.
+		if m.Label == "" || m.JSONPath == "" {
+			continue
+		}
+		fields = append(fields, Field{Label: m.Label, Value: sampleCustomAPIValue + m.Suffix})
+	}
+	if len(fields) == 0 {
+		return fallback
+	}
+	return fields
+}
+
 // jsonPathLookup walks a decoded JSON value (map[string]any/[]any/scalars)
 // following path's dot-separated segments, treating a segment that parses as
 // a non-negative integer as an array index. Returns ok=false for any missing

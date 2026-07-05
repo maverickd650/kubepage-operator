@@ -17,8 +17,8 @@ func TestPaperlessngxWidgetPoll(t *testing.T) {
 			response:   `{"documents_total":542,"documents_inbox":3}`,
 			statusCode: http.StatusOK,
 			want: []Field{
-				{Label: "Documents", Value: "542"},
-				{Label: "Inbox", Value: "3"},
+				{Label: labelDocuments, Value: "542"},
+				{Label: labelInbox, Value: "3"},
 			},
 		},
 		testCaseNon200: {
@@ -71,4 +71,12 @@ func TestPaperlessngxWidgetPollUnreachable(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
+}
+
+func TestPaperlessngxWidgetSample(t *testing.T) {
+	got := (paperlessngxWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelDocuments || got[1].Label != labelInbox {
+		t.Errorf("Sample() = %+v, want Documents/Inbox fields", got)
+	}
+	assertSampleDeterministic(t, paperlessngxWidget{})
 }

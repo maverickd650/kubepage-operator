@@ -17,6 +17,11 @@ func init() {
 // <token>" (Paperless's own auth scheme, distinct from Bearer).
 type paperlessngxWidget struct{}
 
+const (
+	labelDocuments = "Documents"
+	labelInbox     = "Inbox"
+)
+
 type paperlessngxStatisticsResponse struct {
 	DocumentsTotal int `json:"documents_total"`
 	DocumentsInbox int `json:"documents_inbox"`
@@ -42,7 +47,14 @@ func (paperlessngxWidget) Poll(ctx context.Context, httpClient *http.Client, cfg
 	}
 
 	return []Field{
-		{Label: "Documents", Value: fmt.Sprintf("%d", parsed.DocumentsTotal)},
-		{Label: "Inbox", Value: fmt.Sprintf("%d", parsed.DocumentsInbox)},
+		{Label: labelDocuments, Value: fmt.Sprintf("%d", parsed.DocumentsTotal)},
+		{Label: labelInbox, Value: fmt.Sprintf("%d", parsed.DocumentsInbox)},
 	}, nil
+}
+
+func (paperlessngxWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelDocuments, Value: "1234"},
+		{Label: labelInbox, Value: "12"},
+	}
 }

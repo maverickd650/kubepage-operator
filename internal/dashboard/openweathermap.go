@@ -18,6 +18,10 @@ func init() {
 const (
 	openWeatherMapDefaultBase  = "https://api.openweathermap.org"
 	openWeatherMapSecretAPIKey = "apiKey"
+
+	// sampleWeatherCondition is openWeatherMapWidget.Sample's canned
+	// labelConditions value.
+	sampleWeatherCondition = "Clouds"
 )
 
 // openWeatherMapWidget is a header InfoWidget that shows current weather
@@ -60,15 +64,10 @@ func (openWeatherMapWidget) Poll(ctx context.Context, httpClient *http.Client, c
 		return nil, errors.New("openweathermap widget: secrets.apiKey is required")
 	}
 
-	label := c.Label
-	if label == "" {
-		label = labelWeather
-	}
+	label, tempSuffix := weatherLabelAndSuffix(c.Label, c.Units)
 	units := "metric"
-	tempSuffix := "°C"
 	if c.Units == unitsImperial {
 		units = unitsImperial
-		tempSuffix = "°F"
 	}
 
 	base := cfg.URL
@@ -100,4 +99,19 @@ func (openWeatherMapWidget) Poll(ctx context.Context, httpClient *http.Client, c
 		{Label: label, Value: temp},
 		{Label: labelConditions, Value: conditions},
 	}, nil
+}
+
+// Sample honors cfg.Config's label/units overrides the same way Poll does,
+// and never requires secrets.apiKey (sample mode skips secret resolution
+// entirely — see Poller.SampleData).
+func (openWeatherMapWidget) Sample(cfg WidgetConfig) []Field {
+	var c openWeatherMapConfig
+	if len(cfg.Config) > 0 {
+		_ = json.Unmarshal(cfg.Config, &c)
+	}
+	label, tempSuffix := weatherLabelAndSuffix(c.Label, c.Units)
+	return []Field{
+		{Label: label, Value: "21" + tempSuffix},
+		{Label: labelConditions, Value: sampleWeatherCondition},
+	}
 }

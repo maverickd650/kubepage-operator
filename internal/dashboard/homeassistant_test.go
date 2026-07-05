@@ -70,3 +70,11 @@ func TestHomeassistantWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestHomeassistantWidgetSample(t *testing.T) {
+	got := (homeassistantWidget{}).Sample(WidgetConfig{})
+	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelVersion {
+		t.Errorf("Sample() = %+v, want Status/Version fields", got)
+	}
+	assertSampleDeterministic(t, homeassistantWidget{})
+}

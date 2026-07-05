@@ -32,6 +32,13 @@ type PreviewOptions struct {
 	// Ready, if set, is called once the main HTTP listener is bound, with
 	// the actual resolved address — see Options.Ready's doc comment.
 	Ready func(addr string)
+
+	// SampleData enables --sample-data mode: every widget/monitor probe is
+	// replaced by canned placeholder data (see Poller.SampleData), so a
+	// preview renders fully populated cards without a reachable upstream or
+	// local copies of any secret material the loaded YAML's secretKeyRefs
+	// point at.
+	SampleData bool
 }
 
 // errNoCluster is returned by noopClusterReader for every Get/List, so
@@ -58,9 +65,12 @@ func (noopClusterReader) List(context.Context, client.ObjectList, ...client.List
 // cmd/main.go's "preview" subcommand and internal/preview). Widget polling
 // still makes real outbound HTTP requests to whatever URLs the loaded
 // ServiceCards name — only Kubernetes API access (CRD reads, Secret
-// resolution) is backed by opts.Reader rather than a cluster.
-// GatewayAPIEnabled is always false: HTTPRoute discovery has no meaning
-// without a cluster.
+// resolution) is backed by opts.Reader rather than a cluster — unless
+// opts.SampleData is set, in which case no widget/monitor ever makes a real
+// network call or reads a Secret at all (see Poller.SampleData); a
+// kubemetrics InfoWidget then shows its Sample output instead of erroring
+// through noopClusterReader below. GatewayAPIEnabled is always false:
+// HTTPRoute discovery has no meaning without a cluster.
 func RunPreview(ctx context.Context, opts PreviewOptions) error {
 	return serve(ctx, Options{
 		Namespace:         opts.Namespace,
@@ -72,5 +82,6 @@ func RunPreview(ctx context.Context, opts PreviewOptions) error {
 		Commit:            opts.Commit,
 		GatewayAPIEnabled: false,
 		Ready:             opts.Ready,
+		SampleData:        opts.SampleData,
 	}, opts.Reader, opts.Reader, noopClusterReader{})
 }

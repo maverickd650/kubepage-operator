@@ -84,6 +84,12 @@ type Server struct {
 	// the page shell's footer unless Site.HideVersion is set.
 	Version string
 	Commit  string
+
+	// SampleData is always false for in-cluster dashboard mode; RunPreview
+	// sets it from PreviewOptions.SampleData when --sample-data is passed.
+	// index.templ renders a visible banner when set, so a screenshot of a
+	// sample-data preview can never be mistaken for a live dashboard.
+	SampleData bool
 }
 
 // indexData is the page shell's template data: site-wide look (theme/
@@ -98,6 +104,10 @@ type indexData struct {
 	Fragment       fragmentData
 	Version        string
 	Commit         string
+
+	// SampleData mirrors Server.SampleData, rendered as a visible banner —
+	// see that field's doc comment.
+	SampleData bool
 }
 
 // fragmentData is the polled fragment's template data: the live widget
@@ -359,6 +369,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh,
 		Fragment: s.buildFragmentData(site),
 		Version:  s.Version, Commit: s.Commit,
+		SampleData: s.SampleData,
 	}
 	if err := Index(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

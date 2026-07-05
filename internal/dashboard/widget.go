@@ -102,3 +102,18 @@ func Lookup(widgetType string) (Widget, bool) {
 func RegisteredTypes() []string {
 	return slices.Sorted(maps.Keys(registry))
 }
+
+// Sampler is implemented by every registered Widget to provide
+// representative placeholder Fields for the preview subcommand's
+// --sample-data mode (see Poller.SampleData), so a preview renders populated
+// cards without a reachable upstream. Sample must be deterministic — no
+// randomness or clock reads — since its output is asserted against directly
+// in tests and golden fixtures. cfg is the same WidgetConfig Poll would
+// receive except Secrets is always empty: sample mode never resolves
+// secrets. A widget whose display shape depends on its own config
+// (customapi, prometheusmetric) should read cfg.Config and echo the
+// operator's own configured labels back with placeholder values, rather
+// than a generic fallback that reveals nothing about their setup.
+type Sampler interface {
+	Sample(cfg WidgetConfig) []Field
+}

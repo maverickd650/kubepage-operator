@@ -48,3 +48,10 @@ func (plexWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetC
 		{Label: labelStreams, Value: fmt.Sprintf("%d", parsed.MediaContainer.Size)},
 	}, nil
 }
+
+func (plexWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelStreams, Value: "3"},
+	}
+}

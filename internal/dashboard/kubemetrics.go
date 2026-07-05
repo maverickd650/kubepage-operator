@@ -41,18 +41,9 @@ func (kubeMetricsWidget) Poll(context.Context, *http.Client, WidgetConfig) ([]Fi
 }
 
 func (kubeMetricsWidget) PollCluster(ctx context.Context, reader client.Reader, cfg WidgetConfig) ([]Field, error) {
-	cpuLabel, memoryLabel := labelCPU, labelMemory
-	if len(cfg.Config) > 0 {
-		var c kubeMetricsConfig
-		if err := json.Unmarshal(cfg.Config, &c); err != nil {
-			return nil, fmt.Errorf("decoding widget config: %w", err)
-		}
-		if c.CPULabel != "" {
-			cpuLabel = c.CPULabel
-		}
-		if c.MemoryLabel != "" {
-			memoryLabel = c.MemoryLabel
-		}
+	cpuLabel, memoryLabel, err := resolveKubeMetricsLabels(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	var nodeMetrics metricsv1beta1.NodeMetricsList
@@ -85,6 +76,43 @@ func (kubeMetricsWidget) PollCluster(ctx context.Context, reader client.Reader, 
 		{Label: cpuLabel, Value: cpuValue, Percent: cpuPct, Highlight: usageHighlight(cpuPct)},
 		{Label: memoryLabel, Value: memValue, Percent: memPct, Highlight: usageHighlight(memPct)},
 	}, nil
+}
+
+// resolveKubeMetricsLabels decodes cfg.Config's cpuLabel/memoryLabel
+// overrides, falling back to labelCPU/labelMemory when unset — the one
+// piece of config-decode logic PollCluster and Sample share, kept here so
+// they can't drift out of sync with each other.
+func resolveKubeMetricsLabels(cfg WidgetConfig) (cpuLabel, memoryLabel string, err error) {
+	cpuLabel, memoryLabel = labelCPU, labelMemory
+	if len(cfg.Config) == 0 {
+		return cpuLabel, memoryLabel, nil
+	}
+	var c kubeMetricsConfig
+	if err := json.Unmarshal(cfg.Config, &c); err != nil {
+		return cpuLabel, memoryLabel, fmt.Errorf("decoding widget config: %w", err)
+	}
+	if c.CPULabel != "" {
+		cpuLabel = c.CPULabel
+	}
+	if c.MemoryLabel != "" {
+		memoryLabel = c.MemoryLabel
+	}
+	return cpuLabel, memoryLabel, nil
+}
+
+// Sample honors cfg.Config's cpuLabel/memoryLabel overrides the same way
+// PollCluster does, so a preview reflects the operator's own configured
+// labels rather than a generic fallback. A decode error is ignored — unlike
+// PollCluster, Sample has no error return, so malformed config just falls
+// back to the default labels rather than producing an error card.
+func (kubeMetricsWidget) Sample(cfg WidgetConfig) []Field {
+	cpuLabel, memoryLabel, _ := resolveKubeMetricsLabels(cfg)
+
+	cpuPct, memPct := 65, 92
+	return []Field{
+		{Label: cpuLabel, Value: "2.6 / 4 cores (65%)", Percent: &cpuPct, Highlight: usageHighlight(&cpuPct)},
+		{Label: memoryLabel, Value: "11 / 12 GiB (92%)", Percent: &memPct, Highlight: usageHighlight(&memPct)},
+	}
 }
 
 // usageHighlight flags a usage percentage as "warn" (>=75%) or "danger"

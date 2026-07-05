@@ -177,7 +177,12 @@ Wired together by `Run()` in `dashboard.go`:
   `Register(type, impl)` in an `init()`. A widget that reads the Kubernetes
   API instead of an HTTP upstream (only `kubemetrics` today) additionally
   implements `ClusterWidget.PollCluster`, which the poller calls instead of
-  `Poll`. **Adding a new widget type = add a new file implementing `Widget`
+  `Poll`. Every widget also implements `Sampler.Sample(cfg) []Field` —
+  deterministic placeholder `Field`s the preview subcommand's
+  `--sample-data` mode uses instead of polling a real upstream (see
+  `Poller.SampleData`); `TestEveryRegisteredWidgetHasASample`
+  (`widget_test.go`) fails the build if a widget is missing one. **Adding a
+  new widget type = add a new file implementing `Widget` + `Sampler`
   (+ `init()` registration) — no changes needed to poller/server/store.**
 - `.templ` files (`index.templ`, `header.templ`, `cards.templ`) are
   [templ](https://templ.guide) templates compiled to `*_templ.go` by

@@ -72,3 +72,11 @@ func TestLinkwardenWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestLinkwardenWidgetSample(t *testing.T) {
+	got := (linkwardenWidget{}).Sample(WidgetConfig{})
+	if len(got) != 1 || got[0].Label != labelLinks {
+		t.Errorf("Sample() = %+v, want a single Links field", got)
+	}
+	assertSampleDeterministic(t, linkwardenWidget{})
+}

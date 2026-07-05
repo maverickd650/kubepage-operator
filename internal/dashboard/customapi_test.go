@@ -19,7 +19,7 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 			config:     `{"mappings":[{"label":"Status","jsonpath":"status"},{"label":"Used","jsonpath":"disk.used","suffix":"%"}]}`,
 			response:   `{"status":"ok","disk":{"used":42.5}}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "Status", Value: "ok"}, {Label: "Used", Value: "42.5%"}},
+			want:       []Field{{Label: labelStatus, Value: "ok"}, {Label: "Used", Value: "42.5%"}},
 		},
 		"array index": {
 			config:     `{"mappings":[{"label":"First","jsonpath":"items.0.name"}]}`,
@@ -37,7 +37,7 @@ func TestCustomAPIWidgetPoll(t *testing.T) {
 			config:     `{"mappings":[{"label":"","jsonpath":"status"},{"label":"Status","jsonpath":"status"}]}`,
 			response:   `{"status":"ok"}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: "Status", Value: "ok"}},
+			want:       []Field{{Label: labelStatus, Value: "ok"}},
 		},
 		testCaseNon200: {
 			config:     `{"mappings":[{"label":"Status","jsonpath":"status"}]}`,
@@ -144,6 +144,42 @@ func TestCustomAPIWidgetPollBearerToken(t *testing.T) {
 	}
 	if gotAuth != "Bearer tok123" {
 		t.Errorf("Authorization header = %q, want %q", gotAuth, "Bearer tok123")
+	}
+}
+
+func TestCustomAPIWidgetSample(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   []Field
+	}{
+		"no config falls back to a generic Value field": {
+			want: []Field{{Label: labelValue, Value: sampleCustomAPIValue}},
+		},
+		"echoes configured labels with a placeholder value": {
+			config: `{"mappings":[{"label":"Status","jsonpath":"status"},{"label":"Used","jsonpath":"disk.used","suffix":"%"}]}`,
+			want:   []Field{{Label: labelStatus, Value: sampleCustomAPIValue}, {Label: "Used", Value: sampleCustomAPIValue + "%"}},
+		},
+		"unlabeled mappings are skipped, falling back if none remain": {
+			config: `{"mappings":[{"jsonpath":"status"}]}`,
+			want:   []Field{{Label: labelValue, Value: sampleCustomAPIValue}},
+		},
+		"mappings missing jsonpath are skipped, matching Poll's own skip condition": {
+			config: `{"mappings":[{"label":"Foo"},{"label":"Status","jsonpath":"status"}]}`,
+			want:   []Field{{Label: labelStatus, Value: sampleCustomAPIValue}},
+		},
+		"malformed config falls back": {
+			config: `{not valid json`,
+			want:   []Field{{Label: labelValue, Value: sampleCustomAPIValue}},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := (customAPIWidget{}).Sample(WidgetConfig{Config: []byte(tc.config)})
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("Sample() = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 

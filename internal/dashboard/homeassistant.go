@@ -46,3 +46,10 @@ func (homeassistantWidget) Poll(ctx context.Context, httpClient *http.Client, cf
 		{Label: labelVersion, Value: parsed.Version},
 	}, nil
 }
+
+func (homeassistantWidget) Sample(WidgetConfig) []Field {
+	return []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelVersion, Value: "2024.6.0"},
+	}
+}

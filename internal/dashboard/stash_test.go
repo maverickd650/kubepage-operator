@@ -86,3 +86,11 @@ func TestStashWidgetPollUnreachable(t *testing.T) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
+
+func TestStashWidgetSample(t *testing.T) {
+	got := (stashWidget{}).Sample(WidgetConfig{})
+	if len(got) != 3 || got[0].Label != labelScenes || got[1].Label != labelImages || got[2].Label != labelGalleries {
+		t.Errorf("Sample() = %+v, want Scenes/Images/Galleries fields", got)
+	}
+	assertSampleDeterministic(t, stashWidget{})
+}
