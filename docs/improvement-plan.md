@@ -27,45 +27,6 @@ tail of issue #73** — not code-quality problems.
 
 ---
 
-## P1 — Unblock Renovate updates to the mise toolchain (`.mise/mise.lock`)
-
-**Priority: highest — this silently breaks the dependency-update pipeline.**
-**Type: `ci:` · Effort: medium · Agent tier: advanced**
-
-The Renovate dashboard (issue #27) reports a repository problem:
-`WARN: Error updating .mise/mise.lock`. Renovate bumps tool versions in
-`.mise/config.toml` but cannot regenerate `.mise/mise.lock` (the lock pins
-per-platform release URLs and checksums; verified: PR #78's diff touches
-*only* `.mise/config.toml`). Meanwhile every CI workflow installs the
-toolchain with `mise install --locked`
-(`.github/actions/setup-go-env/action.yml:15`, plus two spots in
-`release.yaml`), which requires config and lock to agree. Net effect: any
-Renovate PR that bumps a `[tools]` entry (currently #78, kubeconform
-0.6.7 → 0.8.0) arrives with a config/lock mismatch and cannot go green
-without a human regenerating the lock — the automation defeats itself.
-
-Suggested approach (verify before building):
-
-1. Confirm the failure mode: check PR #78's CI results — expect the mise
-   install step to fail on the lock mismatch.
-2. Prefer fixing this *inside* Renovate first: check whether the running
-   Renovate version supports mise lockfile maintenance for `mise.lock`
-   (support has been evolving; the WARN suggests it tried and failed —
-   read the Renovate logs from the dashboard issue if accessible, and the
-   Renovate docs for the `mise` manager).
-3. If Renovate can't do it, add a small repair workflow: on `pull_request`
-   branches matching `renovate/*` where `.mise/config.toml` changed but
-   `.mise/mise.lock` didn't, run `mise install` (which refreshes the lock)
-   and push the resulting `mise.lock` change back to the PR branch as a
-   fixup commit (commit message must still be Conventional, e.g.
-   `chore(deps): refresh mise.lock`). Mind the usual footguns: use a token
-   that can push to the branch, guard against infinite retrigger loops
-   (skip when the head commit is the fixup itself), and only ever run on
-   branches from this repo (Renovate branches are), never on forks.
-4. Acceptance: PR #78 (rebase it to retrigger) goes green with no human
-   lockfile intervention, and the dashboard WARN disappears on Renovate's
-   next run.
-
 ## P2 — Fix documentation drift (three small, independent fixes)
 
 **Type: `docs:` · Effort: small · Agent tier: standard**
@@ -155,22 +116,6 @@ mutants, and post findings as a comment on issue #73 as the issue
 prescribes. Strengthen genuinely weak assertions in a follow-up `test:` PR
 if the audit finds any. Do **not** wire mutation testing into CI — the
 issue explicitly rules that out as too slow.
-
-## P5 — Dependency and release housekeeping (recurring)
-
-**Type: n/a (reviews/merges) · Effort: small · Agent tier: standard**
-
-- PR #80 (`docker/setup-buildx-action` v3 → v4, labeled `type/major`): run
-  the `/update-triage` skill — it encodes this repo's version-coupling
-  rules for exactly this kind of PR. Note the v4 line is already used in
-  `release.yaml`, so consistency argues for taking it in the remaining
-  workflows once triaged.
-- PR #78 (kubeconform): blocked on P1; merge after the lock story is fixed.
-- PR #82 (fsnotify v1.9.0 → v1.10.1): routine minor; `internal/preview`'s
-  live-reload watcher is the consumer — check its tests pass, then merge.
-- PR #33 (release-please, v0.2.0): contains two breaking changes (CRD kind
-  renames, bool→enum migrations). Cutting the release is an **owner
-  decision** — do not merge autonomously; surface it to the maintainer.
 
 ## P6 — Preview mode phase-4 stretch: `--sample-data`
 
