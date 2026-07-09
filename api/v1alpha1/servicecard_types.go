@@ -188,29 +188,162 @@ type ServiceWidget struct {
 	PollIntervalSeconds *int32 `json:"pollIntervalSeconds,omitempty"`
 }
 
-// ServiceCardSpec defines one service card rendered by the native
-// dashboard, in the group named by Group.
+// ServiceEntry is one service card's configuration: display fields, monitor
+// source, and widgets. ServiceCardSpec embeds one ServiceEntry inline for
+// the single-card form (one ServiceCard object per card, the original wire
+// format), and holds a list of them in Services for the multi-card form (one
+// ServiceCard object per group, or per whole dashboard).
 //
 // Nested groups (a group inside another group) are not supported in this
 // version of the operator; Group always names a top-level group.
+// +kubebuilder:validation:XValidation:rule="(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) + (has(self.podSelector) ? 1 : 0) <= 1",message="at most one of ping, siteMonitor, or podSelector may be set"
+type ServiceEntry struct {
+	// group is the name of the (top-level) group this entry belongs to.
+	// Entries sharing a Group are rendered together. In the multi-card form
+	// (ServiceCardSpec.Services), an entry that omits group falls back to
+	// ServiceCardSpec.Group as a shared default (see ServiceCardSpec.Entries).
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Group string `json:"group,omitempty"`
+
+	// name is the service's display name (the card title).
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// order controls rendering position: groups and entries are sorted by
+	// Order (nil sorts last), ties broken by Name, since CRDs have no
+	// inherent ordering but the dashboard's groups/entries are displayed in a
+	// fixed order.
+	// +optional
+	Order *int32 `json:"order,omitempty"`
+
+	// href makes the card's title a link to the service.
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	Href *string `json:"href,omitempty"`
+
+	// target overrides the DashboardStyle's default link target for this
+	// card's Href ("_blank" opens a new tab, "_self" the same tab).
+	// +kubebuilder:validation:Enum=_blank;_self
+	// +optional
+	Target *string `json:"target,omitempty"`
+
+	// icon resolves as a dashboard-icons slug, or passes through as-is if
+	// it's already a full URL.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Icon *string `json:"icon,omitempty"`
+
+	// description overrides the default description shown on the card.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=1024
+	// +optional
+	Description *string `json:"description,omitempty"`
+
+	// showStats controls whether the polled widget fields are displayed on
+	// the card. Defaults to "Show"; set "Hide" to show only the title/icon/
+	// description (and any monitor status).
+	// +kubebuilder:validation:Enum=Show;Hide
+	// +optional
+	ShowStats *string `json:"showStats,omitempty"`
+
+	// errorDisplay controls whether a widget's error text is shown on the
+	// card (e.g. set "Hidden" for a service that is expected to be
+	// intermittently unreachable). Defaults to "Shown".
+	// +kubebuilder:validation:Enum=Shown;Hidden
+	// +optional
+	ErrorDisplay *string `json:"errorDisplay,omitempty"`
+
+	// ping is a URL probed over HTTP for reachability and latency, shown as
+	// an up/down status on the card. (Raw ICMP is not used, so a pod needs
+	// no elevated capabilities.)
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	Ping *string `json:"ping,omitempty"`
+
+	// siteMonitor is a URL probed over HTTP, shown as an up/down status with
+	// response latency on the card.
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	SiteMonitor *string `json:"siteMonitor,omitempty"`
+
+	// podSelector selects pods in this ServiceCard's namespace whose
+	// readiness determines this service's up/down status — a
+	// Kubernetes-native alternative to Ping/SiteMonitor for services that
+	// run as pods in this cluster, needing no externally reachable URL.
+	// With multiple matches, any Ready pod renders "Up"; the card shows
+	// "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
+	// Mutually exclusive with Ping and SiteMonitor (enforced by this type's
+	// CEL validation rule).
+	// +optional
+	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
+
+	// statusStyle controls how the Ping/SiteMonitor/PodSelector status
+	// renders: "dot" a colored status dot, "basic" up/down text. Ignored
+	// unless one of Ping, SiteMonitor, or PodSelector is set.
+	// +kubebuilder:validation:Enum=dot;basic
+	// +optional
+	StatusStyle *string `json:"statusStyle,omitempty"`
+
+	// widgets attached to this service. Zero, one, or many are allowed; the
+	// dashboard polls each one independently and shows its fields on the
+	// card.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +listType=atomic
+	// +optional
+	Widgets []ServiceWidget `json:"widgets,omitempty"`
+}
+
+// ServiceCardSpec defines the service card(s) rendered by the native
+// dashboard. Choose exactly one form: the inline single-card form (set name
+// and the other card fields directly on spec, unchanged from earlier
+// versions of this API), or the multi-card form (set services, a list of one
+// or more card entries) — never both. group is the one inline field allowed
+// alongside services: it becomes the default group for any entry that
+// doesn't set its own.
+//
+// The single-card fields below duplicate ServiceEntry's rather than
+// embedding it, so that existing Go code building a ServiceCardSpec{Group:
+// ..., Name: ...} literal (the single-card form predates Services) keeps
+// compiling unchanged — an embedded field can't be set by name in a keyed
+// struct literal of the embedding type. Entries() is the single place that
+// reconciles the two representations.
+// +kubebuilder:validation:XValidation:rule="has(self.name) != has(self.services)",message="exactly one of name (single-card form) or services (multi-card form) must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.services) || (!has(self.href) && !has(self.target) && !has(self.icon) && !has(self.description) && !has(self.showStats) && !has(self.errorDisplay) && !has(self.ping) && !has(self.siteMonitor) && !has(self.podSelector) && !has(self.statusStyle) && !has(self.widgets) && !has(self.order))",message="when services is set, the single-card inline fields (href, target, icon, description, showStats, errorDisplay, ping, siteMonitor, podSelector, statusStyle, widgets, order) must be absent; group is still allowed as the default group for entries"
+// +kubebuilder:validation:XValidation:rule="!has(self.services) || self.services.all(s, has(s.name))",message="every services entry must set name"
+// +kubebuilder:validation:XValidation:rule="!has(self.services) || has(self.group) || self.services.all(s, has(s.group))",message="every services entry must resolve a group: set spec.group as a default, or set group on every entry"
+// +kubebuilder:validation:XValidation:rule="has(self.services) || (has(self.name) && has(self.group))",message="the single-card form requires both name and group"
 // +kubebuilder:validation:XValidation:rule="(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) + (has(self.podSelector) ? 1 : 0) <= 1",message="at most one of ping, siteMonitor, or podSelector may be set"
 type ServiceCardSpec struct {
 	// dashboardRef names the Dashboard this ServiceCard belongs to.
 	// +required
 	DashboardRef DashboardRef `json:"dashboardRef"`
 
-	// group is the name of the (top-level) group this entry belongs to.
-	// Entries sharing a Group are rendered together.
+	// group is the name of the (top-level) group this entry belongs to (the
+	// single-card form), or the default group for any Services entry that
+	// doesn't set its own group (the multi-card form).
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
-	// +required
-	Group string `json:"group"`
+	// +optional
+	Group string `json:"group,omitempty"`
 
-	// name is the service's display name (the card title).
+	// name is the service's display name (the card title). Set only for the
+	// single-card form; mutually exclusive with Services.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
-	// +required
-	Name string `json:"name"`
+	// +optional
+	Name string `json:"name,omitempty"`
 
 	// order controls rendering position: groups and entries are sorted by
 	// Order (nil sorts last), ties broken by Name, since CRDs have no
@@ -302,6 +435,53 @@ type ServiceCardSpec struct {
 	// +listType=atomic
 	// +optional
 	Widgets []ServiceWidget `json:"widgets,omitempty"`
+
+	// services defines one entry per service card, for a ServiceCard that
+	// groups multiple cards (a whole group, or a whole dashboard) into one
+	// object instead of one ServiceCard per card. group is optional on each
+	// entry: an entry without its own group falls back to spec.group as a
+	// shared default. Mutually exclusive with the inline single-card fields
+	// above (name, href, target, icon, description, showStats, errorDisplay,
+	// ping, siteMonitor, podSelector, statusStyle, widgets, order).
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
+	// +listType=atomic
+	// +optional
+	Services []ServiceEntry `json:"services,omitempty"`
+}
+
+// Entries returns the card entries this ServiceCard defines, normalized to
+// the multi-card form: for the single-card form it returns spec's own inline
+// fields as a one-element slice; for the multi-card form it returns a copy
+// of Services with each entry's empty Group replaced by spec.group (the
+// shared default).
+func (s *ServiceCardSpec) Entries() []ServiceEntry {
+	if len(s.Services) == 0 {
+		return []ServiceEntry{{
+			Group:        s.Group,
+			Name:         s.Name,
+			Order:        s.Order,
+			Href:         s.Href,
+			Target:       s.Target,
+			Icon:         s.Icon,
+			Description:  s.Description,
+			ShowStats:    s.ShowStats,
+			ErrorDisplay: s.ErrorDisplay,
+			Ping:         s.Ping,
+			SiteMonitor:  s.SiteMonitor,
+			PodSelector:  s.PodSelector,
+			StatusStyle:  s.StatusStyle,
+			Widgets:      s.Widgets,
+		}}
+	}
+	entries := make([]ServiceEntry, len(s.Services))
+	copy(entries, s.Services)
+	for i := range entries {
+		if entries[i].Group == "" {
+			entries[i].Group = s.Group
+		}
+	}
+	return entries
 }
 
 // ServiceCardStatus defines the observed state of ServiceCard.

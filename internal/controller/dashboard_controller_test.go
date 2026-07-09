@@ -525,7 +525,7 @@ var _ = Describe("Dashboard controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
-					Group:        "Media",
+					Group:        testMultiFormGroupMedia,
 					Name:         "Sonarr",
 				},
 			}

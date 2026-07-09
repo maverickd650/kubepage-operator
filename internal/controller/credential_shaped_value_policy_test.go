@@ -95,7 +95,7 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		It("warns when a credential-shaped field name uses an inline value", func() {
 			se := serviceEntryWithSecret("se-cred-shaped", nil)
 			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				"apiKey": {Value: ptrString("plaintext-value")},
+				testCredShapedFieldAPIKey: {Value: ptrString("plaintext-value")},
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed(), "Warn actions must not block the request")
 			defer func() { _ = warningClient.Delete(ctx, se) }()
@@ -115,10 +115,32 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		It("does not warn when the credential-shaped field uses secretKeyRef", func() {
 			se := serviceEntryWithSecret("se-cred-shaped-ref", nil)
 			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				"apiKey": {SecretKeyRef: &corev1.SecretKeySelector{
+				testCredShapedFieldAPIKey: {SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 					Key:                  secretField,
 				}},
+			}
+			Expect(warningClient.Create(ctx, se)).To(Succeed())
+			defer func() { _ = warningClient.Delete(ctx, se) }()
+			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
+		})
+	})
+
+	Describe("ServiceCard multi-card form (services[].widgets[].secrets)", func() {
+		It("warns when a credential-shaped field name under services[].widgets[] uses an inline value", func() {
+			se := multiServiceCardWithNestedSecret("se-multi-cred-shaped", pagev1alpha1.SecretValueSource{})
+			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
+				testCredShapedFieldAPIKey: {Value: ptrString("plaintext-value")},
+			}
+			Expect(warningClient.Create(ctx, se)).To(Succeed(), "Warn actions must not block the request")
+			defer func() { _ = warningClient.Delete(ctx, se) }()
+			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
+		})
+
+		It("does not warn for a non-credential-shaped field name under services[].widgets[] using an inline value", func() {
+			se := multiServiceCardWithNestedSecret("se-multi-not-cred-shaped", pagev1alpha1.SecretValueSource{})
+			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
+				"latitude": {Value: ptrString("51.5")},
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed())
 			defer func() { _ = warningClient.Delete(ctx, se) }()

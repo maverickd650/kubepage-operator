@@ -93,7 +93,7 @@ committed, like the CRD YAML).
 |------|-----------|---------|
 | `Dashboard` | `pdash` | Owns the dashboard Deployment, Service, optional Ingress/HTTPRoute, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. |
 | `DashboardStyle` | `pstyle` | Site-wide look (title, theme, color, background, header style, search box) and optional tab `layout`. Exactly one per Dashboard, enforced by naming the object after the Dashboard it styles (`metadata.name == spec.dashboardRef.name`). |
-| `ServiceCard` | `pcard` | One service card, optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
+| `ServiceCard` | `pcard` | One or many service cards (`spec.name` for a single card, or `spec.services` for a group's or a whole dashboard's worth in one object), each optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
 | `Bookmark` | `pbmk` | One static bookmark link. |
 | `InfoWidget` | `piw` | One header-strip widget: `datetime`, `greeting`, or `openmeteo`. |
 

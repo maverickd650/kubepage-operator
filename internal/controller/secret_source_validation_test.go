@@ -81,6 +81,32 @@ var _ = Describe("SecretValueSource CRD schema validation", func() {
 		})
 	})
 
+	Describe("ServiceCard multi-card form (services[].widgets[].secrets)", func() {
+		// SecretValueSource's XValidation is a type-level marker, so it
+		// applies wherever a SecretValueSource appears in the schema — this
+		// proves it also fires one level deeper than the single-card form,
+		// under spec.services[].widgets[].secrets.
+		It("rejects a services entry's widget secret that sets both value and secretKeyRef", func() {
+			both := pagev1alpha1.SecretValueSource{
+				Value: ptrString("inline"),
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
+					Key:                  secretField,
+				},
+			}
+			se := multiServiceCardWithNestedSecret("se-multi-both", both)
+			err := k8sClient.Create(ctx, se)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("admits a services entry's widget secret that sets only secretKeyRef", func() {
+			se := multiServiceCardWithNestedSecret("se-multi-ref-only", *secretKeyRef())
+			Expect(k8sClient.Create(ctx, se)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, se)).To(Succeed())
+		})
+	})
+
 	Describe("InfoWidget secrets", func() {
 		It("rejects a secret that sets neither value nor secretKeyRef", func() {
 			iw := infoWidgetWithSecret("iw-neither", &pagev1alpha1.SecretValueSource{})
@@ -112,6 +138,26 @@ func serviceEntryWithSecret(name string, src *pagev1alpha1.SecretValueSource) *p
 			Group:        policyTestGroup,
 			Name:         name,
 			Widgets:      []pagev1alpha1.ServiceWidget{widget},
+		},
+	}
+}
+
+// multiServiceCardWithNestedSecret builds a minimally-valid multi-card-form
+// ServiceCard (spec.services) whose single entry's single widget carries one
+// secret keyed secretField set to src.
+func multiServiceCardWithNestedSecret(name string, src pagev1alpha1.SecretValueSource) *pagev1alpha1.ServiceCard {
+	widget := pagev1alpha1.ServiceWidget{
+		Type:    testWidgetTypePrometheus,
+		Secrets: map[string]pagev1alpha1.SecretValueSource{secretField: src},
+	}
+	return &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			Group:        policyTestGroup,
+			Services: []pagev1alpha1.ServiceEntry{
+				{Name: name, Widgets: []pagev1alpha1.ServiceWidget{widget}},
+			},
 		},
 	}
 }
