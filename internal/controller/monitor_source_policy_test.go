@@ -51,6 +51,40 @@ var _ = Describe("ServiceCard monitor-source CRD schema validation", func() {
 		Expect(k8sClient.Create(ctx, se)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
 	})
+
+	// ServiceEntry carries its own copy of the same XValidation rule (see
+	// api/v1alpha1/servicecard_types.go), so the multi-card form must reject
+	// the same combinations per-entry, not just at the top level.
+	It("rejects ping + siteMonitor both set on a services entry", func() {
+		se := &pagev1alpha1.ServiceCard{
+			ObjectMeta: metav1.ObjectMeta{Name: "se-multi-ping-and-site", Namespace: policyTestNamespace},
+			Spec: pagev1alpha1.ServiceCardSpec{
+				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				Group:        policyTestGroup,
+				Services: []pagev1alpha1.ServiceEntry{
+					{Name: "svc", Ping: new("http://example.invalid/"), SiteMonitor: new("http://example.invalid/")},
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, se)
+		Expect(err).To(HaveOccurred())
+		Expect(apierrors.IsInvalid(err)).To(BeTrue())
+	})
+
+	It("admits a services entry with exactly one monitor source", func() {
+		se := &pagev1alpha1.ServiceCard{
+			ObjectMeta: metav1.ObjectMeta{Name: "se-multi-pod-only", Namespace: policyTestNamespace},
+			Spec: pagev1alpha1.ServiceCardSpec{
+				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				Group:        policyTestGroup,
+				Services: []pagev1alpha1.ServiceEntry{
+					{Name: "svc", PodSelector: podSelector()},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, se)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
+	})
 })
 
 // serviceEntryWithMonitors builds a minimally-valid ServiceCard with the

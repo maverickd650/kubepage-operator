@@ -28,22 +28,25 @@ import (
 )
 
 const (
-	testNamespace     = "ns"
-	testDashboardName = "main"
-	testGroup         = "Monitoring"
-	testServiceName   = "Prometheus"
-	testSvcAName      = "Svc A"
-	testCardKeyA      = "ns/a/0"
-	testWidgetType    = "prometheus"
-	testSecretField   = "token"
-	testBookmarkGroup = "Reading"
-	testOtherGroup    = "Other"
-	testTab1          = "Tab1"
-	testTab2          = "Tab2"
-	testInfraTab      = "Infrastructure"
-	testStyleRow      = "row"
-	testColor         = "blue"
-	testDoesNotExist  = "does-not-exist"
+	testNamespace               = "ns"
+	testDashboardName           = "main"
+	testGroup                   = "Monitoring"
+	testServiceName             = "Prometheus"
+	testSvcAName                = "Svc A"
+	testCardKeyA                = "ns/a/0"
+	testWidgetType              = "prometheus"
+	testSecretField             = "token"
+	testBookmarkGroup           = "Reading"
+	testOtherGroup              = "Other"
+	testTab1                    = "Tab1"
+	testTab2                    = "Tab2"
+	testInfraTab                = "Infrastructure"
+	testStyleRow                = "row"
+	testColor                   = "blue"
+	testDoesNotExist            = "does-not-exist"
+	testMultiEntryNamePlex      = "Plex"
+	testMultiEntryNameStash     = "Stash"
+	testMultiEntryNameMonitored = "Monitored"
 
 	// testEphemeralAddr requests an OS-assigned port, for tests that don't
 	// care which one they get.
@@ -144,6 +147,117 @@ func TestPollerPollOnce(t *testing.T) {
 	wantFields := []Field{{Label: labelStatus, Value: statusHealthy}, {Label: labelTargetsUp, Value: "1 / 1"}}
 	if len(card.Fields) != len(wantFields) || card.Fields[0] != wantFields[0] || card.Fields[1] != wantFields[1] {
 		t.Errorf("card.Fields = %+v, want %+v", card.Fields, wantFields)
+	}
+}
+
+// TestPollerMultiCardFormProducesPerEntryCards exercises the multi-card form
+// (ServiceCardSpec.Services): one ServiceCard object with three entries — one
+// with a widget and its own group, one with a widget that falls back to
+// spec.group, and one monitor-only entry with no widget — must produce one
+// Card per entry (per widget, for the widget entries), each keyed by
+// namespace/name/entryIndex[/widgetIndex|monitor], with the second entry's
+// Group defaulted from spec.group.
+func TestPollerMultiCardFormProducesPerEntryCards(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"activeTargets":[{"health":"up"}]}}`))
+	}))
+	defer srv.Close()
+
+	monSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer monSrv.Close()
+
+	url := srv.URL
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: "multi", Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testGroup,
+			Services: []pagev1alpha1.ServiceEntry{
+				{
+					Name:  testMultiEntryNamePlex,
+					Group: testOtherGroup,
+					Widgets: []pagev1alpha1.ServiceWidget{
+						{Type: testWidgetType, URL: &url},
+					},
+				},
+				{
+					Name: testMultiEntryNameStash, // no own Group: falls back to spec.group (testGroup)
+					Widgets: []pagev1alpha1.ServiceWidget{
+						{Type: testWidgetType, URL: &url},
+					},
+				},
+				{
+					Name:        testMultiEntryNameMonitored,
+					SiteMonitor: &monSrv.URL,
+				},
+			},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 3 {
+		t.Fatalf("Snapshot() = %d cards, want 3 (one per entry)", len(cards))
+	}
+
+	byKey := map[string]Card{}
+	for _, c := range cards {
+		byKey[c.Key] = c
+	}
+
+	plex, ok := byKey["ns/multi/0/0"]
+	if !ok {
+		t.Fatalf("no card for key ns/multi/0/0; got keys %v", byKey)
+	}
+	if plex.ServiceName != testMultiEntryNamePlex || plex.Group != testOtherGroup {
+		t.Errorf("plex card = %+v, want ServiceName=Plex Group=%s (own group)", plex, testOtherGroup)
+	}
+
+	stash, ok := byKey["ns/multi/1/0"]
+	if !ok {
+		t.Fatalf("no card for key ns/multi/1/0; got keys %v", byKey)
+	}
+	if stash.ServiceName != testMultiEntryNameStash || stash.Group != testGroup {
+		t.Errorf("stash card = %+v, want ServiceName=Stash Group=%s (defaulted from spec.group)", stash, testGroup)
+	}
+
+	monitored, ok := byKey["ns/multi/2/monitor"]
+	if !ok {
+		t.Fatalf("no card for key ns/multi/2/monitor; got keys %v", byKey)
+	}
+	if monitored.ServiceName != testMultiEntryNameMonitored || monitored.Status != "Up" {
+		t.Errorf("monitored card = %+v, want ServiceName=Monitored Status=Up", monitored)
+	}
+
+	// A second poll cycle after removing the "Stash" entry must prune its
+	// card from Store, mirroring how a deleted single-card ServiceCard's
+	// card is pruned — Store.Prune has no special casing for the multi-card
+	// form.
+	entry.Spec.Services = []pagev1alpha1.ServiceEntry{entry.Spec.Services[0], entry.Spec.Services[2]}
+	if err := cl.Update(t.Context(), entry); err != nil {
+		t.Fatalf("updating ServiceCard: %v", err)
+	}
+	p.pollOnce(t.Context())
+
+	cards = store.Snapshot()
+	if len(cards) != 2 {
+		t.Fatalf("Snapshot() after removing an entry = %d cards, want 2", len(cards))
+	}
+	for _, c := range cards {
+		if c.ServiceName == testMultiEntryNameStash {
+			t.Errorf("card for removed entry Stash still present: %+v", c)
+		}
 	}
 }
 
@@ -259,7 +373,7 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 	p.pollOnce(t.Context())
 
 	cards := store.Snapshot()
-	if len(cards) != 1 || cards[0].Key != "ns/svc/0" {
+	if len(cards) != 1 || cards[0].Key != "ns/svc/0/0" {
 		t.Fatalf("Snapshot() = %+v, want only the ServiceCard card: an InfoWidget List error logs and continues "+
 			"(rather than returning early), so the stale header card should still be pruned", cards)
 	}
@@ -353,7 +467,7 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(t.Context(), entry, statusStyleDot, func(string) {})
+	status, style, latency := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], false, statusStyleDot, func(string) {})
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
@@ -382,7 +496,7 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
-	status, text := p.podStatus(t.Context(), entry)
+	status, text := p.podStatus(t.Context(), entry.Namespace, entry.Spec.Entries()[0])
 	if status != statusDown || text != "" {
 		t.Errorf("podStatus(invalid selector) = (%q, %q), want (%q, \"\")", status, text, statusDown)
 	}
@@ -410,7 +524,7 @@ func TestPollerPodStatusListPodsError(t *testing.T) {
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
-	status, text := p.podStatus(t.Context(), entry)
+	status, text := p.podStatus(t.Context(), entry.Namespace, entry.Spec.Entries()[0])
 	if status != statusDown || text != "" {
 		t.Errorf("podStatus(List error) = (%q, %q), want (%q, \"\")", status, text, statusDown)
 	}
@@ -726,7 +840,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -768,7 +882,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
 
 	// First poll of key is always due, regardless of override.
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
 	}
@@ -777,7 +891,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	}
 
 	// Immediately polling again is within the 100s override: skipped.
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
 	}
@@ -786,7 +900,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[testCardKeyA] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
 	}
@@ -1109,7 +1223,7 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{Ping: &srv.URL},
 	}
 	p := &Poller{HTTPClient: srv.Client()}
-	_, style, _ := p.monitor(t.Context(), entry, testStatusBasic, func(string) {})
+	_, style, _ := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], false, testStatusBasic, func(string) {})
 	if style != testStatusBasic {
 		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceCard.StatusStyle is unset", style, testStatusBasic)
 	}
@@ -1121,7 +1235,7 @@ func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", true)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", true)
 
 	card := store.Snapshot()[0]
 	if card.Err != "" {
@@ -1304,7 +1418,7 @@ func TestPollerProbePodSelectorSampleData(t *testing.T) {
 	}
 	p := &Poller{SampleData: true}
 
-	status, text := p.probePodSelector(t.Context(), entry)
+	status, text := p.probePodSelector(t.Context(), entry.Namespace, entry.Spec.Entries()[0])
 	if status != "Up" || text != sampleMonitorReadyText {
 		t.Errorf("probePodSelector() = (%q, %q), want (Up, %q)", status, text, sampleMonitorReadyText)
 	}
@@ -1327,7 +1441,7 @@ func TestPollerPollWidgetSampleUnsupportedType(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{Store: store, SampleData: true}
-	p.pollWidget(t.Context(), testCardKeyA, entry, widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {

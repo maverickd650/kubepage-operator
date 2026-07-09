@@ -23,6 +23,10 @@ const (
 	testSecretRefName             = "api-secret"
 	testServiceCardObjName        = "svc"
 	testValueTrue                 = "true"
+	testCredShapedFieldAPIKey     = "apiKey"
+	testMultiFormGroupMedia       = "Media"
+	testMultiFormNamePlex         = "Plex"
+	testMultiFormNameStash        = "Stash"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.
