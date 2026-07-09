@@ -3153,7 +3153,11 @@ spec:
                 - Expanded
                 type: string
               headerStyle:
-                description: headerStyle for service/bookmark group headers.
+                description: |-
+                  headerStyle for the header info-widget strip (datetime, greeting,
+                  weather, etc.): "underlined" draws a line under it, "boxed" wraps it in
+                  a card, "clean" leaves it unstyled, and "boxedWidgets" additionally
+                  gives each individual widget its own boxed card.
                 enum:
                 - underlined
                 - boxed
@@ -3629,7 +3633,11 @@ spec:
                   ServiceCard/Bookmark Icon: a full URL passes through unchanged,
                   anything else is treated as a dashboard-icons slug. Ignored by the
                   "greeting" and "datetime" widget types, which homepage renders without
-                  an icon.
+                  an icon. Every other polled type (openmeteo/openweathermap,
+                  kubemetrics, glances, longhorn) already renders a sensible built-in
+                  icon when this is unset — openmeteo/openweathermap's tracks the
+                  current weather condition each poll — so this field only needs
+                  setting to override that default.
                 maxLength: 256
                 minLength: 1
                 type: string
@@ -3641,7 +3649,7 @@ spec:
                     - greeting: text (the message shown)
                     - datetime: format (a JSON-encoded Intl.DateTimeFormat options
                       object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
-                      to medium/medium)
+                      to medium date/short time, i.e. no seconds)
                     - openmeteo, openweathermap: latitude, longitude (both required),
                       units ("metric"/"imperial"), label
                     - kubemetrics: cpuLabel, memoryLabel
