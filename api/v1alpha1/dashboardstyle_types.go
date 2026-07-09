@@ -267,7 +267,10 @@ type DashboardStyleSpec struct {
 	// +optional
 	Color *string `json:"color,omitempty"`
 
-	// headerStyle for service/bookmark group headers.
+	// headerStyle for the header info-widget strip (datetime, greeting,
+	// weather, etc.): "underlined" draws a line under it, "boxed" wraps it in
+	// a card, "clean" leaves it unstyled, and "boxedWidgets" additionally
+	// gives each individual widget its own boxed card.
 	// +kubebuilder:validation:Enum=underlined;boxed;clean;boxedWidgets
 	// +optional
 	HeaderStyle *string `json:"headerStyle,omitempty"`

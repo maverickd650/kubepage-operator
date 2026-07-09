@@ -1014,6 +1014,125 @@ func TestBuildHeaderDatetimeWidget(t *testing.T) {
 	}
 }
 
+// TestBuildHeaderGreetingAndDatetimeHaveNoIcon guards homepage's own
+// behavior: unlike every other header widget type, "greeting"/"datetime"
+// never render an icon, even though neither sets its own Icon here (an unset
+// Icon on a polled type like kubemetrics instead falls back to a default —
+// see TestBuildHeaderDefaultIcons).
+func TestBuildHeaderGreetingAndDatetimeHaveNoIcon(t *testing.T) {
+	defs := []HeaderWidget{
+		{Type: headerTypeGreeting, Options: map[string]string{"text": "hi"}},
+		{Type: headerTypeDatetime},
+	}
+	views := buildHeader(defs, nil)
+	for _, v := range views {
+		if v.IconURL != "" {
+			t.Errorf("buildHeader(%s).IconURL = %q, want \"\" (greeting/datetime never show an icon)", v.Type, v.IconURL)
+		}
+	}
+}
+
+// TestBuildHeaderDefaultIcons verifies every polled header widget type falls
+// back to a built-in icon when its InfoWidget doesn't set its own Icon,
+// matching homepage's own header widgets (which always show one) as verified
+// against homepage's source: kubemetrics gets the Kubernetes logo, longhorn
+// the generic disk glyph homepage's own longhorn/node.jsx draws (not a
+// project logo), and openmeteo/openweathermap the Weather Icons glyph
+// (homepage's own icon set for these — see openmeteo-condition-map.js/
+// owm-condition-map.js) matching their current Conditions field. glances
+// gets no group icon at all, same as homepage's glances.jsx: its icon lives
+// per-field instead (see TestBuildHeaderFieldIcons). An explicit Icon still
+// wins over the default.
+func TestBuildHeaderDefaultIcons(t *testing.T) {
+	tests := []struct {
+		name       string
+		typ        string
+		icon       string
+		fields     []Field
+		wantSubstr string
+	}{
+		{name: "kubemetrics default", typ: testKubeMetricsType, wantSubstr: "simple-icons/kubernetes.svg"},
+		{name: "longhorn default", typ: "longhorn", wantSubstr: "lucide/hard-drive.svg"},
+		{name: "glances has no group icon", typ: "glances", wantSubstr: ""},
+		{name: "openmeteo clear", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: "Clear"}}, wantSubstr: "wi/day-sunny.svg"},
+		{name: "openmeteo partly cloudy", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: "Partly cloudy"}}, wantSubstr: "wi/day-cloudy.svg"},
+		{name: "openmeteo rain showers", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: "Rain showers"}}, wantSubstr: "wi/day-showers.svg"},
+		{name: "openweathermap thunderstorm", typ: "openweathermap", fields: []Field{{Label: labelConditions, Value: "Thunderstorm"}}, wantSubstr: "wi/day-thunderstorm.svg"},
+		{name: "openweathermap clouds", typ: "openweathermap", fields: []Field{{Label: labelConditions, Value: "Clouds"}}, wantSubstr: "wi/day-cloudy.svg"},
+		{name: "explicit icon wins", typ: testKubeMetricsType, icon: "https://example.com/custom.png", wantSubstr: "example.com/custom.png"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defs := []HeaderWidget{{Name: "w", Type: tt.typ, IconURL: tt.icon}}
+			var cards []Card
+			if tt.fields != nil {
+				cards = []Card{{ServiceName: "w", Header: true, Fields: tt.fields}}
+			}
+			views := buildHeader(defs, cards)
+			if len(views) != 1 {
+				t.Fatalf("buildHeader(%s) = %d views, want 1", tt.typ, len(views))
+			}
+			got := views[0].IconURL
+			if tt.wantSubstr == "" {
+				if got != "" {
+					t.Fatalf("buildHeader(%s).IconURL = %q, want \"\" (no default icon)", tt.typ, got)
+				}
+				return
+			}
+			if !strings.Contains(got, tt.wantSubstr) {
+				t.Fatalf("buildHeader(%s).IconURL = %q, want substring %q", tt.typ, got, tt.wantSubstr)
+			}
+		})
+	}
+}
+
+// TestBuildHeaderFieldIcons verifies headerFields swaps a recognized
+// resource-style field label (CPU/Memory/Storage) for a small icon instead
+// of showing the label text, and drops field labels entirely for a weather
+// widget type (openmeteo/openweathermap) — matching homepage's own compact,
+// largely label-less header widgets. An unrecognized label (e.g. the
+// "Status" fallback field a poll error or empty cluster produces) keeps its
+// text label since there's no icon for it.
+func TestBuildHeaderFieldIcons(t *testing.T) {
+	tests := []struct {
+		name           string
+		typ            string
+		field          Field
+		wantIconSubstr string
+		wantLabel      string
+	}{
+		{name: "cpu gets icon", typ: testKubeMetricsType, field: Field{Label: labelCPU, Value: "12%"}, wantIconSubstr: "lucide/cpu.svg"},
+		{name: "memory gets icon", typ: testKubeMetricsType, field: Field{Label: labelMemory, Value: "45 GiB"}, wantIconSubstr: "fa6-solid/memory.svg"},
+		{name: "storage gets icon", typ: "longhorn", field: Field{Label: labelStorage, Value: "750 / 1000 GiB"}, wantIconSubstr: "lucide/hard-drive.svg"},
+		{name: "status keeps text label", typ: testKubeMetricsType, field: Field{Label: labelStatus, Value: statusUnknown}, wantLabel: labelStatus},
+		{name: "weather field has no label", typ: testOpenMeteoType, field: Field{Label: labelConditions, Value: "Clear"}, wantLabel: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			views := headerFields(tt.typ, []Field{tt.field})
+			if len(views) != 1 {
+				t.Fatalf("headerFields() = %d views, want 1", len(views))
+			}
+			v := views[0]
+			if tt.wantIconSubstr != "" {
+				if !strings.Contains(v.IconURL, tt.wantIconSubstr) {
+					t.Errorf("IconURL = %q, want substring %q", v.IconURL, tt.wantIconSubstr)
+				}
+				if v.Label != "" {
+					t.Errorf("Label = %q, want \"\" when an icon is shown", v.Label)
+				}
+			} else {
+				if v.IconURL != "" {
+					t.Errorf("IconURL = %q, want \"\"", v.IconURL)
+				}
+				if v.Label != tt.wantLabel {
+					t.Errorf("Label = %q, want %q", v.Label, tt.wantLabel)
+				}
+			}
+		})
+	}
+}
+
 // TestBuildHeaderPartitionsLeftBeforeRight verifies buildHeader stably
 // reorders an interleaved left/right/left/right sequence into left-then-
 // right, flagging only the first right-aligned widget with PushRight —
@@ -1650,10 +1769,11 @@ func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
-// TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders guards 1.6's
-// fix: "boxedWidgets" should box the header info-widget strip specifically,
-// not group headers (which "boxed" already covers) — previously the two
-// header styles rendered group headers identically.
+// TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders keeps the
+// Homepage contract: ordinary information widgets are unboxed, and only
+// "boxedWidgets" gives them the card treatment. "boxed"/"underlined" style
+// the header info-widget strip as a whole, not the service/bookmark group
+// headers, which stay unstyled by headerStyle entirely.
 func TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -1664,8 +1784,23 @@ func TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders(t *testing.T)
 	if !strings.Contains(body, `[data-header-style="boxedWidgets"] .header-widget`) {
 		t.Errorf("index body missing boxedWidgets .header-widget rule:\n%s", body)
 	}
+	if !strings.Contains(body, `.header-widget { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }`) {
+		t.Errorf("index body gives ordinary (unscoped) header widgets a card background:\n%s", body)
+	}
+	if !strings.Contains(body, "[data-header-style=\"boxedWidgets\"] .header-widget {\n\t\t\t\t\tbackground: var(--panel);") {
+		t.Errorf("index body does not give boxedWidgets header widgets a card background:\n%s", body)
+	}
 	if strings.Contains(body, `[data-header-style="boxedWidgets"] h2`) {
-		t.Errorf("index body still boxes group headers for boxedWidgets, want that left to \"boxed\" only:\n%s", body)
+		t.Errorf("index body boxes group headers for boxedWidgets, want group headers left unstyled by headerStyle:\n%s", body)
+	}
+	if !strings.Contains(body, `[data-header-style="boxed"] .header-strip`) {
+		t.Errorf("index body missing boxed .header-strip rule:\n%s", body)
+	}
+	if !strings.Contains(body, `[data-header-style="underlined"] .header-strip`) {
+		t.Errorf("index body missing underlined .header-strip rule:\n%s", body)
+	}
+	if strings.Contains(body, `[data-header-style="boxed"] h2`) || strings.Contains(body, `[data-header-style="underlined"] h2`) {
+		t.Errorf("index body still styles group headers via headerStyle, want that left to .header-strip only:\n%s", body)
 	}
 }
 

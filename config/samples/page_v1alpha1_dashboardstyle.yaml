@@ -16,6 +16,8 @@ spec:
   headerStyle: boxed
   cardBlur: md
   target: _blank
+  background:
+    image: https://raw.githubusercontent.com/MaverickD650/home-operations/main/.docs/assets/background.png
   layout:
     - name: Infrastructure
       groups:

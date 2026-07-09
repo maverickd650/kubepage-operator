@@ -12,7 +12,7 @@ spec:
   name: Plex
   href: http://plex.example.com
   target: _blank
-  icon: plex.png
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg
   description: Media server
   # HTTP reachability probe shown as an up/down status dot on the card.
   siteMonitor: http://plex.example.com
