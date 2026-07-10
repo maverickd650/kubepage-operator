@@ -1,6 +1,7 @@
 package preview
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -141,10 +142,7 @@ func anyNamespaced(ds []*pagev1alpha1.Dashboard) bool {
 func describeDashboards(ds []*pagev1alpha1.Dashboard) string {
 	names := make([]string, len(ds))
 	for i, d := range ds {
-		ns := d.Namespace
-		if ns == "" {
-			ns = "<none>"
-		}
+		ns := cmp.Or(d.Namespace, "<none>")
 		names[i] = ns + "/" + d.Name
 	}
 	return strings.Join(names, ", ")
@@ -155,10 +153,7 @@ func describeDashboards(ds []*pagev1alpha1.Dashboard) string {
 // defaultNamespace when dash has none either — local YAML (samples, a
 // user's own drafts) frequently omits namespace entirely.
 func applyDefaultNamespace(objs []client.Object, dash *pagev1alpha1.Dashboard) {
-	ns := dash.Namespace
-	if ns == "" {
-		ns = defaultNamespace
-	}
+	ns := cmp.Or(dash.Namespace, defaultNamespace)
 	for _, o := range objs {
 		if o.GetNamespace() == "" {
 			o.SetNamespace(ns)

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -114,10 +115,7 @@ func (r *ServiceCardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func serviceCardWidgetConfigInstances(entries []pagev1alpha1.ServiceEntry) []widgetConfigInstance {
 	var instances []widgetConfigInstance
 	for entryIdx, e := range entries {
-		label := e.Name
-		if label == "" {
-			label = fmt.Sprintf("entries[%d]", entryIdx)
-		}
+		label := cmp.Or(e.Name, fmt.Sprintf("entries[%d]", entryIdx))
 		for widgetIdx, w := range e.Widgets {
 			instances = append(instances, widgetConfigInstance{
 				Location:   fmt.Sprintf("entry %q widget[%d] (type %q)", label, widgetIdx, w.Type),

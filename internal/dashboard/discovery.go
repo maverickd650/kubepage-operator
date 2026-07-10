@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -88,18 +89,9 @@ func discoverServices(ctx context.Context, reader client.Reader, namespace strin
 			continue
 		}
 
-		name := ann[discoveryAnnName]
-		if name == "" {
-			name = ing.Name
-		}
-		group := ann[discoveryAnnGroup]
-		if group == "" {
-			group = defaultDiscoveryGroup
-		}
-		href := ann[discoveryAnnHref]
-		if href == "" {
-			href = ingressHref(&ing)
-		}
+		name := cmp.Or(ann[discoveryAnnName], ing.Name)
+		group := cmp.Or(ann[discoveryAnnGroup], defaultDiscoveryGroup)
+		href := cmp.Or(ann[discoveryAnnHref], ingressHref(&ing))
 
 		var iconURL string
 		if icon := ann[discoveryAnnIcon]; icon != "" {
@@ -194,18 +186,9 @@ func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace str
 			continue
 		}
 
-		name := ann[discoveryAnnName]
-		if name == "" {
-			name = route.Name
-		}
-		group := ann[discoveryAnnGroup]
-		if group == "" {
-			group = defaultDiscoveryGroup
-		}
-		href := ann[discoveryAnnHref]
-		if href == "" {
-			href = httpRouteHref(&route)
-		}
+		name := cmp.Or(ann[discoveryAnnName], route.Name)
+		group := cmp.Or(ann[discoveryAnnGroup], defaultDiscoveryGroup)
+		href := cmp.Or(ann[discoveryAnnHref], httpRouteHref(&route))
 
 		var iconURL string
 		if icon := ann[discoveryAnnIcon]; icon != "" {

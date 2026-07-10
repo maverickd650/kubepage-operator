@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -51,10 +52,7 @@ func (tautulliWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wid
 		return fields, err
 	}
 
-	streams := parsed.Response.Data.StreamCount
-	if streams == "" {
-		streams = "0"
-	}
+	streams := cmp.Or(parsed.Response.Data.StreamCount, "0")
 
 	return []Field{
 		{Label: labelStreams, Value: streams},

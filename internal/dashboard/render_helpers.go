@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -214,9 +215,7 @@ func jsStringEscape(s string) string {
 // e.g. "v0.4.0 (abc1234)". commit is omitted when empty, "dev" (the
 // ldflags-unset fallback — see cmd/main.go), or identical to version.
 func versionFooterText(version, commit string) string {
-	if version == "" {
-		version = "dev"
-	}
+	version = cmp.Or(version, "dev")
 	if commit == "" || commit == "dev" || commit == version {
 		return version
 	}
