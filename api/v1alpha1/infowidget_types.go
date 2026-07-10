@@ -48,7 +48,11 @@ type InfoWidgetSpec struct {
 	// ServiceCard/Bookmark Icon: a full URL passes through unchanged,
 	// anything else is treated as a dashboard-icons slug. Ignored by the
 	// "greeting" and "datetime" widget types, which homepage renders without
-	// an icon.
+	// an icon. Every other polled type (openmeteo/openweathermap,
+	// kubemetrics, glances, longhorn) already renders a sensible built-in
+	// icon when this is unset — openmeteo/openweathermap's tracks the
+	// current weather condition each poll — so this field only needs
+	// setting to override that default.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +optional
@@ -88,7 +92,7 @@ type InfoWidgetSpec struct {
 	//   - greeting: text (the message shown)
 	//   - datetime: format (a JSON-encoded Intl.DateTimeFormat options
 	//     object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
-	//     to medium/medium)
+	//     to medium date/short time, i.e. no seconds)
 	//   - openmeteo, openweathermap: latitude, longitude (both required),
 	//     units ("metric"/"imperial"), label
 	//   - kubemetrics: cpuLabel, memoryLabel

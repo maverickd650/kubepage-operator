@@ -138,7 +138,7 @@ type headerWidgetView struct {
 	IconURL  string
 	// Href optionally wraps the "logo" widget type's image in a link.
 	Href   string
-	Fields []Field
+	Fields []headerFieldView
 	Err    string
 
 	// PushRight marks the first widget in the right-aligned slot (once
@@ -148,6 +148,22 @@ type headerWidgetView struct {
 	// it and everything following to the header strip's right edge as one
 	// contiguous flex block.
 	PushRight bool
+}
+
+// headerFieldView is one Field rendered in a header widget's stacked stat
+// rows (see headerFields' doc comment): IconURL, when set, replaces Label as
+// the row's trailing glyph — matching homepage's own header/info widgets,
+// which show a small resource icon (CPU/Memory/Storage) instead of a text
+// label to stay compact. Label is "" whenever IconURL is set, or whenever
+// the owning widget is a weather type (openmeteo/openweathermap), which
+// drops its field labels entirely since the widget's own icon already
+// tracks current conditions (see weatherIconURL).
+type headerFieldView struct {
+	Value     string
+	Label     string
+	IconURL   string
+	Percent   *int
+	Highlight string
 }
 
 // headerData is the /header fragment's template data.
@@ -504,14 +520,157 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 			v.Href = d.Options["href"]
 		default:
 			v.IconURL = d.IconURL
+			var liveFields []Field
 			if c, ok := live[d.Name]; ok {
-				v.Fields = c.Fields
+				liveFields = c.Fields
 				v.Err = c.Err
 			}
+			if v.IconURL == "" {
+				v.IconURL = defaultHeaderWidgetIcon(d.Type, liveFields)
+			}
+			v.Fields = headerFields(d.Type, liveFields)
 		}
 		views = append(views, v)
 	}
 	return partitionHeaderAlign(views, defs)
+}
+
+// headerIconColor is the fixed color (Tailwind slate-400) baked into every
+// Iconify-sourced header default/field icon via IconURL's "-#hexcolor"
+// suffix. Header icons render as a plain <img>, which can't pick up a CSS
+// currentColor the way homepage's own inline SVG icons do to track the
+// active theme, so a neutral mid-gray that reads reasonably against both the
+// light and dark theme's header background is the closest static
+// approximation.
+const headerIconColor = "94a3b8"
+
+// headerWidgetDefaultIcons maps a polled header widget type to the Iconify
+// slug (see IconURL) homepage shows for it out of the box, used by
+// defaultHeaderWidgetIcon whenever the InfoWidget doesn't set its own Icon —
+// verified against homepage's own source (src/components/widgets/…):
+// kubemetrics gets the Kubernetes logo (kubernetes/node.jsx's SiKubernetes,
+// a Simple Icons brand glyph, recolored to headerIconColor rather than the
+// brand's own blue to match homepage's monochrome header icons), and
+// longhorn gets the generic disk glyph longhorn/node.jsx draws (FiHardDrive)
+// rather than a project logo. glances isn't listed here on purpose:
+// glances.jsx gives it no group icon at all, relying solely on each field's
+// own icon (see fieldIconSlugs) — CPU/Memory/Storage. openmeteo/
+// openweathermap aren't listed either: their icon tracks the current
+// weather condition each poll instead of a fixed glyph (see weatherIconURL).
+var headerWidgetDefaultIcons = map[string]string{
+	"kubemetrics":      "si-kubernetes-#" + headerIconColor,
+	widgetTypeLonghorn: "lucide-hard-drive-#" + headerIconColor,
+}
+
+// defaultHeaderWidgetIcon returns the built-in icon a polled header widget
+// (openmeteo/openweathermap, kubemetrics, glances, longhorn) renders when its
+// InfoWidget's Icon is unset — matching homepage's info widgets, which always
+// show an icon rather than requiring one to be configured. "" (no icon) for
+// any other type, and for a weather widget whose fields don't carry a
+// Conditions value yet (e.g. Err is set instead).
+func defaultHeaderWidgetIcon(widgetType string, fields []Field) string {
+	if widgetType == widgetTypeOpenMeteo || widgetType == widgetTypeOpenWeatherMap {
+		return weatherIconURL(fieldValue(fields, labelConditions))
+	}
+	if slug, ok := headerWidgetDefaultIcons[widgetType]; ok {
+		return staticIcon(slug)
+	}
+	return ""
+}
+
+// staticIcon resolves a fixed dashboard-icons/Iconify slug through IconURL,
+// which takes a *string (nil meaning "no icon") — slug here is always a
+// non-empty literal, so this just adapts the calling convention.
+func staticIcon(slug string) string {
+	return IconURL(&slug)
+}
+
+// weatherIconURL maps an openmeteo/openweathermap Conditions field value to
+// an Iconify Weather Icons ("wi") glyph — the exact icon set homepage's own
+// weather widget uses (src/utils/weather/{openmeteo,owm}-condition-map.js,
+// both keyed off react-icons/wi) — so the header widget's icon visibly
+// tracks current conditions rather than a fixed logo. Homepage picks a
+// day/night variant per icon and keys off the raw numeric weather code; this
+// operator's Field only carries the coarser condition text openmeteo.go's
+// weatherCondition()/openweathermap.go's OWM "main" category already reduce
+// codes to, so this matches on that text (always the "day" glyph — the day/
+// night split isn't worth plumbing a raw code and local sunrise/sunset
+// through Field for). Unrecognized/empty conditions (including "Unknown", a
+// poll error's fallback) get homepage's own fallback: a plain sun glyph.
+func weatherIconURL(condition string) string {
+	c := strings.ToLower(condition)
+	slug := "day-sunny"
+	switch {
+	case strings.Contains(c, "clear"):
+		slug = "day-sunny"
+	case strings.Contains(c, "thunderstorm"):
+		slug = "day-thunderstorm"
+	case strings.Contains(c, "shower"):
+		slug = "day-showers"
+	case strings.Contains(c, "drizzle"):
+		slug = "day-sprinkle"
+	case strings.Contains(c, "rain"):
+		slug = "day-rain"
+	case strings.Contains(c, "snow"):
+		slug = "day-snow"
+	case strings.Contains(c, "smoke"):
+		slug = "smoke"
+	case strings.Contains(c, "haze"):
+		slug = "day-haze"
+	case strings.Contains(c, "dust"), strings.Contains(c, "ash"):
+		slug = "dust"
+	case strings.Contains(c, "sand"):
+		slug = "sandstorm"
+	case strings.Contains(c, "fog"), strings.Contains(c, "mist"):
+		slug = "day-fog"
+	case strings.Contains(c, "tornado"):
+		slug = "tornado"
+	case strings.Contains(c, "squall"):
+		slug = "strong-wind"
+	case strings.Contains(c, "partly"):
+		slug = "day-cloudy"
+	case strings.Contains(c, "cloud"):
+		slug = "day-cloudy"
+	}
+	return staticIcon("wi-" + slug + "-#" + headerIconColor)
+}
+
+// fieldIconSlugs maps a resource-style Field label to the Iconify icon slug
+// homepage's own header widgets show in place of the label text (see
+// src/components/widgets/kubernetes/node.jsx: FiCpu, FaMemory; longhorn/node.jsx:
+// FiHardDrive). Lucide's cpu/hard-drive glyphs are pixel-for-pixel the same
+// family homepage draws CPU/Storage from (Feather Icons — Lucide is a
+// maintained fork sharing most glyphs 1:1); Memory uses Font Awesome 6's
+// solid "memory" glyph, matching homepage's FaMemory more closely than any
+// Lucide equivalent.
+var fieldIconSlugs = map[string]string{
+	labelCPU:     "lucide-cpu",
+	labelMemory:  "fa6-solid-memory",
+	labelStorage: "lucide-hard-drive",
+}
+
+// headerFields converts a header widget's live Fields into render-ready
+// headerFieldViews for header.templ's default case. A recognized
+// resource-style label (CPU/Memory/Storage — kubemetrics/glances/longhorn's
+// only non-error fields) swaps its text label for a small icon; an
+// openmeteo/openweathermap field (temperature + Conditions) drops its label
+// entirely instead, since that meaning is already carried by the widget's
+// own dynamic weather icon (see weatherIconURL). This matches homepage's
+// compact, largely label-less header widgets rather than the ServiceCard
+// grid's always-labeled stat layout.
+func headerFields(widgetType string, fields []Field) []headerFieldView {
+	isWeather := widgetType == widgetTypeOpenMeteo || widgetType == widgetTypeOpenWeatherMap
+	views := make([]headerFieldView, 0, len(fields))
+	for _, f := range fields {
+		v := headerFieldView{Value: f.Value, Percent: f.Percent, Highlight: f.Highlight}
+		if slug, ok := fieldIconSlugs[f.Label]; ok {
+			v.IconURL = staticIcon(slug + "-#" + headerIconColor)
+		} else if !isWeather {
+			v.Label = f.Label
+		}
+		views = append(views, v)
+	}
+	return views
 }
 
 // partitionHeaderAlign stably reorders views (built 1:1 with, and in the

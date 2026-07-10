@@ -116,12 +116,12 @@ func TestWeatherCondition(t *testing.T) {
 		want string
 	}{
 		"clear":         {code: 0, want: condClear},
-		"partly cloudy": {code: 2, want: "Partly cloudy"},
-		"fog":           {code: 45, want: "Fog"},
-		"drizzle":       {code: 51, want: "Drizzle"},
+		"partly cloudy": {code: 2, want: condPartlyCloudy},
+		"fog":           {code: 45, want: condFog},
+		"drizzle":       {code: 51, want: condDrizzle},
 		"rain":          {code: 63, want: condRain},
-		"snow":          {code: 73, want: "Snow"},
-		"rain showers":  {code: 80, want: "Rain showers"},
+		"snow":          {code: 73, want: condSnow},
+		"rain showers":  {code: 80, want: condRainShowers},
 		"snow showers":  {code: 85, want: "Snow showers"},
 		"thunderstorm":  {code: 95, want: condThunderstorm},
 		"unknown":       {code: 100, want: statusUnknown},

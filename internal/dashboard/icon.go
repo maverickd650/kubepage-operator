@@ -22,11 +22,12 @@ const selfhstIconsBaseURL = "https://cdn.jsdelivr.net/gh/selfhst/icons/"
 // (https://gethomepage.dev/configs/services/#icons):
 //
 //   - A full URL passes through unchanged.
-//   - "mdi-X" and "si-X" resolve to the actual Material Design Icon / Simple
-//     Icon glyph via Iconify's SVG API (not the dashboard-icons CDN: that
-//     CDN only has app logos, not generic MDI/Simple Icons glyph names, so
-//     routing these there 404s). A trailing "-#hexcolor" recolors the glyph
-//     via Iconify's ?color= query param.
+//   - "mdi-X", "si-X", "lucide-X", "wi-X", and "fa6-solid-X" resolve to the
+//     actual Material Design Icon / Simple Icon / Lucide / Weather Icon /
+//     Font Awesome 6 Solid glyph via Iconify's SVG API (not the
+//     dashboard-icons CDN: that CDN only has app logos, not generic icon
+//     glyph names, so routing these there 404s). A trailing "-#hexcolor"
+//     recolors the glyph via Iconify's ?color= query param.
 //   - "sh-X" resolves to a selfh.st/icons glyph; X may end in .svg/.png/.webp
 //     to pick a specific format, defaulting to .png.
 //   - Anything else is treated as a dashboard-icons slug (e.g. "grafana").
@@ -46,6 +47,12 @@ func IconURL(icon *string) string {
 		return iconifyIconURL("mdi", strings.TrimPrefix(v, "mdi-"))
 	case strings.HasPrefix(v, "si-"):
 		return iconifyIconURL("simple-icons", strings.TrimPrefix(v, "si-"))
+	case strings.HasPrefix(v, "lucide-"):
+		return iconifyIconURL("lucide", strings.TrimPrefix(v, "lucide-"))
+	case strings.HasPrefix(v, "wi-"):
+		return iconifyIconURL("wi", strings.TrimPrefix(v, "wi-"))
+	case strings.HasPrefix(v, "fa6-solid-"):
+		return iconifyIconURL("fa6-solid", strings.TrimPrefix(v, "fa6-solid-"))
 	case strings.HasPrefix(v, "sh-"):
 		return selfhstIconURL(strings.TrimPrefix(v, "sh-"))
 	default:

@@ -689,11 +689,11 @@ func TestScalarOptions(t *testing.T) {
 		"empty raw": {raw: &apiextensionsv1.JSON{}, want: map[string]string{}},
 		"scalar types": {
 			raw:  &apiextensionsv1.JSON{Raw: []byte(`{"text":"hi","enabled":true,"count":3}`)},
-			want: map[string]string{"text": "hi", "enabled": "true", "count": "3"},
+			want: map[string]string{testOptionsText: "hi", "enabled": "true", "count": "3"},
 		},
 		"non-scalar values are skipped": {
 			raw:  &apiextensionsv1.JSON{Raw: []byte(`{"text":"hi","nested":{"a":1},"list":[1,2],"empty":null}`)},
-			want: map[string]string{"text": "hi"},
+			want: map[string]string{testOptionsText: "hi"},
 		},
 		"malformed JSON yields empty map": {
 			raw:  &apiextensionsv1.JSON{Raw: []byte(`{not valid json`)},

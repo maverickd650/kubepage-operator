@@ -14,7 +14,7 @@ spec:
   services:
     - name: Plex
       href: http://plex.example.com
-      icon: plex.png
+      icon: plex
       description: Media server
       siteMonitor: http://plex.example.com
       statusStyle: dot
@@ -28,12 +28,17 @@ spec:
                 key: token
     - name: Stash
       href: http://stash.example.com
-      icon: stash.png
-      ping: http://stash.example.com
+      icon: stash
+      description: A type of media server.
+      siteMonitor: http://stash.example.com
+      statusStyle: dot
     - name: Grafana
       group: Observability
       href: http://grafana.example.com
-      icon: grafana.png
+      icon: grafana
+      description: Observability dashboard for Prometheus and other metrics
+      siteMonitor: http://grafana.example.com
+      statusStyle: dot
       widgets:
         - type: grafana
           url: http://grafana.example.com

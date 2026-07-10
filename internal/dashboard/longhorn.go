@@ -7,8 +7,10 @@ import (
 	"net/http"
 )
 
+const widgetTypeLonghorn = "longhorn"
+
 func init() {
-	Register("longhorn", &longhornWidget{})
+	Register(widgetTypeLonghorn, &longhornWidget{})
 }
 
 // longhornWidget is a header InfoWidget that shows aggregate cluster storage
