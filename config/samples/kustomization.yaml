@@ -5,5 +5,6 @@ resources:
 - page_v1alpha1_servicecard.yaml
 - page_v1alpha1_servicecard_multi.yaml
 - page_v1alpha1_bookmark.yaml
+- page_v1alpha1_bookmark_multi.yaml
 - page_v1alpha1_infowidget.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -546,24 +546,24 @@ func layoutGroupsByName(layout []LayoutTab) map[string]LayoutGroup {
 func groupBookmarks(items []pagev1alpha1.Bookmark, dashboardName string, site Site) []BookmarkGroup {
 	layoutByName := layoutGroupsByName(site.Layout)
 
-	var bound []pagev1alpha1.Bookmark
+	var bound []pagev1alpha1.BookmarkEntry
 	for _, b := range items {
 		if b.Spec.DashboardRef.Name == dashboardName {
-			bound = append(bound, b)
+			bound = append(bound, b.Spec.Entries()...)
 		}
 	}
 
 	var groupNames []string
 	groupOrder := map[string]*int32{}
-	groupItems := map[string][]pagev1alpha1.Bookmark{}
-	for _, b := range bound {
-		if _, ok := groupItems[b.Spec.Group]; !ok {
-			groupNames = append(groupNames, b.Spec.Group)
-			groupOrder[b.Spec.Group] = b.Spec.Order
-		} else if compareOrder(b.Spec.Order, groupOrder[b.Spec.Group]) < 0 {
-			groupOrder[b.Spec.Group] = b.Spec.Order
+	groupItems := map[string][]pagev1alpha1.BookmarkEntry{}
+	for _, e := range bound {
+		if _, ok := groupItems[e.Group]; !ok {
+			groupNames = append(groupNames, e.Group)
+			groupOrder[e.Group] = e.Order
+		} else if compareOrder(e.Order, groupOrder[e.Group]) < 0 {
+			groupOrder[e.Group] = e.Order
 		}
-		groupItems[b.Spec.Group] = append(groupItems[b.Spec.Group], b)
+		groupItems[e.Group] = append(groupItems[e.Group], e)
 	}
 	slices.SortFunc(groupNames, func(a, c string) int {
 		if cmp := compareOrder(groupOrder[a], groupOrder[c]); cmp != 0 {
@@ -575,21 +575,21 @@ func groupBookmarks(items []pagev1alpha1.Bookmark, dashboardName string, site Si
 	groups := make([]BookmarkGroup, 0, len(groupNames))
 	for _, name := range groupNames {
 		bms := groupItems[name]
-		slices.SortFunc(bms, func(a, b pagev1alpha1.Bookmark) int {
-			if cmp := compareOrder(a.Spec.Order, b.Spec.Order); cmp != 0 {
+		slices.SortFunc(bms, func(a, b pagev1alpha1.BookmarkEntry) int {
+			if cmp := compareOrder(a.Order, b.Order); cmp != 0 {
 				return cmp
 			}
-			return strings.Compare(a.Spec.Name, b.Spec.Name)
+			return strings.Compare(a.Name, b.Name)
 		})
 
 		cards := make([]BookmarkCard, 0, len(bms))
-		for _, b := range bms {
-			card := BookmarkCard{Name: b.Spec.Name, Href: b.Spec.Href, IconURL: IconURL(b.Spec.Icon)}
-			if b.Spec.Abbr != nil {
-				card.Abbr = *b.Spec.Abbr
+		for _, e := range bms {
+			card := BookmarkCard{Name: e.Name, Href: e.Href, IconURL: IconURL(e.Icon)}
+			if e.Abbr != nil {
+				card.Abbr = *e.Abbr
 			}
-			if b.Spec.Description != nil {
-				card.Description = *b.Spec.Description
+			if e.Description != nil {
+				card.Description = *e.Description
 			}
 			cards = append(cards, card)
 		}

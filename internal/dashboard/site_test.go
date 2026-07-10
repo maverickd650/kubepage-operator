@@ -601,6 +601,48 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	}
 }
 
+// TestGroupBookmarksMultiFormGroupDefaultingAndOverride verifies a single
+// Bookmark object using the multi-bookmark form (spec.bookmarks) flattens
+// into per-entry cards the same way the single-bookmark form does: an entry
+// without its own group inherits the object's spec.group, and an entry that
+// sets its own group renders in that group instead.
+func TestGroupBookmarksMultiFormGroupDefaultingAndOverride(t *testing.T) {
+	abbr := "WK"
+	items := []pagev1alpha1.Bookmark{
+		{
+			Spec: pagev1alpha1.BookmarkSpec{
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testBookmarkGroup,
+				Bookmarks: []pagev1alpha1.BookmarkEntry{
+					{Name: testLabelFirst, Href: testBookmarkHrefA},
+					{Name: "Wikipedia", Href: "https://example.invalid/wiki", Group: testOtherGroup, Abbr: &abbr},
+				},
+			},
+		},
+	}
+
+	groups := groupBookmarks(items, testDashboardName, Site{})
+
+	if len(groups) != 2 {
+		t.Fatalf("groupBookmarks() = %d groups, want 2 (%s and %s)", len(groups), testBookmarkGroup, testOtherGroup)
+	}
+
+	byName := map[string][]BookmarkCard{}
+	for _, g := range groups {
+		byName[g.Name] = g.Bookmarks
+	}
+
+	readingCards, ok := byName[testBookmarkGroup]
+	if !ok || len(readingCards) != 1 || readingCards[0].Name != testLabelFirst {
+		t.Errorf("groupBookmarks() %s group = %+v, want one entry (First) inheriting spec.group", testBookmarkGroup, readingCards)
+	}
+
+	otherCards, ok := byName[testOtherGroup]
+	if !ok || len(otherCards) != 1 || otherCards[0].Name != "Wikipedia" || otherCards[0].Abbr != abbr {
+		t.Errorf("groupBookmarks() %s group = %+v, want one entry (Wikipedia) with its own group override", testOtherGroup, otherCards)
+	}
+}
+
 // TestGroupBookmarksAppliesMatchingLayoutGroup verifies a LayoutGroupSpec
 // sharing a bookmark group's name styles it the same way it would a service
 // group sharing that name (gap-analysis §4.1): Columns/Style/Icon/Header all
@@ -614,15 +656,17 @@ func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
 			},
 		},
 	}
+	cols := int32(3)
+	header := false
 	site := Site{
 		Layout: []LayoutTab{{
 			Name: testTab1,
 			Groups: []LayoutGroup{{
 				Name:    testBookmarkGroup,
-				Columns: ptr(int32(3)),
+				Columns: &cols,
 				Style:   testStyleRow,
 				IconURL: testExampleURL,
-				Header:  ptr(false),
+				Header:  &header,
 			}},
 		}},
 	}
