@@ -89,6 +89,28 @@ func TestCardTarget(t *testing.T) {
 	}
 }
 
+// TestBookmarkTarget covers bookmarkTarget's fallback chain: a bookmark's
+// own Target override wins over the DashboardStyle-derived site default,
+// which itself defaults to "_blank" (see site.go's LoadSite).
+func TestBookmarkTarget(t *testing.T) {
+	tests := map[string]struct {
+		bookmark   BookmarkCard
+		siteTarget string
+		want       string
+	}{
+		"entry override wins":             {bookmark: BookmarkCard{Target: targetSelf}, siteTarget: defaultTarget, want: targetSelf},
+		"falls back to style default":     {bookmark: BookmarkCard{}, siteTarget: targetSelf, want: targetSelf},
+		"falls back to _blank when unset": {bookmark: BookmarkCard{}, siteTarget: defaultTarget, want: defaultTarget},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := bookmarkTarget(tc.bookmark, tc.siteTarget); got != tc.want {
+				t.Errorf("bookmarkTarget() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 const testLatency = "12ms"
 
 func TestStatusWithLatency(t *testing.T) {

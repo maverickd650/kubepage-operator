@@ -197,6 +197,7 @@ type BookmarkGroup struct {
 type BookmarkCard struct {
 	Name        string
 	Href        string
+	Target      string
 	IconURL     string
 	Abbr        string
 	Description string
@@ -608,6 +609,9 @@ func groupBookmarks(items []pagev1alpha1.Bookmark, dashboardName string, site Si
 		cards := make([]BookmarkCard, 0, len(bms))
 		for _, e := range bms {
 			card := BookmarkCard{Name: e.Name, Href: e.Href, IconURL: IconURL(e.Icon)}
+			if e.Target != nil {
+				card.Target = *e.Target
+			}
 			if e.Abbr != nil {
 				card.Abbr = *e.Abbr
 			}

@@ -607,9 +607,9 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var36 string
-		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(siteTarget)
+		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(bookmarkTarget(b, siteTarget))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 86, Col: 21}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/cards.templ`, Line: 86, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 		if templ_7745c5c3_Err != nil {
@@ -619,7 +619,7 @@ func bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) templ.C
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if isNewTabTarget(siteTarget) {
+		if isNewTabTarget(bookmarkTarget(b, siteTarget)) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " rel=\"noopener noreferrer\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

@@ -40,6 +40,15 @@ func cardTarget(c Card, siteTarget string) string {
 	return siteTarget
 }
 
+// bookmarkTarget resolves a bookmark's link target: its own override, else
+// the site default. Mirrors cardTarget for BookmarkCard.
+func bookmarkTarget(b BookmarkCard, siteTarget string) string {
+	if b.Target != "" {
+		return b.Target
+	}
+	return siteTarget
+}
+
 // targetSelf and targetTop are HTML link targets that stay in the current
 // browsing context (targetSelf) or navigate the topmost one (targetTop),
 // pulled out as constants since each is referenced from both

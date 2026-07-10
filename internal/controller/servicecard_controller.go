@@ -53,6 +53,7 @@ func (r *ServiceCardReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 	meta.SetStatusCondition(&entry.Status.Conditions, cond)
+	entry.Status.Entries = int32(len(entry.Spec.Entries()))
 
 	if err := r.Status().Update(ctx, entry); err != nil {
 		log.Error(err, "Failed to update ServiceCard status")

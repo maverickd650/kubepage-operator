@@ -34,6 +34,15 @@ type InfoWidgetEntry struct {
 	// +optional
 	Type string `json:"type,omitempty"`
 
+	// url is the base URL this widget polls, for widget types with an HTTP
+	// upstream (glances, longhorn). Takes precedence over options' "url"
+	// key, which remains supported for backwards compatibility.
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	URL *string `json:"url,omitempty"`
+
 	// order controls rendering position: widgets are sorted by Order (nil
 	// sorts last), ties broken by the InfoWidget object's name then this
 	// entry's index, since CRDs have no inherent ordering of their own.
@@ -64,8 +73,10 @@ type InfoWidgetEntry struct {
 	// +optional
 	Align *string `json:"align,omitempty"`
 
-	// secrets are secret-bearing option fields. Merged into Options under the
-	// same field names once a renderer for this CRD exists.
+	// secrets are secret-bearing option fields, resolved in-process at poll
+	// time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
+	// WidgetConfig.Secrets map, keyed by the same field names used here —
+	// distinct from Options/Config, which never carry secret values.
 	//
 	// RBAC note: the same caveat as ServiceCard's widgets.secrets applies
 	// here — see ServiceWidget.Secrets' doc comment. Anyone who can create
@@ -93,13 +104,14 @@ type InfoWidgetEntry struct {
 	//   - openmeteo, openweathermap: latitude, longitude (both required),
 	//     units ("metric"/"imperial"), label
 	//   - kubemetrics: cpuLabel, memoryLabel
-	//   - glances: url (required; Glances REST API base URL), apiVersion
-	//     ("3" or "4"; defaults to "4")
-	//   - longhorn: url (required; Longhorn Manager REST API base URL, e.g.
+	//   - glances: url (required unless the typed URL field below is set;
+	//     Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
+	//   - longhorn: url (required unless the typed URL field below is set;
+	//     Longhorn Manager REST API base URL, e.g.
 	//     http://longhorn-frontend.longhorn-system:80)
-	// Unlike ServiceCard's widgets, an InfoWidget has no dedicated url field,
-	// so any header widget type that polls an HTTP upstream takes its base
-	// URL via this options block's "url" key instead.
+	// For a header widget type that polls an HTTP upstream, the typed URL
+	// field above takes precedence over this options block's "url" key,
+	// which remains supported for backwards compatibility.
 	// logo takes no options.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
@@ -127,6 +139,11 @@ type InfoWidgetEntry struct {
 // this API), or the multi-widget form (set widgets, a list of one or more
 // widget entries) — never both.
 //
+// The single-widget form is soft-deprecated in favor of the multi-widget
+// form and will not be carried into the next API version; the multi-widget
+// form is the documented default going forward, even for an InfoWidget
+// defining a single widget.
+//
 // The single-widget fields below duplicate InfoWidgetEntry's rather than
 // embedding it, so that existing Go code building an InfoWidgetSpec{Type:
 // ...} literal (the single-widget form predates Widgets) keeps compiling
@@ -137,7 +154,7 @@ type InfoWidgetEntry struct {
 // for the multi-widget form is a straight passthrough of Widgets.
 // +kubebuilder:validation:XValidation:rule="has(self.type) != has(self.widgets)",message="exactly one of type (single-widget form) or widgets (multi-widget form) must be set"
 // +kubebuilder:validation:XValidation:rule="!has(self.widgets) || self.widgets.all(w, has(w.type))",message="every widgets entry must set type"
-// +kubebuilder:validation:XValidation:rule="!has(self.widgets) || (!has(self.order) && !has(self.icon) && !has(self.align) && !has(self.secrets) && !has(self.caCert) && !has(self.options) && !has(self.pollIntervalSeconds))",message="when widgets is set, the single-widget inline fields (order, icon, align, secrets, caCert, options, pollIntervalSeconds) must be absent"
+// +kubebuilder:validation:XValidation:rule="!has(self.widgets) || (!has(self.order) && !has(self.icon) && !has(self.align) && !has(self.secrets) && !has(self.caCert) && !has(self.options) && !has(self.url) && !has(self.pollIntervalSeconds))",message="when widgets is set, the single-widget inline fields (order, icon, align, secrets, caCert, options, url, pollIntervalSeconds) must be absent"
 type InfoWidgetSpec struct {
 	// dashboardRef names the Dashboard this InfoWidget belongs to.
 	// +required
@@ -152,6 +169,16 @@ type InfoWidgetSpec struct {
 	// +kubebuilder:validation:Enum=greeting;datetime;logo;openmeteo;kubemetrics;glances;longhorn;openweathermap
 	// +optional
 	Type string `json:"type,omitempty"`
+
+	// url is the base URL this widget polls, for widget types with an HTTP
+	// upstream (glances, longhorn). Takes precedence over options' "url"
+	// key, which remains supported for backwards compatibility. Set only
+	// for the single-widget form; mutually exclusive with Widgets.
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	URL *string `json:"url,omitempty"`
 
 	// order controls rendering position: widgets are sorted by Order (nil
 	// sorts last), ties broken by the InfoWidget object's name, since CRDs
@@ -183,8 +210,10 @@ type InfoWidgetSpec struct {
 	// +optional
 	Align *string `json:"align,omitempty"`
 
-	// secrets are secret-bearing option fields. Merged into Options under the
-	// same field names once a renderer for this CRD exists.
+	// secrets are secret-bearing option fields, resolved in-process at poll
+	// time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
+	// WidgetConfig.Secrets map, keyed by the same field names used here —
+	// distinct from Options/Config, which never carry secret values.
 	//
 	// RBAC note: the same caveat as ServiceCard's widgets.secrets applies
 	// here — see ServiceWidget.Secrets' doc comment. Anyone who can create
@@ -212,13 +241,14 @@ type InfoWidgetSpec struct {
 	//   - openmeteo, openweathermap: latitude, longitude (both required),
 	//     units ("metric"/"imperial"), label
 	//   - kubemetrics: cpuLabel, memoryLabel
-	//   - glances: url (required; Glances REST API base URL), apiVersion
-	//     ("3" or "4"; defaults to "4")
-	//   - longhorn: url (required; Longhorn Manager REST API base URL, e.g.
+	//   - glances: url (required unless the typed URL field above is set;
+	//     Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
+	//   - longhorn: url (required unless the typed URL field above is set;
+	//     Longhorn Manager REST API base URL, e.g.
 	//     http://longhorn-frontend.longhorn-system:80)
-	// Unlike ServiceCard's widgets, an InfoWidget has no dedicated url field,
-	// so any header widget type that polls an HTTP upstream takes its base
-	// URL via this options block's "url" key instead.
+	// For a header widget type that polls an HTTP upstream, the typed URL
+	// field above takes precedence over this options block's "url" key,
+	// which remains supported for backwards compatibility.
 	// logo takes no options.
 	//
 	// Type=object is set (in addition to PreserveUnknownFields) purely so the
@@ -242,11 +272,12 @@ type InfoWidgetSpec struct {
 	// groups multiple header widgets (a whole dashboard's worth) into one
 	// object instead of one InfoWidget per widget. Mutually exclusive with
 	// the inline single-widget fields above (type, order, icon, align,
-	// secrets, caCert, options, pollIntervalSeconds). Unlike
+	// secrets, caCert, options, url, pollIntervalSeconds). Unlike
 	// ServiceCard.Services/Bookmark.Bookmarks there is no shared-default
-	// field here (no Group concept for header widgets).
+	// field here (no Group concept for header widgets). A header strip never
+	// holds anywhere near 32 widgets, let alone more.
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=128
+	// +kubebuilder:validation:MaxItems=32
 	// +listType=atomic
 	// +optional
 	Widgets []InfoWidgetEntry `json:"widgets,omitempty"`
@@ -261,6 +292,7 @@ func (s *InfoWidgetSpec) Entries() []InfoWidgetEntry {
 	if len(s.Widgets) == 0 {
 		return []InfoWidgetEntry{{
 			Type:                s.Type,
+			URL:                 s.URL,
 			Order:               s.Order,
 			Icon:                s.Icon,
 			Align:               s.Align,
@@ -285,6 +317,11 @@ type InfoWidgetStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// entries is the number of entries this object defines (1 for the
+	// single-widget form, len(spec.widgets) for the multi-widget form).
+	// +optional
+	Entries int32 `json:"entries,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -293,6 +330,7 @@ type InfoWidgetStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
 // +kubebuilder:printcolumn:name="Dashboard",type=string,JSONPath=".spec.dashboardRef.name"
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=".spec.type"
+// +kubebuilder:printcolumn:name="Entries",type=integer,JSONPath=".status.entries"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // InfoWidget is the Schema for the infowidgets API

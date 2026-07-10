@@ -313,6 +313,11 @@ type ServiceEntry struct {
 // alongside services: it becomes the default group for any entry that
 // doesn't set its own.
 //
+// The single-card form is soft-deprecated in favor of the multi-card form
+// and will not be carried into the next API version; the multi-card form is
+// the documented default going forward, even for a ServiceCard defining a
+// single card.
+//
 // The single-card fields below duplicate ServiceEntry's rather than
 // embedding it, so that existing Go code building a ServiceCardSpec{Group:
 // ..., Name: ...} literal (the single-card form predates Services) keeps
@@ -494,6 +499,11 @@ type ServiceCardStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// entries is the number of entries this object defines (1 for the
+	// single-card form, len(spec.services) for the multi-card form).
+	// +optional
+	Entries int32 `json:"entries,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -502,6 +512,7 @@ type ServiceCardStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
 // +kubebuilder:printcolumn:name="Dashboard",type=string,JSONPath=".spec.dashboardRef.name"
 // +kubebuilder:printcolumn:name="Group",type=string,JSONPath=".spec.group"
+// +kubebuilder:printcolumn:name="Entries",type=integer,JSONPath=".status.entries"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // ServiceCard is the Schema for the servicecards API

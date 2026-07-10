@@ -642,15 +642,18 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 	cfg := WidgetConfig{Secrets: map[string]string{}}
 	if entry.Options != nil {
 		cfg.Config = entry.Options.Raw
-		// A header widget has no dedicated URL field; let it set the widget's
-		// base URL via an Options "url" key (widgets ignore the key in their
-		// own config decode).
+		// Options' "url" key remains supported for backwards compatibility
+		// (widgets ignore the key in their own config decode); entry.URL,
+		// when set, takes precedence over it.
 		var opts struct {
 			URL string `json:"url"`
 		}
 		if err := json.Unmarshal(entry.Options.Raw, &opts); err == nil {
 			cfg.URL = opts.URL
 		}
+	}
+	if entry.URL != nil {
+		cfg.URL = *entry.URL
 	}
 
 	if p.SampleData {

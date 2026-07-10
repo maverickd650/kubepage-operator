@@ -53,6 +53,7 @@ func (r *BookmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 	meta.SetStatusCondition(&bookmark.Status.Conditions, cond)
+	bookmark.Status.Entries = int32(len(bookmark.Spec.Entries()))
 
 	if err := r.Status().Update(ctx, bookmark); err != nil {
 		log.Error(err, "Failed to update Bookmark status")

@@ -83,8 +83,8 @@ templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
 	<a
 		class={ "card", "bookmark", templ.KV("bookmark-icons-only", iconsOnly) }
 		href={ b.Href }
-		target={ siteTarget }
-		if isNewTabTarget(siteTarget) {
+		target={ bookmarkTarget(b, siteTarget) }
+		if isNewTabTarget(bookmarkTarget(b, siteTarget)) {
 			rel="noopener noreferrer"
 		}
 		data-name={ b.Name }

@@ -39,6 +39,12 @@ type BookmarkEntry struct {
 	// +optional
 	Href string `json:"href,omitempty"`
 
+	// target overrides the DashboardStyle's default link target for this
+	// bookmark ("_blank" opens a new tab, "_self" the same tab).
+	// +kubebuilder:validation:Enum=_blank;_self
+	// +optional
+	Target *string `json:"target,omitempty"`
+
 	// order controls rendering position: groups and entries are sorted by
 	// Order (nil sorts last), ties broken by Name, since CRDs have no
 	// inherent ordering but bookmarks.yaml's groups/entries are an ordered
@@ -46,8 +52,8 @@ type BookmarkEntry struct {
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
-	// abbr is a two-letter abbreviation shown when Icon is not set. If both
-	// are set, Icon takes precedence.
+	// abbr is a short abbreviation (up to 8 characters) shown when Icon is
+	// not set. If both are set, Icon takes precedence.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=8
 	// +optional
@@ -75,6 +81,11 @@ type BookmarkEntry struct {
 // field allowed alongside bookmarks: it becomes the default group for any
 // entry that doesn't set its own.
 //
+// The single-bookmark form is soft-deprecated in favor of the multi-bookmark
+// form and will not be carried into the next API version; the multi-bookmark
+// form is the documented default going forward, even for a Bookmark defining
+// a single bookmark.
+//
 // The single-bookmark fields below duplicate BookmarkEntry's rather than
 // embedding it, so that existing Go code building a BookmarkSpec{Group: ...,
 // Name: ...} literal (the single-bookmark form predates Bookmarks) keeps
@@ -85,7 +96,7 @@ type BookmarkEntry struct {
 // +kubebuilder:validation:XValidation:rule="has(self.bookmarks) || (has(self.name) && has(self.href) && has(self.group))",message="the single-bookmark form requires name, href, and group"
 // +kubebuilder:validation:XValidation:rule="!has(self.bookmarks) || self.bookmarks.all(b, has(b.name) && has(b.href))",message="every bookmarks entry must set name and href"
 // +kubebuilder:validation:XValidation:rule="!has(self.bookmarks) || has(self.group) || self.bookmarks.all(b, has(b.group))",message="every bookmarks entry must resolve a group: set spec.group as a default, or set group on every entry"
-// +kubebuilder:validation:XValidation:rule="!has(self.bookmarks) || (!has(self.href) && !has(self.abbr) && !has(self.icon) && !has(self.description) && !has(self.order))",message="when bookmarks is set, the single-bookmark inline fields (href, abbr, icon, description, order) must be absent; group is still allowed as the default group for entries"
+// +kubebuilder:validation:XValidation:rule="!has(self.bookmarks) || (!has(self.href) && !has(self.target) && !has(self.abbr) && !has(self.icon) && !has(self.description) && !has(self.order))",message="when bookmarks is set, the single-bookmark inline fields (href, target, abbr, icon, description, order) must be absent; group is still allowed as the default group for entries"
 type BookmarkSpec struct {
 	// dashboardRef names the Dashboard this Bookmark belongs to.
 	// +required
@@ -114,6 +125,12 @@ type BookmarkSpec struct {
 	// +optional
 	Href string `json:"href,omitempty"`
 
+	// target overrides the DashboardStyle's default link target for this
+	// bookmark ("_blank" opens a new tab, "_self" the same tab).
+	// +kubebuilder:validation:Enum=_blank;_self
+	// +optional
+	Target *string `json:"target,omitempty"`
+
 	// order controls rendering position: groups and entries are sorted by
 	// Order (nil sorts last), ties broken by Name, since CRDs have no
 	// inherent ordering but bookmarks.yaml's groups/entries are an ordered
@@ -121,8 +138,8 @@ type BookmarkSpec struct {
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
-	// abbr is a two-letter abbreviation shown when Icon is not set. If both
-	// are set, Icon takes precedence.
+	// abbr is a short abbreviation (up to 8 characters) shown when Icon is
+	// not set. If both are set, Icon takes precedence.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=8
 	// +optional
@@ -146,7 +163,7 @@ type BookmarkSpec struct {
 	// one object instead of one Bookmark per bookmark. group is optional on
 	// each entry: an entry without its own group falls back to spec.group as
 	// a shared default. Mutually exclusive with the inline single-bookmark
-	// fields above (name, href, order, abbr, icon, description).
+	// fields above (name, href, target, order, abbr, icon, description).
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=128
 	// +listType=atomic
@@ -165,6 +182,7 @@ func (s *BookmarkSpec) Entries() []BookmarkEntry {
 			Group:       s.Group,
 			Name:        s.Name,
 			Href:        s.Href,
+			Target:      s.Target,
 			Order:       s.Order,
 			Abbr:        s.Abbr,
 			Icon:        s.Icon,
@@ -191,6 +209,11 @@ type BookmarkStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// entries is the number of entries this object defines (1 for the
+	// single-bookmark form, len(spec.bookmarks) for the multi-bookmark form).
+	// +optional
+	Entries int32 `json:"entries,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -199,6 +222,7 @@ type BookmarkStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
 // +kubebuilder:printcolumn:name="Dashboard",type=string,JSONPath=".spec.dashboardRef.name"
 // +kubebuilder:printcolumn:name="Group",type=string,JSONPath=".spec.group"
+// +kubebuilder:printcolumn:name="Entries",type=integer,JSONPath=".status.entries"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // Bookmark is the Schema for the bookmarks API
