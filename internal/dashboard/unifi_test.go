@@ -220,6 +220,45 @@ func TestUnifiWidgetPollTLSVerificationFailsWithoutOptIn(t *testing.T) {
 	}
 }
 
+func TestUnifiWidgetPollDevicesNon200(t *testing.T) {
+	// Sites resolves fine, but the devices call returns a non-200 — the
+	// mid-flow doJSONRequest surfaces it as an HTTP status Field.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case unifiSitesPath:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":[{"id":"` + unifiTestSiteID + `","name":"default"}]}`))
+		case unifiDevicesPath:
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	got, err := (unifiWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: unifiTestSecrets(),
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: testHTTP401}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+func TestUnifiWidgetPollInvalidConfig(t *testing.T) {
+	if _, err := (unifiWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
+		URL:     testUnreachableAddr,
+		Secrets: unifiTestSecrets(),
+		Config:  []byte(`{not valid json`),
+	}); err == nil {
+		t.Fatal("Poll() expected error for malformed config, got nil")
+	}
+}
+
 func TestUnifiWidgetPollMissingURL(t *testing.T) {
 	if _, err := (unifiWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		Secrets: unifiTestSecrets(),
