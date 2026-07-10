@@ -1021,7 +1021,7 @@ func TestBuildHeaderDatetimeWidget(t *testing.T) {
 // see TestBuildHeaderDefaultIcons).
 func TestBuildHeaderGreetingAndDatetimeHaveNoIcon(t *testing.T) {
 	defs := []HeaderWidget{
-		{Type: headerTypeGreeting, Options: map[string]string{"text": "hi"}},
+		{Type: headerTypeGreeting, Options: map[string]string{testOptionsText: "hi"}},
 		{Type: headerTypeDatetime},
 	}
 	views := buildHeader(defs, nil)
@@ -1052,13 +1052,13 @@ func TestBuildHeaderDefaultIcons(t *testing.T) {
 		wantSubstr string
 	}{
 		{name: "kubemetrics default", typ: testKubeMetricsType, wantSubstr: "simple-icons/kubernetes.svg"},
-		{name: "longhorn default", typ: "longhorn", wantSubstr: "lucide/hard-drive.svg"},
+		{name: "longhorn default", typ: widgetTypeLonghorn, wantSubstr: "lucide/hard-drive.svg"},
 		{name: "glances has no group icon", typ: "glances", wantSubstr: ""},
-		{name: "openmeteo clear", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: "Clear"}}, wantSubstr: "wi/day-sunny.svg"},
-		{name: "openmeteo partly cloudy", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: "Partly cloudy"}}, wantSubstr: "wi/day-cloudy.svg"},
-		{name: "openmeteo rain showers", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: "Rain showers"}}, wantSubstr: "wi/day-showers.svg"},
-		{name: "openweathermap thunderstorm", typ: "openweathermap", fields: []Field{{Label: labelConditions, Value: "Thunderstorm"}}, wantSubstr: "wi/day-thunderstorm.svg"},
-		{name: "openweathermap clouds", typ: "openweathermap", fields: []Field{{Label: labelConditions, Value: "Clouds"}}, wantSubstr: "wi/day-cloudy.svg"},
+		{name: "openmeteo clear", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condClear}}, wantSubstr: "wi/day-sunny.svg"},
+		{name: "openmeteo partly cloudy", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condPartlyCloudy}}, wantSubstr: "wi/day-cloudy.svg"},
+		{name: "openmeteo rain showers", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condRainShowers}}, wantSubstr: "wi/day-showers.svg"},
+		{name: "openweathermap thunderstorm", typ: widgetTypeOpenWeatherMap, fields: []Field{{Label: labelConditions, Value: condThunderstorm}}, wantSubstr: "wi/day-thunderstorm.svg"},
+		{name: "openweathermap clouds", typ: widgetTypeOpenWeatherMap, fields: []Field{{Label: labelConditions, Value: "Clouds"}}, wantSubstr: "wi/day-cloudy.svg"},
 		{name: "explicit icon wins", typ: testKubeMetricsType, icon: "https://example.com/custom.png", wantSubstr: "example.com/custom.png"},
 	}
 	for _, tt := range tests {
@@ -1103,9 +1103,9 @@ func TestBuildHeaderFieldIcons(t *testing.T) {
 	}{
 		{name: "cpu gets icon", typ: testKubeMetricsType, field: Field{Label: labelCPU, Value: "12%"}, wantIconSubstr: "lucide/cpu.svg"},
 		{name: "memory gets icon", typ: testKubeMetricsType, field: Field{Label: labelMemory, Value: "45 GiB"}, wantIconSubstr: "fa6-solid/memory.svg"},
-		{name: "storage gets icon", typ: "longhorn", field: Field{Label: labelStorage, Value: "750 / 1000 GiB"}, wantIconSubstr: "lucide/hard-drive.svg"},
+		{name: "storage gets icon", typ: widgetTypeLonghorn, field: Field{Label: labelStorage, Value: "750 / 1000 GiB"}, wantIconSubstr: "lucide/hard-drive.svg"},
 		{name: "status keeps text label", typ: testKubeMetricsType, field: Field{Label: labelStatus, Value: statusUnknown}, wantLabel: labelStatus},
-		{name: "weather field has no label", typ: testOpenMeteoType, field: Field{Label: labelConditions, Value: "Clear"}, wantLabel: ""},
+		{name: "weather field has no label", typ: testOpenMeteoType, field: Field{Label: labelConditions, Value: condClear}, wantLabel: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

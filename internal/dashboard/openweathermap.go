@@ -11,8 +11,10 @@ import (
 	"strings"
 )
 
+const widgetTypeOpenWeatherMap = "openweathermap"
+
 func init() {
-	Register("openweathermap", &openWeatherMapWidget{})
+	Register(widgetTypeOpenWeatherMap, &openWeatherMapWidget{})
 }
 
 const (

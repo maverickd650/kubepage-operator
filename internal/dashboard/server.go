@@ -558,8 +558,8 @@ const headerIconColor = "94a3b8"
 // openweathermap aren't listed either: their icon tracks the current
 // weather condition each poll instead of a fixed glyph (see weatherIconURL).
 var headerWidgetDefaultIcons = map[string]string{
-	"kubemetrics": "si-kubernetes-#" + headerIconColor,
-	"longhorn":    "lucide-hard-drive-#" + headerIconColor,
+	"kubemetrics":      "si-kubernetes-#" + headerIconColor,
+	widgetTypeLonghorn: "lucide-hard-drive-#" + headerIconColor,
 }
 
 // defaultHeaderWidgetIcon returns the built-in icon a polled header widget
@@ -569,7 +569,7 @@ var headerWidgetDefaultIcons = map[string]string{
 // any other type, and for a weather widget whose fields don't carry a
 // Conditions value yet (e.g. Err is set instead).
 func defaultHeaderWidgetIcon(widgetType string, fields []Field) string {
-	if widgetType == "openmeteo" || widgetType == "openweathermap" {
+	if widgetType == widgetTypeOpenMeteo || widgetType == widgetTypeOpenWeatherMap {
 		return weatherIconURL(fieldValue(fields, labelConditions))
 	}
 	if slug, ok := headerWidgetDefaultIcons[widgetType]; ok {
@@ -659,7 +659,7 @@ var fieldIconSlugs = map[string]string{
 // compact, largely label-less header widgets rather than the ServiceCard
 // grid's always-labeled stat layout.
 func headerFields(widgetType string, fields []Field) []headerFieldView {
-	isWeather := widgetType == "openmeteo" || widgetType == "openweathermap"
+	isWeather := widgetType == widgetTypeOpenMeteo || widgetType == widgetTypeOpenWeatherMap
 	views := make([]headerFieldView, 0, len(fields))
 	for _, f := range fields {
 		v := headerFieldView{Value: f.Value, Percent: f.Percent, Highlight: f.Highlight}
