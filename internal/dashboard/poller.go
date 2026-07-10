@@ -146,6 +146,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	}
 
 	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
+	widgetDefaults := p.widgetDefaults(ctx)
 
 	var entries pagev1alpha1.ServiceCardList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
@@ -184,7 +185,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 					}
 					key := fmt.Sprintf("%s/%s/%d/monitor", namespace, crName, entryIdx)
 					markKeep(key)
-					p.pollWidget(ctx, key, namespace, se, nil, status, statusStyle, latency, defaultHideErrors)
+					p.pollWidget(ctx, key, namespace, se, nil, status, statusStyle, latency, defaultHideErrors, widgetDefaults)
 					return
 				}
 
@@ -192,7 +193,9 @@ func (p *Poller) pollOnce(ctx context.Context) {
 					key := fmt.Sprintf("%s/%s/%d/%d", namespace, crName, entryIdx, i)
 					markKeep(key)
 					widget := &se.Widgets[i]
-					run(func() { p.pollWidget(ctx, key, namespace, se, widget, status, statusStyle, latency, defaultHideErrors) })
+					run(func() {
+						p.pollWidget(ctx, key, namespace, se, widget, status, statusStyle, latency, defaultHideErrors, widgetDefaults)
+					})
 				}
 			})
 		}
@@ -243,7 +246,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 				}
 				key := fmt.Sprintf("header/%s/%d", iw.Name, idx)
 				markKeep(key)
-				run(func() { p.pollInfoWidget(ctx, key, iw, entry) })
+				run(func() { p.pollInfoWidget(ctx, key, iw, entry, widgetDefaults) })
 			}
 		}
 	}
@@ -428,7 +431,7 @@ func podReady(pod *corev1.Pod) bool {
 // pollWidget returns immediately without touching Store, leaving the
 // previous cycle's card (monitor status included) in place — key is already
 // in this cycle's keep set from the caller, so it survives Store.Prune.
-func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, se pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool) {
+func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, se pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool, widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry) {
 	if widget != nil && !p.duePoll(key, widget.PollIntervalSeconds) {
 		return
 	}
@@ -488,7 +491,8 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		return
 	}
 
-	for field, src := range widget.Secrets {
+	secrets, caCert := mergeWidgetSecrets(widget.Type, widget.Secrets, widget.CACert, widgetDefaults)
+	for field, src := range secrets {
 		value, err := p.resolveSecret(ctx, namespace, src)
 		if err != nil {
 			if !card.HideErrors {
@@ -500,7 +504,7 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		cfg.Secrets[field] = value
 	}
 
-	httpClient, err := p.httpClientForCACert(ctx, namespace, widget.CACert, p.HTTPClient)
+	httpClient, err := p.httpClientForCACert(ctx, namespace, caCert, p.HTTPClient)
 	if err != nil {
 		if !card.HideErrors {
 			card.Err = err.Error()
@@ -622,7 +626,7 @@ func metricErr(err error, fields []Field) error {
 // like service widgets. When entry sets its own PollIntervalSeconds and this
 // cycle isn't due yet, it returns immediately, leaving the previous cycle's
 // card in place (see pollWidget's doc comment for the same pattern).
-func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1.InfoWidget, entry pagev1alpha1.InfoWidgetEntry) {
+func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1.InfoWidget, entry pagev1alpha1.InfoWidgetEntry, widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry) {
 	if !p.duePoll(key, entry.PollIntervalSeconds) {
 		return
 	}
@@ -661,7 +665,8 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		return
 	}
 
-	for field, src := range entry.Secrets {
+	secrets, caCert := mergeWidgetSecrets(entry.Type, entry.Secrets, entry.CACert, widgetDefaults)
+	for field, src := range secrets {
 		value, err := p.resolveSecret(ctx, iw.Namespace, src)
 		if err != nil {
 			card.Err = fmt.Sprintf("resolving secret field %q: %v", field, err)
@@ -680,7 +685,7 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		fields, err = cw.PollCluster(ctx, p.KubeReader, cfg)
 	} else {
 		var httpClient *http.Client
-		httpClient, err = p.httpClientForCACert(ctx, iw.Namespace, entry.CACert, p.HTTPClient)
+		httpClient, err = p.httpClientForCACert(ctx, iw.Namespace, caCert, p.HTTPClient)
 		if err == nil {
 			fields, err = impl.Poll(ctx, httpClient, cfg)
 		}
@@ -777,6 +782,21 @@ func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec,
 		return pagev1alpha1.DiscoverySpec{}, false
 	}
 	return *instance.Spec.Discovery, true
+}
+
+// widgetDefaults returns the Dashboard's Spec.WidgetDefaults (the per-widget-
+// type shared secret defaults — see DashboardSpec.WidgetDefaults' doc
+// comment), or nil when unset or the Dashboard can't be read — mirroring
+// discoverySpec's tolerance of a transient Get failure: it should not fail
+// every widget's poll for the cycle, only fall back to "no defaults" (same
+// behavior as today, before this field existed).
+func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.WidgetDefaultsEntry {
+	var instance pagev1alpha1.Dashboard
+	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
+		pollerLog.Error(err, "getting Dashboard for widgetDefaults")
+		return nil
+	}
+	return instance.Spec.WidgetDefaults
 }
 
 // pollDiscoveredService builds and stores the Card for one Ingress-derived

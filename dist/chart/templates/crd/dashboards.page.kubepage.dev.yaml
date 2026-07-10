@@ -2631,6 +2631,135 @@ spec:
                 maxItems: 16
                 type: array
                 x-kubernetes-list-type: atomic
+              widgetDefaults:
+                additionalProperties:
+                  description: |-
+                    WidgetDefaultsEntry supplies default secret-bearing values for one widget
+                    type, used to fill gaps in a widget's own Secrets/CACert rather than
+                    override them — see DashboardSpec.WidgetDefaults' doc comment. At least
+                    one of Secrets or CACert must be set.
+                  properties:
+                    caCert:
+                      description: |-
+                        caCert is the default CA certificate for widgets of this type that
+                        don't set their own caCert. See ServiceWidget.CACert's doc comment for
+                        the full rationale.
+                      properties:
+                        secretKeyRef:
+                          description: secretKeyRef selects a key of a Secret in the
+                            same namespace.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        value:
+                          description: |-
+                            value is a literal value. Avoid this for real credentials; prefer
+                            SecretKeyRef so the value isn't stored in the CR.
+                          maxLength: 4096
+                          minLength: 1
+                          type: string
+                      type: object
+                      x-kubernetes-validations:
+                      - message: exactly one of value or secretKeyRef must be set
+                        rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef)
+                          ? 1 : 0) == 1'
+                    secrets:
+                      additionalProperties:
+                        description: |-
+                          SecretValueSource is an inline value or a reference to a key in a Secret,
+                          used for any config field that may hold a credential (e.g. a widget API
+                          key). Exactly one of Value or SecretKeyRef must be set; this is enforced by
+                          the CRD schema's CEL rule below, so neither a secret that sets both nor one
+                          that sets neither reaches the dashboard, which resolves whichever is set
+                          in-process at poll time.
+                        properties:
+                          secretKeyRef:
+                            description: secretKeyRef selects a key of a Secret in
+                              the same namespace.
+                            properties:
+                              key:
+                                description: The key of the secret to select from.  Must
+                                  be a valid secret key.
+                                type: string
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the Secret or its key
+                                  must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          value:
+                            description: |-
+                              value is a literal value. Avoid this for real credentials; prefer
+                              SecretKeyRef so the value isn't stored in the CR.
+                            maxLength: 4096
+                            minLength: 1
+                            type: string
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of value or secretKeyRef must be set
+                          rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef)
+                            ? 1 : 0) == 1'
+                      description: |-
+                        secrets are default secret-bearing widget fields, keyed the same way as
+                        ServiceWidget.Secrets/InfoWidgetEntry.Secrets (e.g. "token", "apiKey").
+                        A widget of this type that doesn't set a given key in its own secrets
+                        inherits the default here, per key; a widget's own secrets always win.
+                      minProperties: 1
+                      type: object
+                  type: object
+                  x-kubernetes-validations:
+                  - message: at least one of secrets or caCert must be set
+                    rule: has(self.secrets) || has(self.caCert)
+                description: |-
+                  widgetDefaults supplies per-widget-type default values for
+                  secret-bearing fields, keyed by widget type then field name (e.g.
+                  openweathermap: {key: {secretKeyRef: ...}}). A ServiceCard/InfoWidget
+                  widget of that type that does not set the field in its own secrets
+                  inherits the default; a widget's own secrets always win. The
+                  equivalent of homepage's settings.yaml "providers" block: one shared
+                  API key can serve every widget of a given type instead of each widget
+                  repeating its own secrets stanza. Resolved under the same
+                  secretPolicy rules and the same dashboard-pod RBAC as a widget's own
+                  secretKeyRef (see internal/controller/dashboard_rbac.go's
+                  referencedSecretNames) — this field widens convenience, not the trust
+                  model documented in SECURITY.md.
+
+                  The map key (widget type) is deliberately not validated against the
+                  ServiceWidget.Type/InfoWidgetEntry.Type enums here, to avoid two enums
+                  drifting apart; an unknown type here is simply never matched by any
+                  widget.
+                minProperties: 1
+                type: object
             type: object
           status:
             description: status defines the observed state of Dashboard

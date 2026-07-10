@@ -19,4 +19,16 @@ metadata:
 #     parentRef:
 #       name: my-gateway
 #       namespace: gateway-system
+# widgetDefaults supplies one shared secret per widget type instead of
+# repeating it on every widget of that type — e.g. one OpenWeatherMap API
+# key serving every openweathermap InfoWidget/ServiceCard widget bound to
+# this Dashboard, none of which need their own "secrets" block for it:
+# spec:
+#   widgetDefaults:
+#     openweathermap:
+#       secrets:
+#         apiKey:
+#           secretKeyRef:
+#             name: openweathermap-credentials
+#             key: apiKey
 spec: {}

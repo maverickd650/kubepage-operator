@@ -217,6 +217,48 @@ type DashboardSpec struct {
 	// +default="Unrestricted"
 	// +optional
 	SecretPolicy *string `json:"secretPolicy,omitempty"`
+
+	// widgetDefaults supplies per-widget-type default values for
+	// secret-bearing fields, keyed by widget type then field name (e.g.
+	// openweathermap: {key: {secretKeyRef: ...}}). A ServiceCard/InfoWidget
+	// widget of that type that does not set the field in its own secrets
+	// inherits the default; a widget's own secrets always win. The
+	// equivalent of homepage's settings.yaml "providers" block: one shared
+	// API key can serve every widget of a given type instead of each widget
+	// repeating its own secrets stanza. Resolved under the same
+	// secretPolicy rules and the same dashboard-pod RBAC as a widget's own
+	// secretKeyRef (see internal/controller/dashboard_rbac.go's
+	// referencedSecretNames) — this field widens convenience, not the trust
+	// model documented in SECURITY.md.
+	//
+	// The map key (widget type) is deliberately not validated against the
+	// ServiceWidget.Type/InfoWidgetEntry.Type enums here, to avoid two enums
+	// drifting apart; an unknown type here is simply never matched by any
+	// widget.
+	// +kubebuilder:validation:MinProperties=1
+	// +optional
+	WidgetDefaults map[string]WidgetDefaultsEntry `json:"widgetDefaults,omitempty"`
+}
+
+// WidgetDefaultsEntry supplies default secret-bearing values for one widget
+// type, used to fill gaps in a widget's own Secrets/CACert rather than
+// override them — see DashboardSpec.WidgetDefaults' doc comment. At least
+// one of Secrets or CACert must be set.
+// +kubebuilder:validation:XValidation:rule="has(self.secrets) || has(self.caCert)",message="at least one of secrets or caCert must be set"
+type WidgetDefaultsEntry struct {
+	// secrets are default secret-bearing widget fields, keyed the same way as
+	// ServiceWidget.Secrets/InfoWidgetEntry.Secrets (e.g. "token", "apiKey").
+	// A widget of this type that doesn't set a given key in its own secrets
+	// inherits the default here, per key; a widget's own secrets always win.
+	// +kubebuilder:validation:MinProperties=1
+	// +optional
+	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
+
+	// caCert is the default CA certificate for widgets of this type that
+	// don't set their own caCert. See ServiceWidget.CACert's doc comment for
+	// the full rationale.
+	// +optional
+	CACert *SecretValueSource `json:"caCert,omitempty"`
 }
 
 // MetricsSpec controls whether the dashboard's /metrics port is exposed on

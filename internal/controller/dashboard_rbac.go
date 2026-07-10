@@ -155,15 +155,20 @@ func dashboardRoles(secretNames []string, discoveryEnabled, gatewayAPIEnabled bo
 
 // referencedSecretNames returns the sorted, de-duplicated set of Secret names
 // that ServiceCards and InfoWidgets bound to instance reference via a
-// secretKeyRef. It's what scopes the dashboard pod's Secret access (see
+// secretKeyRef, plus any referenced from instance.Spec.WidgetDefaults (the
+// per-widget-type shared secret defaults — see DashboardSpec.WidgetDefaults'
+// doc comment). It's what scopes the dashboard pod's Secret access (see
 // dashboardRoles); the DashboardReconciler already re-reconciles on
-// ServiceCard/InfoWidget changes (SetupWithManager Watches), so the Role's
-// scoped list stays in sync as widgets add or drop credential refs.
+// ServiceCard/InfoWidget changes (SetupWithManager Watches) and on the
+// Dashboard's own spec (the normal reconcile trigger), so the Role's scoped
+// list stays in sync as widgets or widgetDefaults add or drop credential
+// refs.
 //
-// Deliberately unfiltered: any Secret name a bound ServiceCard/InfoWidget
-// references is included, with no allowlist of which Secrets a widget "may"
-// use — see dashboardRoles' trust-model note for what that implies about who
-// should be allowed to create these CRDs.
+// Deliberately unfiltered: any Secret name a bound ServiceCard/InfoWidget or
+// instance.Spec.WidgetDefaults references is included, with no allowlist of
+// which Secrets a widget "may" use — see dashboardRoles' trust-model note for
+// what that implies about who should be allowed to create these CRDs (or, for
+// widgetDefaults, edit the Dashboard itself).
 func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instance *pagev1alpha1.Dashboard) ([]string, error) {
 	names := map[string]struct{}{}
 
@@ -206,6 +211,17 @@ func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instanc
 			if entry.CACert != nil && entry.CACert.SecretKeyRef != nil {
 				names[entry.CACert.SecretKeyRef.Name] = struct{}{}
 			}
+		}
+	}
+
+	for _, defaults := range instance.Spec.WidgetDefaults {
+		for _, src := range defaults.Secrets {
+			if src.SecretKeyRef != nil {
+				names[src.SecretKeyRef.Name] = struct{}{}
+			}
+		}
+		if defaults.CACert != nil && defaults.CACert.SecretKeyRef != nil {
+			names[defaults.CACert.SecretKeyRef.Name] = struct{}{}
 		}
 	}
 
