@@ -167,6 +167,17 @@ PEM-encoded CA certificate (resolved the same way as any other secret-bearing
 field) so a self-hosted upstream with a private CA can be verified instead of
 falling back to a widget's own `insecureTLS` escape hatch (e.g. `unifi.go`).
 
+`spec.widgetDefaults` (homepage's `providers:` block, equivalent) supplies
+per-widget-type default `secrets`/`caCert` values, keyed by widget type: a
+`ServiceCard`/`InfoWidget` widget of that type that doesn't set a given
+secret field itself inherits the default for it; a widget's own value always
+wins. One OpenWeatherMap API key can then serve every `openweathermap`
+widget bound to a Dashboard, with none of them repeating their own `secrets`
+stanza — see [config/samples/page_v1alpha1_dashboard.yaml](config/samples/page_v1alpha1_dashboard.yaml)
+for a worked example. Defaults resolve under the exact same `secretPolicy`
+rules and dashboard-pod RBAC as a widget's own `secretKeyRef` — see
+[SECURITY.md](SECURITY.md#trust-model).
+
 ### Scheduling
 
 `spec.nodeSelector`, `spec.tolerations`, `spec.affinity`,

@@ -137,7 +137,7 @@ func TestCustomAPIWidgetPollBearerToken(t *testing.T) {
 	_, err := (customAPIWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
 		Config:  []byte(`{"mappings":[{"label":"Status","jsonpath":"status"}]}`),
-		Secrets: map[string]string{"token": "tok123"},
+		Secrets: map[string]string{testSecretField: "tok123"},
 	})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)

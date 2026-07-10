@@ -48,6 +48,8 @@ const (
 	testMultiEntryNameStash     = "Stash"
 	testMultiEntryNameMonitored = "Monitored"
 	testSecretMissingName       = "missing"
+	testPlexSecretRefName       = "plex-secret"
+	testWidgetTypePlex          = "plex"
 
 	// testEphemeralAddr requests an OS-assigned port, for tests that don't
 	// care which one they get.
@@ -810,6 +812,73 @@ func TestPollerMissingSecret(t *testing.T) {
 	}
 }
 
+// TestPollerWidgetDefaultsSuppliesMissingSecret drives a full pollOnce with a
+// ServiceCard "plex" widget that sets no secrets of its own and a Dashboard
+// carrying spec.widgetDefaults for "plex": proves the poller actually merges
+// the default into the widget's resolved secrets (not just that no error
+// occurs, which a broken/unwired merge would also produce) by having the
+// stub upstream assert the X-Plex-Token header it receives matches the
+// secret supplied only via widgetDefaults.
+func TestPollerWidgetDefaultsSuppliesMissingSecret(t *testing.T) {
+	const wantToken = "shared-plex-token"
+
+	var gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-Plex-Token")
+		_, _ = w.Write([]byte(`{"MediaContainer":{"size":0}}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Name:         testSvcDisplayName,
+			Widgets: []pagev1alpha1.ServiceWidget{{
+				Type: testWidgetTypePlex,
+				URL:  &url,
+			}},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: testPlexSecretRefName, Namespace: testNamespace},
+		Data:       map[string][]byte{testSecretField: []byte(wantToken)},
+	}
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+				testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{
+					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: testPlexSecretRefName},
+						Key:                  testSecretField,
+					}},
+				}},
+			},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, secret, instance).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err != "" {
+		t.Fatalf("Snapshot() = %+v, want one card with no Err", cards)
+	}
+	if gotToken != wantToken {
+		t.Errorf("upstream saw X-Plex-Token = %q, want %q (widgetDefaults secret should have reached the widget)", gotToken, wantToken)
+	}
+}
+
 // TestPollerPollWidgetCopiesDescriptionTargetAndConfig drives pollWidget
 // directly to exercise three of its field-copy branches in one pass:
 // entry.Spec.Description/Target onto the Card, and widget.Config.Raw into
@@ -841,7 +910,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -883,7 +952,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
 
 	// First poll of key is always due, regardless of override.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
 	}
@@ -892,7 +961,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	}
 
 	// Immediately polling again is within the 100s override: skipped.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
 	}
@@ -901,7 +970,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[testCardKeyA] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
 	}
@@ -932,12 +1001,12 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
 
-	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0], nil)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
 	}
 
-	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0], nil)
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
 	}
@@ -945,7 +1014,7 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[key] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0], nil)
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
 	}
@@ -1046,7 +1115,7 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{SecretReader: cl, Store: store}
-	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0], nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -1077,7 +1146,7 @@ func TestPollerInfoWidgetClusterWidgetUsesKubeReader(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{KubeReader: kubeCl, Store: store}
-	p.pollInfoWidget(t.Context(), "header/cluster", iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), "header/cluster", iw, iw.Spec.Entries()[0], nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -1106,7 +1175,7 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollInfoWidget(t.Context(), "header/metric", iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), "header/metric", iw, iw.Spec.Entries()[0], nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -1138,7 +1207,7 @@ func TestPollerInfoWidgetURLFieldBeatsOptionsURL(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0], nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -1170,7 +1239,7 @@ func TestPollerInfoWidgetOptionsURLStillWorksAlone(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0], nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -1312,8 +1381,8 @@ func TestPollerMultiWidgetFormPerEntrySecretsAndPollInterval(t *testing.T) {
 	key0 := "header/" + multiName + "/0"
 	key1 := "header/" + multiName + "/1"
 
-	p.pollInfoWidget(t.Context(), key0, iw, entries[0])
-	p.pollInfoWidget(t.Context(), key1, iw, entries[1])
+	p.pollInfoWidget(t.Context(), key0, iw, entries[0], nil)
+	p.pollInfoWidget(t.Context(), key1, iw, entries[1], nil)
 
 	cards := map[string]Card{}
 	for _, c := range store.Snapshot() {
@@ -1331,7 +1400,7 @@ func TestPollerMultiWidgetFormPerEntrySecretsAndPollInterval(t *testing.T) {
 
 	// entry 1's PollIntervalSeconds override isn't due yet; a second poll of
 	// its own key must not hit the upstream again, independent of entry 0.
-	p.pollInfoWidget(t.Context(), key1, iw, entries[1])
+	p.pollInfoWidget(t.Context(), key1, iw, entries[1], nil)
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll of entry 1, upstream hit %d times, want still 1", n)
 	}
@@ -1461,7 +1530,7 @@ func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", true)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", true, nil)
 
 	card := store.Snapshot()[0]
 	if card.Err != "" {
@@ -1506,6 +1575,48 @@ func TestPollerDiscoverySpecMissingDashboard(t *testing.T) {
 
 	if _, ok := p.discoverySpec(t.Context()); ok {
 		t.Error("discoverySpec() ok = true, want false when the Dashboard can't be read")
+	}
+}
+
+func TestPollerWidgetDefaultsUnset(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
+
+	if defaults := p.widgetDefaults(t.Context()); defaults != nil {
+		t.Errorf("widgetDefaults() = %+v, want nil when Dashboard.Spec.WidgetDefaults is unset", defaults)
+	}
+}
+
+func TestPollerWidgetDefaultsSet(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+				testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{testSecretField: *ptrSVS("x")}},
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
+
+	defaults := p.widgetDefaults(t.Context())
+	if _, ok := defaults[testWidgetTypePlex]; !ok {
+		t.Errorf("widgetDefaults() = %+v, want a \"plex\" entry", defaults)
+	}
+}
+
+func TestPollerWidgetDefaultsMissingDashboard(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
+
+	if defaults := p.widgetDefaults(t.Context()); defaults != nil {
+		t.Errorf("widgetDefaults() = %+v, want nil when the Dashboard can't be read", defaults)
 	}
 }
 
@@ -1667,7 +1778,7 @@ func TestPollerPollWidgetSampleUnsupportedType(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{Store: store, SampleData: true}
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -1692,7 +1803,7 @@ func TestPollerPollInfoWidgetSampleUnsupportedType(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{Store: store, SampleData: true}
-	p.pollInfoWidget(t.Context(), "header/stub", iw, iw.Spec.Entries()[0])
+	p.pollInfoWidget(t.Context(), "header/stub", iw, iw.Spec.Entries()[0], nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {

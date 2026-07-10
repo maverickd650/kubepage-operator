@@ -12,9 +12,13 @@ trusted network:
    in that namespace via `secretKeyRef` and point the widget's own URL at a
    server they control — an effective read of that Secret's plaintext
    without ever needing `get secrets` RBAC directly (see the trust-model note
-   on `dashboardRoles` in `internal/controller/instance_rbac.go`). Anyone who
-   can write a `Configuration` can inject arbitrary JavaScript into every
-   viewer's browser via `spec.customJS` — that field is documented as
+   on `dashboardRoles` in `internal/controller/dashboard_rbac.go`). The same
+   applies to `Dashboard.spec.widgetDefaults`: anyone who can edit a
+   Dashboard can name any Secret in its namespace as a per-widget-type
+   default, resolved and RBAC-scoped identically to a widget's own
+   `secretKeyRef` (`referencedSecretNames` in the same file walks both).
+   Anyone who can write a `Configuration` can inject arbitrary JavaScript into
+   every viewer's browser via `spec.customJS` — that field is documented as
    "trusted, operator-supplied", which in practice means RBAC on
    `configurations` is effectively RBAC on every viewer's browser.
    `SecretValueSource.value` (as opposed to `secretKeyRef`) additionally
