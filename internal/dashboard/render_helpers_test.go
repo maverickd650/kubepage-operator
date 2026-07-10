@@ -51,8 +51,8 @@ func TestIsHTTPURL(t *testing.T) {
 		in   string
 		want bool
 	}{
-		"https":               {in: "https://example.com/search?q=", want: true},
-		"http":                {in: "http://example.com/search?q=", want: true},
+		"https scheme":        {in: "https://example.com/search?q=", want: true},
+		"http scheme":         {in: "http://example.com/search?q=", want: true},
 		"javascript scheme":   {in: testJSSchemeURL, want: false},
 		"data scheme":         {in: "data:text/html,<script>alert(1)</script>", want: false},
 		"file scheme":         {in: "file:///etc/passwd", want: false},

@@ -109,7 +109,7 @@ type ServiceWidget struct {
 	// registered in internal/dashboard (each widget's init() Register call);
 	// internal/controller/widget_type_policy_test.go asserts this enum stays
 	// in sync with the registry.
-	// +kubebuilder:validation:Enum=plex;stash;paperlessngx;grafana;prometheus;prometheusmetric;unifi;truenas;cloudflared;linkwarden;homeassistant;mealie;customapi;iframe
+	// +kubebuilder:validation:Enum=plex;stash;paperlessngx;grafana;prometheus;prometheusmetric;unifi;truenas;cloudflared;linkwarden;homeassistant;mealie;customapi;iframe;sonarr;radarr;jellyfin;jellyseerr;immich;adguard;pihole;uptime-kuma;portainer;argocd;gitea;tautulli
 	// +required
 	Type string `json:"type"`
 

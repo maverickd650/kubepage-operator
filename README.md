@@ -46,6 +46,18 @@ the dashboard pod's memory for the duration of the poll. See
 | `mealie` | Mealie recipe count | `Secrets["token"]` (Mealie API token) |
 | `customapi` | Arbitrary JSON endpoint, JSONPath-mapped fields | `Secrets["token"]` optional, `config: {mappings: [...]}` |
 | `iframe` | An embedded `<iframe>` on the card instead of stat chips | widget `url` is the embed source, `config: {height}` |
+| `sonarr` | Sonarr library/queue size | `Secrets["apiKey"]` (`X-Api-Key` header) |
+| `radarr` | Radarr library/queue size | `Secrets["apiKey"]` (`X-Api-Key` header) |
+| `jellyfin` | Jellyfin version and active stream count | `Secrets["token"]` (`X-Emby-Token` header) |
+| `jellyseerr` | Jellyseerr version and pending request count | `Secrets["apiKey"]` (`X-Api-Key` header) |
+| `immich` | Immich library photo/video counts | `Secrets["apiKey"]` (`x-api-key` header) |
+| `adguard` | AdGuard Home DNS query/block stats | `Secrets["username"/"password"]` (HTTP Basic auth, not an API key) |
+| `pihole` | Pi-hole v6 DNS query/block stats | `Secrets["password"]` (regular or app password); session-based v6 REST API, logs in fresh every poll |
+| `uptime-kuma` | Uptime Kuma public status-page monitor up/down counts | `config: {slug}` required; no auth, status page must be published |
+| `portainer` | Portainer-managed Docker environment container counts | `Secrets["apiKey"]` (`X-API-Key` header), `config: {endpointId}` required |
+| `argocd` | Argo CD application count by sync/health status | `Secrets["token"]` (Bearer token) |
+| `gitea` | Gitea version, best-effort total repository count | `Secrets["token"]` (`Authorization: token <token>`) |
+| `tautulli` | Tautulli current Plex stream count and bandwidth | `Secrets["apiKey"]` sent as the `apikey` query parameter, not a header |
 | `openweathermap` | Current weather via OpenWeatherMap (header only) | `Secrets["apiKey"]` required, `config: {latitude, longitude, units, label}` |
 | `kubemetrics` | Cluster-wide CPU/memory usage (header only) | `config: {cpuLabel, memoryLabel}`; reads the Kubernetes API, not HTTP |
 | `glances` | Host CPU/memory usage via Glances (header only) | `config: {url, apiVersion}` |

@@ -27,6 +27,8 @@ var (
 		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
 		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
 		"homeassistant", "mealie", "customapi", "iframe",
+		"sonarr", "radarr", "jellyfin", "jellyseerr", "immich", "adguard",
+		"pihole", "uptime-kuma", "portainer", "argocd", "gitea", "tautulli",
 	}
 	// infoWidgetPollableTypes is the subset of InfoWidgetSpec.Type's Enum
 	// allow-list that's also a registered dashboard.Widget; "greeting" and
