@@ -41,7 +41,7 @@ the dashboard pod's memory for the duration of the poll. See
 | `unifi` | UniFi Network controller site health | `Secrets["username"/"password"]`, `config: {site, insecureTLS}` |
 | `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key) |
 | `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
-| `linkwarden` | Linkwarden saved-link count | `Secrets["token"]` (Linkwarden API token) |
+| `linkwarden` | Linkwarden saved-link and collection counts | `Secrets["token"]` (Linkwarden API token) |
 | `homeassistant` | Home Assistant version/reachability | `Secrets["token"]` (long-lived access token) |
 | `mealie` | Mealie recipe count | `Secrets["token"]` (Mealie API token) |
 | `customapi` | Arbitrary JSON endpoint, JSONPath-mapped fields | `Secrets["token"]` optional, `config: {mappings: [...]}` |
