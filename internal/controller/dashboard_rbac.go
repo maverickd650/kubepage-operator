@@ -175,14 +175,16 @@ func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instanc
 		if e.Spec.DashboardRef.Name != instance.Name {
 			continue
 		}
-		for _, w := range e.Spec.Widgets {
-			for _, src := range w.Secrets {
-				if src.SecretKeyRef != nil {
-					names[src.SecretKeyRef.Name] = struct{}{}
+		for _, entry := range e.Spec.Entries() {
+			for _, w := range entry.Widgets {
+				for _, src := range w.Secrets {
+					if src.SecretKeyRef != nil {
+						names[src.SecretKeyRef.Name] = struct{}{}
+					}
 				}
-			}
-			if w.CACert != nil && w.CACert.SecretKeyRef != nil {
-				names[w.CACert.SecretKeyRef.Name] = struct{}{}
+				if w.CACert != nil && w.CACert.SecretKeyRef != nil {
+					names[w.CACert.SecretKeyRef.Name] = struct{}{}
+				}
 			}
 		}
 	}
