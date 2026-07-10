@@ -48,8 +48,8 @@ the dashboard pod's memory for the duration of the poll. See
 | `iframe` | An embedded `<iframe>` on the card instead of stat chips | widget `url` is the embed source, `config: {height}` |
 | `openweathermap` | Current weather via OpenWeatherMap (header only) | `Secrets["apiKey"]` required, `config: {latitude, longitude, units, label}` |
 | `kubemetrics` | Cluster-wide CPU/memory usage (header only) | `config: {cpuLabel, memoryLabel}`; reads the Kubernetes API, not HTTP |
-| `glances` | Host CPU/memory usage via Glances (header only) | `config: {apiVersion}` |
-| `longhorn` | Aggregate Longhorn cluster storage usage (header only) | none beyond `URL` |
+| `glances` | Host CPU/memory usage via Glances (header only) | `config: {url, apiVersion}` |
+| `longhorn` | Aggregate Longhorn cluster storage usage (header only) | `config: {url}` (Longhorn Manager base URL) required |
 | `openmeteo` | Current weather, keyless (header only) | `config: {latitude, longitude, units, label}` |
 | `datetime` | Client-side clock (header only) | static, not polled |
 | `greeting` | Static greeting text (header only) | static, not polled |

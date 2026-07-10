@@ -151,8 +151,14 @@ spec:
                     - openmeteo, openweathermap: latitude, longitude (both required),
                       units ("metric"/"imperial"), label
                     - kubemetrics: cpuLabel, memoryLabel
-                    - glances: apiVersion ("3" or "4"; defaults to "4")
-                  logo and longhorn take no options.
+                    - glances: url (required; Glances REST API base URL), apiVersion
+                      ("3" or "4"; defaults to "4")
+                    - longhorn: url (required; Longhorn Manager REST API base URL, e.g.
+                      http://longhorn-frontend.longhorn-system:80)
+                  Unlike ServiceCard's widgets, an InfoWidget has no dedicated url field,
+                  so any header widget type that polls an HTTP upstream takes its base
+                  URL via this options block's "url" key instead.
+                  logo takes no options.
                 x-kubernetes-preserve-unknown-fields: true
               order:
                 description: |-
