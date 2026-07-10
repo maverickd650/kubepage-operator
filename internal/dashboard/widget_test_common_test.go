@@ -25,6 +25,10 @@ const (
 	testStatusBasic   = "basic"
 	testOptionsText   = "text"
 
+	// Shared across weatherIconURL/buildHeader default-icon fixtures.
+	testSvgDaySunny  = "wi/day-sunny.svg"
+	testSvgDayCloudy = "wi/day-cloudy.svg"
+
 	// Shared literals across poller/server/site fixtures.
 	testSecretName     = "creds"
 	testSvcDisplayName = "Svc"

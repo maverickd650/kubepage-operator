@@ -1054,11 +1054,11 @@ func TestBuildHeaderDefaultIcons(t *testing.T) {
 		{name: "kubemetrics default", typ: testKubeMetricsType, wantSubstr: "simple-icons/kubernetes.svg"},
 		{name: "longhorn default", typ: widgetTypeLonghorn, wantSubstr: "lucide/hard-drive.svg"},
 		{name: "glances has no group icon", typ: "glances", wantSubstr: ""},
-		{name: "openmeteo clear", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condClear}}, wantSubstr: "wi/day-sunny.svg"},
-		{name: "openmeteo partly cloudy", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condPartlyCloudy}}, wantSubstr: "wi/day-cloudy.svg"},
+		{name: "openmeteo clear", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condClear}}, wantSubstr: testSvgDaySunny},
+		{name: "openmeteo partly cloudy", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condPartlyCloudy}}, wantSubstr: testSvgDayCloudy},
 		{name: "openmeteo rain showers", typ: testOpenMeteoType, fields: []Field{{Label: labelConditions, Value: condRainShowers}}, wantSubstr: "wi/day-showers.svg"},
 		{name: "openweathermap thunderstorm", typ: widgetTypeOpenWeatherMap, fields: []Field{{Label: labelConditions, Value: condThunderstorm}}, wantSubstr: "wi/day-thunderstorm.svg"},
-		{name: "openweathermap clouds", typ: widgetTypeOpenWeatherMap, fields: []Field{{Label: labelConditions, Value: "Clouds"}}, wantSubstr: "wi/day-cloudy.svg"},
+		{name: "openweathermap clouds", typ: widgetTypeOpenWeatherMap, fields: []Field{{Label: labelConditions, Value: "Clouds"}}, wantSubstr: testSvgDayCloudy},
 		{name: "explicit icon wins", typ: testKubeMetricsType, icon: "https://example.com/custom.png", wantSubstr: "example.com/custom.png"},
 	}
 	for _, tt := range tests {
@@ -1081,6 +1081,48 @@ func TestBuildHeaderDefaultIcons(t *testing.T) {
 			}
 			if !strings.Contains(got, tt.wantSubstr) {
 				t.Fatalf("buildHeader(%s).IconURL = %q, want substring %q", tt.typ, got, tt.wantSubstr)
+			}
+		})
+	}
+}
+
+// TestWeatherIconURL exercises every weatherIconURL condition branch
+// directly (rather than only the handful buildHeader's own tests happen to
+// poll), including the case-insensitive match and the plain-sun fallback for
+// an unrecognized/empty condition (e.g. "Unknown", a poll error's Field
+// fallback).
+func TestWeatherIconURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		condition string
+		wantSlug  string
+	}{
+		{name: "clear", condition: condClear, wantSlug: testSvgDaySunny},
+		{name: "thunderstorm condition", condition: condThunderstorm, wantSlug: "wi/day-thunderstorm.svg"},
+		{name: "showers", condition: condRainShowers, wantSlug: "wi/day-showers.svg"},
+		{name: "drizzle", condition: condDrizzle, wantSlug: "wi/day-sprinkle.svg"},
+		{name: "rain", condition: condRain, wantSlug: "wi/day-rain.svg"},
+		{name: "snow", condition: condSnow, wantSlug: "wi/day-snow.svg"},
+		{name: "smoke", condition: "Smoke", wantSlug: "wi/smoke.svg"},
+		{name: "haze", condition: "Haze", wantSlug: "wi/day-haze.svg"},
+		{name: "dust", condition: "Dust", wantSlug: "wi/dust.svg"},
+		{name: "ash", condition: "Volcanic Ash", wantSlug: "wi/dust.svg"},
+		{name: "sand", condition: "Sand", wantSlug: "wi/sandstorm.svg"},
+		{name: "fog", condition: condFog, wantSlug: "wi/day-fog.svg"},
+		{name: "mist", condition: "Mist", wantSlug: "wi/day-fog.svg"},
+		{name: "tornado", condition: "Tornado", wantSlug: "wi/tornado.svg"},
+		{name: "squall", condition: "Squall", wantSlug: "wi/strong-wind.svg"},
+		{name: "partly cloudy", condition: condPartlyCloudy, wantSlug: testSvgDayCloudy},
+		{name: "clouds", condition: "Clouds", wantSlug: testSvgDayCloudy},
+		{name: "case insensitive", condition: "CLEAR", wantSlug: testSvgDaySunny},
+		{name: "unrecognized falls back to sunny", condition: statusUnknown, wantSlug: testSvgDaySunny},
+		{name: "empty falls back to sunny", condition: "", wantSlug: testSvgDaySunny},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := weatherIconURL(tt.condition)
+			if !strings.Contains(got, tt.wantSlug) {
+				t.Errorf("weatherIconURL(%q) = %q, want substring %q", tt.condition, got, tt.wantSlug)
 			}
 		})
 	}
@@ -1594,6 +1636,38 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("header body missing %q, want a header-field class per Field.Highlight:\n%s", want, body)
 		}
+	}
+}
+
+// TestServerHeaderRendersFieldIcon exercises header.templ's own IconURL !=
+// "" branch end to end through the /header endpoint — TestBuildHeaderFieldIcons
+// only checks headerFields' output data, not that header.templ actually
+// renders an <img class="field-icon"> for it instead of falling through to
+// the plain-text label branch.
+func TestServerHeaderRendersFieldIcon(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "header/km", ServiceName: testKubeMetricsType, Header: true,
+		Fields: []Field{{Label: labelCPU, Value: "12%"}},
+	})
+	kube := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testKubeMetricsType, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Type:         testKubeMetricsType,
+		},
+	}
+	srv := newTestServer(t, store, kube)
+	req := httptest.NewRequest(http.MethodGet, "/header", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="field-icon"`) {
+		t.Errorf("header body missing a field-icon <img> for a CPU field:\n%s", body)
+	}
+	if strings.Contains(body, `class="label"`) {
+		t.Errorf("header body has a text label alongside a field icon, want the icon to replace it:\n%s", body)
 	}
 }
 

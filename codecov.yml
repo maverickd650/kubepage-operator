@@ -27,8 +27,15 @@ comment:
 #  - test/** are e2e/test helpers, not production code.
 #  - **/zz_generated*.go are kubebuilder-generated DeepCopy methods.
 #  - api/** is generated scheme registration plus declaration-only CRD types.
+#  - **/*_templ.go are templ-generated from the matching .templ source (see
+#    CLAUDE.md's "never touch" list); their per-WriteString "if err != nil"
+#    guards can't fail in a test (templ.Buffer writes don't error), and any
+#    regenerate reshuffles variable names into a large diff even for a
+#    one-line .templ change. The actual template logic is exercised through
+#    HTTP handler tests asserting on rendered output (see server_test.go).
 ignore:
   - "cmd/**"
   - "test/**"
   - "**/zz_generated*.go"
   - "api/**"
+  - "**/*_templ.go"

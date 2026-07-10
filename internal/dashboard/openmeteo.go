@@ -21,8 +21,11 @@ const (
 	openMeteoDefaultBase = "https://api.open-meteo.com"
 	condClear            = "Clear"
 	condPartlyCloudy     = "Partly cloudy"
+	condFog              = "Fog"
+	condDrizzle          = "Drizzle"
 	condRain             = "Rain"
 	condRainShowers      = "Rain showers"
+	condSnow             = "Snow"
 	condThunderstorm     = "Thunderstorm"
 )
 
@@ -114,13 +117,13 @@ func weatherCondition(code int) string {
 	case code <= 3:
 		return condPartlyCloudy
 	case code <= 48:
-		return "Fog"
+		return condFog
 	case code <= 57:
-		return "Drizzle"
+		return condDrizzle
 	case code <= 67:
 		return condRain
 	case code <= 77:
-		return "Snow"
+		return condSnow
 	case code <= 82:
 		return condRainShowers
 	case code <= 86:
