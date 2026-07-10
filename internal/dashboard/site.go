@@ -125,10 +125,16 @@ type LayoutGroup struct {
 	UseEqualHeights    *bool
 }
 
-// HeaderWidget is one InfoWidget rendered in the dashboard header strip
-// (datetime/greeting are described entirely by this; openmeteo's live value
-// is matched in from the Store by Name).
+// HeaderWidget is one header widget entry rendered in the dashboard header
+// strip (datetime/greeting are described entirely by this; openmeteo's live
+// value is matched in from the Store by Key).
 type HeaderWidget struct {
+	// Key uniquely identifies this widget's live Card across polls
+	// (header/<InfoWidget name>/<entry index>) — see poller.go's
+	// pollInfoWidget doc comment. server.go's buildHeader correlates
+	// HeaderWidget to Card by this key rather than by Name, since a
+	// multi-widget InfoWidget's entries all share one Name.
+	Key     string
 	Name    string
 	Type    string
 	Order   *int32
@@ -236,40 +242,57 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, dashboardNam
 	return site, nil
 }
 
-// headerWidgets returns the instance's bound InfoWidgets as render-ready
-// header widget definitions, ordered by Order (nil last) then object name.
-// Options' passthrough JSON is flattened into a string map; nested/array
-// values are skipped (header widgets only use scalar options like text,
-// latitude, format).
+// headerWidget pairs a flattened InfoWidgetEntry with its owning object's
+// name and entry index, so headerWidgets can sort and key entries from
+// possibly-multiple InfoWidget objects together.
+type headerWidget struct {
+	name  string
+	idx   int
+	entry pagev1alpha1.InfoWidgetEntry
+}
+
+// headerWidgets returns the instance's bound InfoWidgets, flattened via
+// InfoWidgetSpec.Entries(), as render-ready header widget definitions,
+// ordered by Order (nil last), then object name, then entry index. Options'
+// passthrough JSON is flattened into a string map; nested/array values are
+// skipped (header widgets only use scalar options like text, latitude,
+// format).
 func headerWidgets(items []pagev1alpha1.InfoWidget, dashboardName string) []HeaderWidget {
-	var bound []pagev1alpha1.InfoWidget
+	var flat []headerWidget
 	for _, w := range items {
-		if w.Spec.DashboardRef.Name == dashboardName {
-			bound = append(bound, w)
+		if w.Spec.DashboardRef.Name != dashboardName {
+			continue
+		}
+		for idx, entry := range w.Spec.Entries() {
+			flat = append(flat, headerWidget{name: w.Name, idx: idx, entry: entry})
 		}
 	}
-	slices.SortFunc(bound, func(a, b pagev1alpha1.InfoWidget) int {
-		if cmp := compareOrder(a.Spec.Order, b.Spec.Order); cmp != 0 {
+	slices.SortFunc(flat, func(a, b headerWidget) int {
+		if cmp := compareOrder(a.entry.Order, b.entry.Order); cmp != 0 {
 			return cmp
 		}
-		return strings.Compare(a.Name, b.Name)
+		if cmp := strings.Compare(a.name, b.name); cmp != 0 {
+			return cmp
+		}
+		return a.idx - b.idx
 	})
 
-	out := make([]HeaderWidget, 0, len(bound))
-	for _, w := range bound {
-		align := defaultHeaderAlign(w.Spec.Type)
-		if w.Spec.Align != nil {
+	out := make([]HeaderWidget, 0, len(flat))
+	for _, hw := range flat {
+		align := defaultHeaderAlign(hw.entry.Type)
+		if hw.entry.Align != nil {
 			align = alignLeft
-			if *w.Spec.Align == pagev1alpha1.AlignRight {
+			if *hw.entry.Align == pagev1alpha1.AlignRight {
 				align = alignRight
 			}
 		}
 		out = append(out, HeaderWidget{
-			Name:    w.Name,
-			Type:    w.Spec.Type,
-			Order:   w.Spec.Order,
-			IconURL: IconURL(w.Spec.Icon),
-			Options: scalarOptions(w.Spec.Options),
+			Key:     fmt.Sprintf("header/%s/%d", hw.name, hw.idx),
+			Name:    hw.name,
+			Type:    hw.entry.Type,
+			Order:   hw.entry.Order,
+			IconURL: IconURL(hw.entry.Icon),
+			Options: scalarOptions(hw.entry.Options),
 			Align:   align,
 		})
 	}

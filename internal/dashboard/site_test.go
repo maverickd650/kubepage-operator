@@ -387,6 +387,44 @@ func TestHeaderWidgetsResolvesAlign(t *testing.T) {
 	}
 }
 
+// TestHeaderWidgetsFlattensMultiWidgetFormWithDistinctKeys verifies a single
+// InfoWidget object's spec.widgets flattens into one HeaderWidget per entry,
+// each with a distinct composite Key (header/<name>/<index>) even though
+// they share one object Name — the same correlation key poller.go's
+// pollInfoWidget stores each Card's Key under, which buildHeader
+// (server.go) needs to tell the entries' live Cards apart.
+func TestHeaderWidgetsFlattensMultiWidgetFormWithDistinctKeys(t *testing.T) {
+	const multiName = "multi-header"
+	items := []pagev1alpha1.InfoWidget{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: multiName},
+			Spec: pagev1alpha1.InfoWidgetSpec{
+				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Widgets: []pagev1alpha1.InfoWidgetEntry{
+					{Type: headerTypeGreeting, Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hi"}`)}},
+					{Type: headerTypeDatetime},
+				},
+			},
+		},
+	}
+
+	out := headerWidgets(items, testDashboardName)
+	if len(out) != 2 {
+		t.Fatalf("headerWidgets() = %+v, want 2 entries", out)
+	}
+	if out[0].Name != multiName || out[1].Name != multiName {
+		t.Errorf("both entries' Name = %q/%q, want both %q (they share one InfoWidget object)", out[0].Name, out[1].Name, multiName)
+	}
+	if out[0].Key == out[1].Key {
+		t.Errorf("out[0].Key == out[1].Key (%q); entries sharing an object name must still get distinct composite Keys", out[0].Key)
+	}
+	wantKey0 := "header/" + multiName + "/0"
+	wantKey1 := "header/" + multiName + "/1"
+	if out[0].Key != wantKey0 || out[1].Key != wantKey1 {
+		t.Errorf("Keys = %q, %q, want %q, %q", out[0].Key, out[1].Key, wantKey0, wantKey1)
+	}
+}
+
 func TestLoadSiteAppliesLayout(t *testing.T) {
 	scheme := testScheme(t)
 	cols := int32(4)

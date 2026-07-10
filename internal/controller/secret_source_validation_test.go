@@ -121,6 +121,32 @@ var _ = Describe("SecretValueSource CRD schema validation", func() {
 			Expect(k8sClient.Delete(ctx, iw)).To(Succeed())
 		})
 	})
+
+	Describe("InfoWidget multi-widget form (widgets[].secrets)", func() {
+		// SecretValueSource's XValidation is a type-level marker, so it
+		// applies wherever a SecretValueSource appears in the schema — this
+		// proves it also fires one level deeper than the single-widget form,
+		// under spec.widgets[].secrets.
+		It("rejects a widgets entry secret that sets both value and secretKeyRef", func() {
+			both := pagev1alpha1.SecretValueSource{
+				Value: ptrString("inline"),
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
+					Key:                  secretField,
+				},
+			}
+			iw := multiInfoWidgetWithNestedSecret("iw-multi-both", both)
+			err := k8sClient.Create(ctx, iw)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("admits a widgets entry secret that sets only secretKeyRef", func() {
+			iw := multiInfoWidgetWithNestedSecret("iw-multi-ref-only", *secretKeyRef())
+			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, iw)).To(Succeed())
+		})
+	})
 })
 
 // serviceEntryWithSecret builds a minimally-valid ServiceCard whose single
@@ -169,8 +195,23 @@ func infoWidgetWithSecret(name string, src *pagev1alpha1.SecretValueSource) *pag
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
-			Type:         "openmeteo",
+			Type:         testWidgetTypeOpenMeteo,
 			Secrets:      map[string]pagev1alpha1.SecretValueSource{secretField: *src},
+		},
+	}
+}
+
+// multiInfoWidgetWithNestedSecret builds a minimally-valid multi-widget-form
+// InfoWidget (spec.widgets) whose single entry carries one secret keyed
+// secretField set to src.
+func multiInfoWidgetWithNestedSecret(name string, src pagev1alpha1.SecretValueSource) *pagev1alpha1.InfoWidget {
+	return &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: testWidgetTypeOpenMeteo, Secrets: map[string]pagev1alpha1.SecretValueSource{secretField: src}},
+			},
 		},
 	}
 }

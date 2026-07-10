@@ -7,4 +7,5 @@ resources:
 - page_v1alpha1_bookmark.yaml
 - page_v1alpha1_bookmark_multi.yaml
 - page_v1alpha1_infowidget.yaml
+- page_v1alpha1_infowidget_multi.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
