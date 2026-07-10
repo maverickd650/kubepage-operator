@@ -50,6 +50,10 @@ const (
 	// literal Go struct tags.
 	secretPassword = "password"
 
+	// secretUsername is the Secrets map key ("username") adguard.go's HTTP
+	// Basic auth uses alongside secretPassword.
+	secretUsername = "username"
+
 	// unitsImperial is the "units" config value openmeteo.go and
 	// openweathermap.go both switch on for Fahrenheit output (their default
 	// is metric/Celsius).

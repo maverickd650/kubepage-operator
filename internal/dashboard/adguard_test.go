@@ -18,7 +18,7 @@ func TestAdguardWidgetPoll(t *testing.T) {
 
 	got, err := (adguardWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
-		Secrets: map[string]string{"username": "admin", secretPassword: "pw"},
+		Secrets: map[string]string{secretUsername: "admin", secretPassword: "pw"},
 	})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)

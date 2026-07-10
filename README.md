@@ -38,7 +38,7 @@ the dashboard pod's memory for the duration of the poll. See
 | `grafana` | Grafana database/version health | `Secrets["token"]` optional Bearer token |
 | `prometheus` | Prometheus target health summary | none (open API) |
 | `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
-| `unifi` | UniFi Network controller site health | `Secrets["username"/"password"]`, `config: {site, insecureTLS}` |
+| `unifi` | UniFi Network controller site health | `Secrets["apiKey"]` (Network Integration API key), `config: {site, insecureTLS}` |
 | `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the WebSocket JSON-RPC API (`/api/current`) |
 | `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
 | `linkwarden` | Linkwarden saved-link and collection counts | `Secrets["token"]` (Linkwarden API token) |

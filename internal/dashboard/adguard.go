@@ -36,7 +36,7 @@ func (adguardWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}
-	if username := cfg.Secrets["username"]; username != "" {
+	if username := cfg.Secrets[secretUsername]; username != "" {
 		req.SetBasicAuth(username, cfg.Secrets[secretPassword])
 	}
 
