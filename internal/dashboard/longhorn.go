@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 const widgetTypeLonghorn = "longhorn"
@@ -36,7 +37,8 @@ func (longhornWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wid
 		return nil, errors.New("longhorn widget: url is required")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.URL+"/v1/nodes", nil)
+	endpoint := strings.TrimRight(cfg.URL, "/") + "/v1/nodes"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}

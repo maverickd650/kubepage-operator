@@ -10,9 +10,10 @@ import (
 func TestLonghornWidgetPoll(t *testing.T) {
 	fifty := 50
 	tests := map[string]struct {
-		response   string
-		statusCode int
-		want       []Field
+		response      string
+		statusCode    int
+		want          []Field
+		trailingSlash bool
 	}{
 		"single node two disks": {
 			response: `{"data":[{"diskStatus":{
@@ -26,6 +27,15 @@ func TestLonghornWidgetPoll(t *testing.T) {
 			response:   `{"data":[]}`,
 			statusCode: http.StatusOK,
 			want:       []Field{{Label: labelStatus, Value: statusUnknown}},
+		},
+		"trailing slash on URL": {
+			response: `{"data":[{"diskStatus":{
+				"disk-1":{"storageMaximum":1000,"storageAvailable":500},
+				"disk-2":{"storageMaximum":1000,"storageAvailable":500}
+			}}]}`,
+			statusCode:    http.StatusOK,
+			want:          []Field{{Label: labelStorage, Value: "0 / 0 GiB (50%)", Percent: &fifty}},
+			trailingSlash: true,
 		},
 		testCaseNon200: {
 			statusCode: http.StatusInternalServerError,
@@ -44,7 +54,11 @@ func TestLonghornWidgetPoll(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := (longhornWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{URL: srv.URL})
+			url := srv.URL
+			if tc.trailingSlash {
+				url += "/"
+			}
+			got, err := (longhornWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{URL: url})
 			if err != nil {
 				t.Fatalf("Poll() unexpected error: %v", err)
 			}
