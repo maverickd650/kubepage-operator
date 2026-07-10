@@ -29,6 +29,9 @@ spec:
     - jsonPath: .spec.group
       name: Group
       type: string
+    - jsonPath: .status.entries
+      name: Entries
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -1117,6 +1120,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              entries:
+                description: |-
+                  entries is the number of entries this object defines (1 for the
+                  single-card form, len(spec.services) for the multi-card form).
+                format: int32
+                type: integer
             type: object
         required:
         - spec

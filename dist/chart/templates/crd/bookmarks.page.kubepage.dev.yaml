@@ -29,6 +29,9 @@ spec:
     - jsonPath: .spec.group
       name: Group
       type: string
+    - jsonPath: .status.entries
+      name: Entries
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -59,8 +62,8 @@ spec:
             properties:
               abbr:
                 description: |-
-                  abbr is a two-letter abbreviation shown when Icon is not set. If both
-                  are set, Icon takes precedence.
+                  abbr is a short abbreviation (up to 8 characters) shown when Icon is
+                  not set. If both are set, Icon takes precedence.
                 maxLength: 8
                 minLength: 1
                 type: string
@@ -71,7 +74,7 @@ spec:
                   one object instead of one Bookmark per bookmark. group is optional on
                   each entry: an entry without its own group falls back to spec.group as
                   a shared default. Mutually exclusive with the inline single-bookmark
-                  fields above (name, href, order, abbr, icon, description).
+                  fields above (name, href, target, order, abbr, icon, description).
                 items:
                   description: |-
                     BookmarkEntry is one bookmark's configuration: display fields and link
@@ -85,8 +88,8 @@ spec:
                   properties:
                     abbr:
                       description: |-
-                        abbr is a two-letter abbreviation shown when Icon is not set. If both
-                        are set, Icon takes precedence.
+                        abbr is a short abbreviation (up to 8 characters) shown when Icon is
+                        not set. If both are set, Icon takes precedence.
                       maxLength: 8
                       minLength: 1
                       type: string
@@ -131,6 +134,14 @@ spec:
                         list. Purely an operator-side rendering concern; not a homepage field.
                       format: int32
                       type: integer
+                    target:
+                      description: |-
+                        target overrides the DashboardStyle's default link target for this
+                        bookmark ("_blank" opens a new tab, "_self" the same tab).
+                      enum:
+                      - _blank
+                      - _self
+                      type: string
                   type: object
                 maxItems: 128
                 minItems: 1
@@ -190,6 +201,14 @@ spec:
                   list. Purely an operator-side rendering concern; not a homepage field.
                 format: int32
                 type: integer
+              target:
+                description: |-
+                  target overrides the DashboardStyle's default link target for this
+                  bookmark ("_blank" opens a new tab, "_self" the same tab).
+                enum:
+                - _blank
+                - _self
+                type: string
             required:
             - dashboardRef
             type: object
@@ -207,10 +226,11 @@ spec:
               rule: '!has(self.bookmarks) || has(self.group) || self.bookmarks.all(b,
                 has(b.group))'
             - message: when bookmarks is set, the single-bookmark inline fields (href,
-                abbr, icon, description, order) must be absent; group is still allowed
-                as the default group for entries
-              rule: '!has(self.bookmarks) || (!has(self.href) && !has(self.abbr) &&
-                !has(self.icon) && !has(self.description) && !has(self.order))'
+                target, abbr, icon, description, order) must be absent; group is still
+                allowed as the default group for entries
+              rule: '!has(self.bookmarks) || (!has(self.href) && !has(self.target)
+                && !has(self.abbr) && !has(self.icon) && !has(self.description) &&
+                !has(self.order))'
           status:
             description: status defines the observed state of Bookmark
             minProperties: 1
@@ -276,6 +296,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              entries:
+                description: |-
+                  entries is the number of entries this object defines (1 for the
+                  single-bookmark form, len(spec.bookmarks) for the multi-bookmark form).
+                format: int32
+                type: integer
             type: object
         required:
         - spec
