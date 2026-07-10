@@ -17,10 +17,10 @@ import (
 
 func TestNoopClusterReaderAlwaysErrors(t *testing.T) {
 	r := noopClusterReader{}
-	if err := r.Get(context.Background(), client.ObjectKey{}, &pagev1alpha1.Dashboard{}); !errors.Is(err, errNoCluster) {
+	if err := r.Get(t.Context(), client.ObjectKey{}, &pagev1alpha1.Dashboard{}); !errors.Is(err, errNoCluster) {
 		t.Errorf("Get() error = %v, want errNoCluster", err)
 	}
-	if err := r.List(context.Background(), &pagev1alpha1.DashboardList{}); !errors.Is(err, errNoCluster) {
+	if err := r.List(t.Context(), &pagev1alpha1.DashboardList{}); !errors.Is(err, errNoCluster) {
 		t.Errorf("List() error = %v, want errNoCluster", err)
 	}
 }
@@ -38,7 +38,7 @@ func TestRunPreviewServesAndShutsDown(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(style).Build()
 
 	addr := freeTCPAddr(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	runErr := make(chan error, 1)
 	go func() {
@@ -85,7 +85,7 @@ func TestRunPreviewReadyReceivesActualBoundAddress(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	readyAddr := make(chan string, 1)
@@ -135,7 +135,7 @@ func TestRunPreviewReadyReceivesActualBoundAddress(t *testing.T) {
 // must degrade to its normal "unreachable" status rather than erroring or
 // panicking.
 func TestKubeMetricsWidgetUsesNoopClusterReaderErrorPath(t *testing.T) {
-	fields, err := (kubeMetricsWidget{}).PollCluster(context.Background(), noopClusterReader{}, WidgetConfig{})
+	fields, err := (kubeMetricsWidget{}).PollCluster(t.Context(), noopClusterReader{}, WidgetConfig{})
 	if err != nil {
 		t.Fatalf("PollCluster() error = %v, want nil (degrade to unreachable status)", err)
 	}

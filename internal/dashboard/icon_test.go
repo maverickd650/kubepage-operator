@@ -2,8 +2,6 @@ package dashboard
 
 import "testing"
 
-func ptr[T any](v T) *T { return &v }
-
 func TestIconURL(t *testing.T) {
 	cases := []struct {
 		name string

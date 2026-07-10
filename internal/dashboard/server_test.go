@@ -1843,7 +1843,7 @@ func TestServerHeaderRendersLogoWidget(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Type:         headerTypeLogo,
-			Icon:         strPtr("https://example.invalid/logo.png"),
+			Icon:         new("https://example.invalid/logo.png"),
 			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
 		},
 	}
@@ -1866,7 +1866,7 @@ func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Type:         headerTypeLogo,
-			Icon:         strPtr("https://example.invalid/logo.png"),
+			Icon:         new("https://example.invalid/logo.png"),
 		},
 	}
 	srv := newTestServer(t, NewStore(), logo)
@@ -1882,8 +1882,6 @@ func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
 		t.Errorf("header body has a link wrapper with no href option configured:\n%s", body)
 	}
 }
-
-func strPtr(s string) *string { return &s }
 
 // TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders keeps the
 // Homepage contract: ordinary information widgets are unboxed, and only

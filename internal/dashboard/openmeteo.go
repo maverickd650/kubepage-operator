@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,10 +69,7 @@ func (openMeteoWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 		tempUnit = "fahrenheit"
 	}
 
-	base := cfg.URL
-	if base == "" {
-		base = openMeteoDefaultBase
-	}
+	base := cmp.Or(cfg.URL, openMeteoDefaultBase)
 	q := url.Values{}
 	q.Set("latitude", strconv.FormatFloat(c.Latitude, 'f', -1, 64))
 	q.Set("longitude", strconv.FormatFloat(c.Longitude, 'f', -1, 64))

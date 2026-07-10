@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
@@ -65,7 +64,7 @@ var _ = Describe("DashboardStyle Controller", func() {
 		It("sets Available=True once the referenced Dashboard exists", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: testRefDashboardName, Namespace: namespaceName},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 3000},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 3000},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 

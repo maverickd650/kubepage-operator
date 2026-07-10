@@ -1,7 +1,6 @@
 package preview
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -172,7 +171,7 @@ stringData:
 	}
 
 	var bm pagev1alpha1.Bookmark
-	if err := result.Reader.Get(context.Background(),
+	if err := result.Reader.Get(t.Context(),
 		types.NamespacedName{Namespace: defaultNamespace, Name: "gh"}, &bm); err != nil {
 		t.Errorf("getting Bookmark through Result.Reader: %v", err)
 	}

@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -166,10 +167,7 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	metricsAddr := opts.MetricsAddr
-	if metricsAddr == "" {
-		metricsAddr = defaultMetricsAddr
-	}
+	metricsAddr := cmp.Or(opts.MetricsAddr, defaultMetricsAddr)
 	metricsServer := &http.Server{
 		Addr:              metricsAddr,
 		Handler:           promhttp.Handler(),

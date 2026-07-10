@@ -47,12 +47,12 @@ func TestRunStopsAllGoroutinesOnContextCancel(t *testing.T) {
 		t.Fatalf("building setup client: %v", err)
 	}
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "dashboard-run-"}}
-	if err := setupClient.Create(context.Background(), ns); err != nil {
+	if err := setupClient.Create(t.Context(), ns); err != nil {
 		t.Fatalf("creating namespace: %v", err)
 	}
 
 	addr := freeTCPAddr(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	// Anything started by the test binary, envtest's own client machinery,
 	// etc. before this point is not part of what we're checking — only

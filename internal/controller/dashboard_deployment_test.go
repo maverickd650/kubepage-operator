@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -155,7 +154,7 @@ func seedDriftedDeployment(t *testing.T, r *DashboardReconciler, instance *pagev
 	if err != nil {
 		t.Fatalf("deploymentForDashboard() unexpected error: %v", err)
 	}
-	dep.Spec.Replicas = ptr.To(int32(7)) // desired default is 1 via webhook default, nil here without it
+	dep.Spec.Replicas = new(int32(7)) // desired default is 1 via webhook default, nil here without it
 	dep.ResourceVersion = ""
 	if err := r.Create(t.Context(), dep); err != nil {
 		t.Fatalf("seeding drifted Deployment: %v", err)

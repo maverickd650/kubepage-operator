@@ -1,5 +1,7 @@
 package dashboard
 
+import "cmp"
+
 // Field labels shared by more than one widget implementation in this
 // package (internal/dashboard/prometheus.go has the Status/Targets-family
 // labels; these are the rest), pulled into constants so goconst doesn't
@@ -66,9 +68,7 @@ const (
 // openmeteo.go and openweathermap.go's Poll and Sample all four share, kept
 // here so they can't drift out of sync with each other.
 func weatherLabelAndSuffix(label, units string) (resolvedLabel, tempSuffix string) {
-	if label == "" {
-		label = labelWeather
-	}
+	label = cmp.Or(label, labelWeather)
 	tempSuffix = "°C"
 	if units == unitsImperial {
 		tempSuffix = "°F"

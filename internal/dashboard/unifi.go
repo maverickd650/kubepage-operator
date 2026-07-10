@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -82,10 +83,7 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 			return nil, fmt.Errorf("decoding widget config: %w", err)
 		}
 	}
-	site := unifiCfg.Site
-	if site == "" {
-		site = "default"
-	}
+	site := cmp.Or(unifiCfg.Site, "default")
 
 	baseURL := strings.TrimRight(cfg.URL, "/")
 	client := unifiHTTPClient(httpClient, baseURL, unifiCfg.InsecureTLS)

@@ -71,7 +71,7 @@ var _ = Describe("Dashboard controller", func() {
 						Namespace: namespace.Name,
 					},
 					Spec: pagev1alpha1.DashboardSpec{
-						Replicas:      ptr.To(int32(1)),
+						Replicas:      new(int32(1)),
 						ContainerPort: 8080,
 					},
 				}
@@ -198,7 +198,7 @@ var _ = Describe("Dashboard controller", func() {
 					Namespace: namespace.Name,
 				},
 				Spec: pagev1alpha1.DashboardSpec{
-					Replicas:      ptr.To(int32(1)),
+					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					HostUsers:     ptr.To(pagev1alpha1.Disabled),
 					Labels: map[string]string{
@@ -208,10 +208,10 @@ var _ = Describe("Dashboard controller", func() {
 						testAnnotationKey: "hello",
 					},
 					PodSecurityContext: &corev1.PodSecurityContext{
-						FSGroup: ptr.To(int64(1000)),
+						FSGroup: new(int64(1000)),
 					},
 					ContainerSecurityContext: &corev1.SecurityContext{
-						ReadOnlyRootFilesystem: ptr.To(true),
+						ReadOnlyRootFilesystem: new(true),
 					},
 					ReadinessProbe: readinessProbe,
 					LivenessProbe:  livenessProbe,
@@ -222,7 +222,7 @@ var _ = Describe("Dashboard controller", func() {
 					Tolerations: []corev1.Toleration{
 						{Key: "node-role", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
 					},
-					PriorityClassName: ptr.To("high-priority"),
+					PriorityClassName: new("high-priority"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
@@ -333,7 +333,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("creates a ServiceAccount, Role, and RoleBinding granting the dashboard pod read access to the config CRDs, and no Secret access when nothing references one", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -368,7 +368,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("scopes the dashboard Role's Secret access to exactly the Secrets its widgets reference", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -423,7 +423,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("creates cluster-scoped metrics RBAC only while a kubemetrics InfoWidget is bound", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -506,7 +506,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("creates a Service fronting the Deployment and populates bound-count status", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -561,7 +561,7 @@ var _ = Describe("Dashboard controller", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.DashboardSpec{
-					Replicas:      ptr.To(int32(1)),
+					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
 						Enabled: pagev1alpha1.Enabled,
@@ -607,7 +607,7 @@ var _ = Describe("Dashboard controller", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.DashboardSpec{
-					Replicas:      ptr.To(int32(1)),
+					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
 						Enabled: pagev1alpha1.Enabled,
@@ -683,7 +683,7 @@ var _ = Describe("Dashboard controller", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.DashboardSpec{
-					Replicas:      ptr.To(int32(1)),
+					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Gateway: &pagev1alpha1.GatewaySpec{
 						Enabled:   pagev1alpha1.Enabled,
@@ -713,7 +713,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("is a no-op when spec.gateway is unset, regardless of GatewayAPIEnabled", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -761,7 +761,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("rolls the Deployment when DashboardImage changes between reconciles (operator upgrade)", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -789,7 +789,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("rolls the Deployment when other spec fields (env, resources, labels) drift", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 
@@ -854,7 +854,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("runs finalizer cleanup (deleting cluster-scoped metrics RBAC) and removes the finalizer on deletion", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
-				Spec:       pagev1alpha1.DashboardSpec{Replicas: ptr.To(int32(1)), ContainerPort: 8080},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
 

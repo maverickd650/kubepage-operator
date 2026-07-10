@@ -171,7 +171,7 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Type:         "glances",
-					URL:          strPtr("http://glances.example.invalid"),
+					URL:          new("http://glances.example.invalid"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
@@ -265,5 +265,3 @@ func conditionOfType(conditions []metav1.Condition, condType string) *metav1.Con
 	}
 	return nil
 }
-
-func strPtr(s string) *string { return &s }

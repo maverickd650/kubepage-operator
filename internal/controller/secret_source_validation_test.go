@@ -56,7 +56,7 @@ var _ = Describe("SecretValueSource CRD schema validation", func() {
 
 		It("rejects a secret that sets both value and secretKeyRef", func() {
 			both := &pagev1alpha1.SecretValueSource{
-				Value: ptrString("inline"),
+				Value: new("inline"),
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 					Key:                  secretField,
@@ -88,7 +88,7 @@ var _ = Describe("SecretValueSource CRD schema validation", func() {
 		// under spec.services[].widgets[].secrets.
 		It("rejects a services entry's widget secret that sets both value and secretKeyRef", func() {
 			both := pagev1alpha1.SecretValueSource{
-				Value: ptrString("inline"),
+				Value: new("inline"),
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 					Key:                  secretField,
@@ -129,7 +129,7 @@ var _ = Describe("SecretValueSource CRD schema validation", func() {
 		// under spec.widgets[].secrets.
 		It("rejects a widgets entry secret that sets both value and secretKeyRef", func() {
 			both := pagev1alpha1.SecretValueSource{
-				Value: ptrString("inline"),
+				Value: new("inline"),
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 					Key:                  secretField,
@@ -215,8 +215,6 @@ func multiInfoWidgetWithNestedSecret(name string, src pagev1alpha1.SecretValueSo
 		},
 	}
 }
-
-func ptrString(s string) *string { return &s }
 
 // applyManifest decodes a multi-document YAML file and creates each object,
 // tolerating AlreadyExists so the suite can be re-run against a warm

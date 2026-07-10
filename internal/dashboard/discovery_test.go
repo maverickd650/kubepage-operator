@@ -72,7 +72,7 @@ func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 	if app.Name != testMyAppDisplayName || app.Group != testDiscoveryGroup || app.Description != testAnAppDescription || app.Href != "https://"+testAppExampleHost+"/" {
 		t.Errorf("app service = %+v, want name/group/description/https href derived from TLS", app)
 	}
-	if app.IconURL != IconURL(strPtr(testGrafanaIconSlug)) {
+	if app.IconURL != IconURL(new(testGrafanaIconSlug)) {
 		t.Errorf("app.IconURL = %q, want the resolved icon annotation", app.IconURL)
 	}
 
@@ -224,7 +224,7 @@ func TestDiscoverHTTPRoutesFiltersAndDefaults(t *testing.T) {
 	if app.Name != testMyAppDisplayName || app.Group != testDiscoveryGroup || app.Description != testAnAppDescription || app.Href != "https://"+testAppExampleHost+"/" {
 		t.Errorf("app service = %+v, want name/group/description/href derived from the first hostname", app)
 	}
-	if app.IconURL != IconURL(strPtr(testGrafanaIconSlug)) {
+	if app.IconURL != IconURL(new(testGrafanaIconSlug)) {
 		t.Errorf("app.IconURL = %q, want the resolved icon annotation", app.IconURL)
 	}
 

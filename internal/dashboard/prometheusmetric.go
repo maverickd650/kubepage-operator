@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -51,10 +52,7 @@ func (prometheusMetricWidget) Poll(ctx context.Context, httpClient *http.Client,
 	if metricCfg.Query == "" {
 		return nil, errors.New("prometheusmetric widget: config.query is required")
 	}
-	label := metricCfg.Label
-	if label == "" {
-		label = labelValue
-	}
+	label := cmp.Or(metricCfg.Label, labelValue)
 
 	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/v1/query?query=" + url.QueryEscape(metricCfg.Query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

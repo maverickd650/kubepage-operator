@@ -174,7 +174,7 @@ func TestRootVarsCSS(t *testing.T) {
 	})
 
 	t.Run("with blur and background opacity", func(t *testing.T) {
-		got := rootVarsCSS("#fff", ramp, "8px", &Background{Opacity: ptr(int32(75))})
+		got := rootVarsCSS("#fff", ramp, "8px", &Background{Opacity: new(int32(75))})
 		if !strings.Contains(got, "--card-blur: 8px;") {
 			t.Errorf("rootVarsCSS() = %q, missing card-blur", got)
 		}
