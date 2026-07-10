@@ -27,6 +27,9 @@ const (
 	testMultiFormGroupMedia       = "Media"
 	testMultiFormNamePlex         = "Plex"
 	testMultiFormNameStash        = "Stash"
+	testBookmarkHrefExample       = "https://example.invalid"
+	testBookmarkNameGithub        = "Github"
+	testBookmarkNameWikipedia     = "Wikipedia"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.
