@@ -237,12 +237,14 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			if iw.Spec.DashboardRef.Name != p.DashboardName {
 				continue
 			}
-			if _, ok := Lookup(iw.Spec.Type); !ok {
-				continue
+			for idx, entry := range iw.Spec.Entries() {
+				if _, ok := Lookup(entry.Type); !ok {
+					continue
+				}
+				key := fmt.Sprintf("header/%s/%d", iw.Name, idx)
+				markKeep(key)
+				run(func() { p.pollInfoWidget(ctx, key, iw, entry) })
 			}
-			key := fmt.Sprintf("header/%s", iw.Name)
-			markKeep(key)
-			run(func() { p.pollInfoWidget(ctx, key, iw) })
 		}
 	}
 
@@ -610,39 +612,43 @@ func metricErr(err error, fields []Field) error {
 	return nil
 }
 
-// pollInfoWidget builds and stores the header Card for one InfoWidget whose
-// type is a registered widget (e.g. openmeteo). Options become the widget's
-// Config; Secrets are resolved in-process like service widgets. When iw sets
-// its own PollIntervalSeconds and this cycle isn't due yet, it returns
-// immediately, leaving the previous cycle's card in place (see pollWidget's
-// doc comment for the same pattern).
-func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1.InfoWidget) {
-	if !p.duePoll(key, iw.Spec.PollIntervalSeconds) {
+// pollInfoWidget builds and stores the header Card for one InfoWidgetEntry
+// whose type is a registered widget (e.g. openmeteo). key is the composite
+// store key (header/<iw.Name>/<entry index>) — it must match the key
+// site.go's headerWidgets assigns the corresponding HeaderWidget.Key, since
+// server.go's buildHeader correlates the two by this key rather than by
+// object name (a multi-widget InfoWidget yields multiple entries sharing one
+// name). Options become the widget's Config; Secrets are resolved in-process
+// like service widgets. When entry sets its own PollIntervalSeconds and this
+// cycle isn't due yet, it returns immediately, leaving the previous cycle's
+// card in place (see pollWidget's doc comment for the same pattern).
+func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1.InfoWidget, entry pagev1alpha1.InfoWidgetEntry) {
+	if !p.duePoll(key, entry.PollIntervalSeconds) {
 		return
 	}
 
 	card := Card{
 		Key:         key,
 		ServiceName: iw.Name,
-		WidgetType:  iw.Spec.Type,
-		Order:       iw.Spec.Order,
+		WidgetType:  entry.Type,
+		Order:       entry.Order,
 		Header:      true,
 		ShowStats:   true,
 		UpdatedAt:   time.Now(),
 	}
 
-	impl, _ := Lookup(iw.Spec.Type) // presence already checked by caller
+	impl, _ := Lookup(entry.Type) // presence already checked by caller
 
 	cfg := WidgetConfig{Secrets: map[string]string{}}
-	if iw.Spec.Options != nil {
-		cfg.Config = iw.Spec.Options.Raw
+	if entry.Options != nil {
+		cfg.Config = entry.Options.Raw
 		// A header widget has no dedicated URL field; let it set the widget's
 		// base URL via an Options "url" key (widgets ignore the key in their
 		// own config decode).
 		var opts struct {
 			URL string `json:"url"`
 		}
-		if err := json.Unmarshal(iw.Spec.Options.Raw, &opts); err == nil {
+		if err := json.Unmarshal(entry.Options.Raw, &opts); err == nil {
 			cfg.URL = opts.URL
 		}
 	}
@@ -652,7 +658,7 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		return
 	}
 
-	for field, src := range iw.Spec.Secrets {
+	for field, src := range entry.Secrets {
 		value, err := p.resolveSecret(ctx, iw.Namespace, src)
 		if err != nil {
 			card.Err = fmt.Sprintf("resolving secret field %q: %v", field, err)
@@ -671,12 +677,12 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		fields, err = cw.PollCluster(ctx, p.KubeReader, cfg)
 	} else {
 		var httpClient *http.Client
-		httpClient, err = p.httpClientForCACert(ctx, iw.Namespace, iw.Spec.CACert, p.HTTPClient)
+		httpClient, err = p.httpClientForCACert(ctx, iw.Namespace, entry.CACert, p.HTTPClient)
 		if err == nil {
 			fields, err = impl.Poll(ctx, httpClient, cfg)
 		}
 	}
-	observePoll(iw.Spec.Type, metricErr(err, fields), time.Since(start).Seconds())
+	observePoll(entry.Type, metricErr(err, fields), time.Since(start).Seconds())
 	if err != nil {
 		card.Err = err.Error()
 	} else {

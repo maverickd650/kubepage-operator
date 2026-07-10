@@ -810,7 +810,7 @@ func openingTag(t *testing.T, body, marker string) string {
 func TestServerHeaderRendersWidgets(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "header/weather", ServiceName: testHeaderWeather, Header: true,
+		Key: "header/" + testHeaderWeather + "/0", ServiceName: testHeaderWeather, Header: true,
 		Fields: []Field{{Label: labelWeather, Value: "10°C"}, {Label: labelConditions, Value: condClear}},
 	})
 
@@ -1084,6 +1084,48 @@ func TestBuildHeaderDefaultIcons(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildHeaderCorrelatesByKeyNotName is the direct buildHeader-level
+// regression guard for the multi-widget-form correlation fix: two
+// HeaderWidget defs sharing one Name (as every entry of a multi-widget
+// InfoWidget does) must each still be joined to their own live Card, keyed
+// by the distinct composite Key poller.go's pollInfoWidget and site.go's
+// headerWidgets both derive — not by Name, which would collide and either
+// duplicate one entry's data onto both views or silently drop the other's.
+func TestBuildHeaderCorrelatesByKeyNotName(t *testing.T) {
+	const sharedName = "multi-header"
+	defs := []HeaderWidget{
+		{Key: "header/" + sharedName + "/0", Name: sharedName, Type: testKubeMetricsType},
+		{Key: "header/" + sharedName + "/1", Name: sharedName, Type: testKubeMetricsType},
+	}
+	cards := []Card{
+		{Key: "header/" + sharedName + "/0", ServiceName: sharedName, Header: true, Fields: []Field{{Label: labelCPU, Value: "11%"}}},
+		{Key: "header/" + sharedName + "/1", ServiceName: sharedName, Header: true, Fields: []Field{{Label: labelCPU, Value: "22%"}}},
+	}
+
+	views := buildHeader(defs, cards)
+	if len(views) != 2 {
+		t.Fatalf("buildHeader() = %d views, want 2", len(views))
+	}
+	got0 := fieldValues(views[0].Fields)
+	got1 := fieldValues(views[1].Fields)
+	if !strings.Contains(strings.Join(got0, ","), "11%") {
+		t.Errorf("views[0].Fields = %v, want entry 0's own value (11%%), not entry 1's, name-based collision", got0)
+	}
+	if !strings.Contains(strings.Join(got1, ","), "22%") {
+		t.Errorf("views[1].Fields = %v, want entry 1's own value (22%%), not entry 0's, name-based collision", got1)
+	}
+}
+
+// fieldValues extracts each headerFieldView's rendered value text, for
+// asserting which entry's live data a view actually carries.
+func fieldValues(fields []headerFieldView) []string {
+	out := make([]string, len(fields))
+	for i, f := range fields {
+		out[i] = f.Value
+	}
+	return out
 }
 
 // TestWeatherIconURL exercises every weatherIconURL condition branch
@@ -1403,7 +1445,7 @@ func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
 func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "header/weather", ServiceName: testHeaderWeather, Header: true,
+		Key: "header/" + testHeaderWeather + "/0", ServiceName: testHeaderWeather, Header: true,
 		Err: "upstream unreachable",
 	})
 
@@ -1612,7 +1654,7 @@ func TestServerFragmentRendersHighlightedStatClasses(t *testing.T) {
 func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "header/hl", ServiceName: testHeaderWeather, Header: true,
+		Key: "header/" + testHeaderWeather + "/0", ServiceName: testHeaderWeather, Header: true,
 		Fields: []Field{
 			{Label: "load", Value: "1", Highlight: HighlightGood},
 			{Label: "mem", Value: "2", Highlight: HighlightWarn},
@@ -1647,7 +1689,7 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 func TestServerHeaderRendersFieldIcon(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
-		Key: "header/km", ServiceName: testKubeMetricsType, Header: true,
+		Key: "header/" + testKubeMetricsType + "/0", ServiceName: testKubeMetricsType, Header: true,
 		Fields: []Field{{Label: labelCPU, Value: "12%"}},
 	})
 	kube := &pagev1alpha1.InfoWidget{

@@ -30,6 +30,7 @@ const (
 	testBookmarkHrefExample       = "https://example.invalid"
 	testBookmarkNameGithub        = "Github"
 	testBookmarkNameWikipedia     = "Wikipedia"
+	testOptionLatitude            = "latitude"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.

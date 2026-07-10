@@ -47,6 +47,7 @@ const (
 	testMultiEntryNamePlex      = "Plex"
 	testMultiEntryNameStash     = "Stash"
 	testMultiEntryNameMonitored = "Monitored"
+	testSecretMissingName       = "missing"
 
 	// testEphemeralAddr requests an OS-assigned port, for tests that don't
 	// care which one they get.
@@ -785,7 +786,7 @@ func TestPollerMissingSecret(t *testing.T) {
 				URL:  &url,
 				Secrets: map[string]pagev1alpha1.SecretValueSource{
 					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "missing"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
 						Key:                  testSecretField,
 					}},
 				},
@@ -931,12 +932,12 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
 
-	p.pollInfoWidget(t.Context(), key, iw)
+	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0])
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
 	}
 
-	p.pollInfoWidget(t.Context(), key, iw)
+	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0])
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
 	}
@@ -944,7 +945,7 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[key] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollInfoWidget(t.Context(), key, iw)
+	p.pollInfoWidget(t.Context(), key, iw, iw.Spec.Entries()[0])
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
 	}
@@ -1036,7 +1037,7 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 			Type:         testOpenMeteoType,
 			Secrets: map[string]pagev1alpha1.SecretValueSource{
 				testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "missing"},
+					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
 					Key:                  testSecretField,
 				}},
 			},
@@ -1045,7 +1046,7 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{SecretReader: cl, Store: store}
-	p.pollInfoWidget(t.Context(), "header/weather", iw)
+	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0])
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -1076,7 +1077,7 @@ func TestPollerInfoWidgetClusterWidgetUsesKubeReader(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{KubeReader: kubeCl, Store: store}
-	p.pollInfoWidget(t.Context(), "header/cluster", iw)
+	p.pollInfoWidget(t.Context(), "header/cluster", iw, iw.Spec.Entries()[0])
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -1105,11 +1106,167 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollInfoWidget(t.Context(), "header/metric", iw)
+	p.pollInfoWidget(t.Context(), "header/metric", iw, iw.Spec.Entries()[0])
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
 		t.Fatalf("Snapshot() = %+v, want one card with a non-empty Err (prometheusmetric requires a URL)", cards)
+	}
+}
+
+// TestPollerMultiWidgetFormProducesPerEntryCards is the InfoWidget
+// multi-widget-form analog of TestPollerMultiCardFormProducesPerEntryCards:
+// one InfoWidget object's spec.widgets yields one Card per entry, each keyed
+// by a composite header/<name>/<index> key rather than colliding on the
+// shared object name (see poller.go's pollInfoWidget and server.go's
+// buildHeader doc comments for why the correlation must go through Key).
+func TestPollerMultiWidgetFormProducesPerEntryCards(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"current_weather":{"temperature":9,"weathercode":0}}`))
+	}))
+	defer srv.Close()
+
+	const multiName = "multi-header"
+	iw := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: multiName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{
+					Type:    testOpenMeteoType,
+					Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+				},
+				{
+					Type:    testOpenMeteoType,
+					Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":40.7,"longitude":-74.0,"url":"` + srv.URL + `"}`)},
+				},
+			},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(iw).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 2 {
+		t.Fatalf("Snapshot() = %d cards, want 2 (one per widgets entry)", len(cards))
+	}
+
+	byKey := map[string]Card{}
+	for _, c := range cards {
+		byKey[c.Key] = c
+	}
+
+	first, ok := byKey["header/"+multiName+"/0"]
+	if !ok {
+		t.Fatalf("no card for key header/%s/0; got keys %v", multiName, byKey)
+	}
+	second, ok := byKey["header/"+multiName+"/1"]
+	if !ok {
+		t.Fatalf("no card for key header/%s/1; got keys %v", multiName, byKey)
+	}
+	if first.ServiceName != multiName || second.ServiceName != multiName {
+		t.Errorf("both entries' ServiceName = %q/%q, want both %q (they share one InfoWidget object name)", first.ServiceName, second.ServiceName, multiName)
+	}
+	if first.Key == second.Key {
+		t.Errorf("first.Key == second.Key (%q); entries sharing an object name must still get distinct composite Keys", first.Key)
+	}
+
+	// A second poll cycle after removing the second entry must prune its
+	// card from Store, mirroring the multi-card ServiceCard form's pruning.
+	iw.Spec.Widgets = iw.Spec.Widgets[:1]
+	if err := cl.Update(t.Context(), iw); err != nil {
+		t.Fatalf("updating InfoWidget: %v", err)
+	}
+	p.pollOnce(t.Context())
+
+	cards = store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() after removing an entry = %d cards, want 1", len(cards))
+	}
+	if cards[0].Key != "header/"+multiName+"/0" {
+		t.Errorf("remaining card.Key = %q, want header/%s/0", cards[0].Key, multiName)
+	}
+}
+
+// TestPollerMultiWidgetFormPerEntrySecretsAndPollInterval verifies each
+// spec.widgets entry resolves its own Secrets and honors its own
+// PollIntervalSeconds independently, keyed by its own composite key — one
+// entry's secret-resolution error must not affect a sibling entry's card,
+// and a due/not-due decision for one entry's key must not affect another's.
+func TestPollerMultiWidgetFormPerEntrySecretsAndPollInterval(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"current_weather":{"temperature":9,"weathercode":0}}`))
+	}))
+	defer srv.Close()
+
+	overrideSeconds := int32(100)
+	const multiName = "multi-secrets"
+	iw := pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: multiName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{
+					// Entry 0: a Secrets reference to a Secret that doesn't
+					// exist, so its card gets a resolution error.
+					Type: testOpenMeteoType,
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
+							Key:                  testSecretField,
+						}},
+					},
+				},
+				{
+					// Entry 1: no Secrets, but its own PollIntervalSeconds
+					// override.
+					Type:                testOpenMeteoType,
+					Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+					PollIntervalSeconds: &overrideSeconds,
+				},
+			},
+		},
+	}
+	entries := iw.Spec.Entries()
+
+	store := NewStore()
+	p := &Poller{SecretReader: fake.NewClientBuilder().WithScheme(testScheme(t)).Build(), HTTPClient: srv.Client(), Store: store, Interval: time.Second}
+
+	key0 := "header/" + multiName + "/0"
+	key1 := "header/" + multiName + "/1"
+
+	p.pollInfoWidget(t.Context(), key0, iw, entries[0])
+	p.pollInfoWidget(t.Context(), key1, iw, entries[1])
+
+	cards := map[string]Card{}
+	for _, c := range store.Snapshot() {
+		cards[c.Key] = c
+	}
+	if cards[key0].Err == "" {
+		t.Errorf("entry 0 card.Err = empty, want a secret-resolution error")
+	}
+	if cards[key1].Err != "" {
+		t.Errorf("entry 1 card.Err = %q, want empty (its own Secrets are unset)", cards[key1].Err)
+	}
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("after first poll of entry 1, upstream hit %d times, want 1", n)
+	}
+
+	// entry 1's PollIntervalSeconds override isn't due yet; a second poll of
+	// its own key must not hit the upstream again, independent of entry 0.
+	p.pollInfoWidget(t.Context(), key1, iw, entries[1])
+	if n := hits.Load(); n != 1 {
+		t.Errorf("after second (not-yet-due) poll of entry 1, upstream hit %d times, want still 1", n)
 	}
 }
 
@@ -1468,7 +1625,7 @@ func TestPollerPollInfoWidgetSampleUnsupportedType(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{Store: store, SampleData: true}
-	p.pollInfoWidget(t.Context(), "header/stub", iw)
+	p.pollInfoWidget(t.Context(), "header/stub", iw, iw.Spec.Entries()[0])
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {

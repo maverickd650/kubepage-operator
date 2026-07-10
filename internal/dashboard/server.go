@@ -498,12 +498,15 @@ func serviceCards(cards []Card) []Card {
 }
 
 // buildHeader joins each header-widget definition with its live polled value
-// (matched by name to a header Card), preserving the definitions' order.
+// (matched by Key, the composite header/<InfoWidget name>/<entry index>
+// string poller.go's pollInfoWidget stores each Card under — matching by
+// object Name alone would collide when a multi-widget InfoWidget's entries
+// share one Name), preserving the definitions' order.
 func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 	live := map[string]Card{}
 	for _, c := range cards {
 		if c.Header {
-			live[c.ServiceName] = c
+			live[c.Key] = c
 		}
 	}
 
@@ -521,7 +524,7 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 		default:
 			v.IconURL = d.IconURL
 			var liveFields []Field
-			if c, ok := live[d.Name]; ok {
+			if c, ok := live[d.Key]; ok {
 				liveFields = c.Fields
 				v.Err = c.Err
 			}

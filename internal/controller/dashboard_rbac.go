@@ -195,13 +195,15 @@ func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instanc
 		if w.Spec.DashboardRef.Name != instance.Name {
 			continue
 		}
-		for _, src := range w.Spec.Secrets {
-			if src.SecretKeyRef != nil {
-				names[src.SecretKeyRef.Name] = struct{}{}
+		for _, entry := range w.Spec.Entries() {
+			for _, src := range entry.Secrets {
+				if src.SecretKeyRef != nil {
+					names[src.SecretKeyRef.Name] = struct{}{}
+				}
 			}
-		}
-		if w.Spec.CACert != nil && w.Spec.CACert.SecretKeyRef != nil {
-			names[w.Spec.CACert.SecretKeyRef.Name] = struct{}{}
+			if entry.CACert != nil && entry.CACert.SecretKeyRef != nil {
+				names[entry.CACert.SecretKeyRef.Name] = struct{}{}
+			}
 		}
 	}
 
@@ -460,8 +462,13 @@ func (r *DashboardReconciler) instanceHasKubeMetricsWidget(ctx context.Context, 
 		return false, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
 	for _, w := range infoWidgets.Items {
-		if w.Spec.DashboardRef.Name == instance.Name && w.Spec.Type == kubeMetricsWidgetType {
-			return true, nil
+		if w.Spec.DashboardRef.Name != instance.Name {
+			continue
+		}
+		for _, entry := range w.Spec.Entries() {
+			if entry.Type == kubeMetricsWidgetType {
+				return true, nil
+			}
 		}
 	}
 	return false, nil
