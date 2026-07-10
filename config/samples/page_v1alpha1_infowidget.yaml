@@ -50,6 +50,19 @@ metadata:
   labels:
     app.kubernetes.io/name: kubepage-operator
     app.kubernetes.io/managed-by: kustomize
+  name: infowidget-longhorn
+spec:
+  dashboardRef:
+    name: dashboard-sample
+  type: longhorn
+  order: 4
+---
+apiVersion: page.kubepage.dev/v1alpha1
+kind: InfoWidget
+metadata:
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
   name: infowidget-kubemetrics
 spec:
   dashboardRef:
@@ -58,4 +71,4 @@ spec:
   # Requires metrics-server installed in the cluster; the operator grants the
   # dashboard pod cluster-scoped node/metrics read access on demand.
   type: kubemetrics
-  order: 4
+  order: 5

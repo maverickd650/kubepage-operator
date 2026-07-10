@@ -21,7 +21,7 @@ func TestOpenWeatherMapWidgetPoll(t *testing.T) {
 			secrets:    map[string]string{openWeatherMapSecretAPIKey: testAPIKey},
 			response:   `{"main":{"temp":12.3},"weather":[{"main":"Clear"}]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: labelWeather, Value: "12.3°C"}, {Label: labelConditions, Value: "Clear"}},
+			want:       []Field{{Label: labelWeather, Value: "12.3°C"}, {Label: labelConditions, Value: condClear}},
 		},
 		"imperial with label": {
 			config:     `{"latitude":40.7,"longitude":-74,"units":"imperial","label":"NYC"}`,

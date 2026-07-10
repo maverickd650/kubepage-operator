@@ -23,6 +23,7 @@ const (
 	testSvcName       = "svc"
 	testHeaderWeather = "weather"
 	testStatusBasic   = "basic"
+	testOptionsText   = "text"
 
 	// Shared literals across poller/server/site fixtures.
 	testSecretName     = "creds"

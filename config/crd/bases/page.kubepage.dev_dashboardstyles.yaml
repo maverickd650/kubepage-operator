@@ -221,7 +221,11 @@ spec:
                 - Expanded
                 type: string
               headerStyle:
-                description: headerStyle for service/bookmark group headers.
+                description: |-
+                  headerStyle for the header info-widget strip (datetime, greeting,
+                  weather, etc.): "underlined" draws a line under it, "boxed" wraps it in
+                  a card, "clean" leaves it unstyled, and "boxedWidgets" additionally
+                  gives each individual widget its own boxed card.
                 enum:
                 - underlined
                 - boxed

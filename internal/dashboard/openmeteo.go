@@ -11,14 +11,18 @@ import (
 	"strings"
 )
 
+const widgetTypeOpenMeteo = "openmeteo"
+
 func init() {
-	Register("openmeteo", &openMeteoWidget{})
+	Register(widgetTypeOpenMeteo, &openMeteoWidget{})
 }
 
 const (
 	openMeteoDefaultBase = "https://api.open-meteo.com"
 	condClear            = "Clear"
+	condPartlyCloudy     = "Partly cloudy"
 	condRain             = "Rain"
+	condRainShowers      = "Rain showers"
 	condThunderstorm     = "Thunderstorm"
 )
 
@@ -108,7 +112,7 @@ func weatherCondition(code int) string {
 	case code == 0:
 		return condClear
 	case code <= 3:
-		return "Partly cloudy"
+		return condPartlyCloudy
 	case code <= 48:
 		return "Fog"
 	case code <= 57:
@@ -118,7 +122,7 @@ func weatherCondition(code int) string {
 	case code <= 77:
 		return "Snow"
 	case code <= 82:
-		return "Rain showers"
+		return condRainShowers
 	case code <= 86:
 		return "Snow showers"
 	case code <= 99:
