@@ -541,12 +541,12 @@ func (r *DashboardReconciler) networkPolicyForDashboard(instance *pagev1alpha1.D
 	np := instance.Spec.NetworkPolicy
 
 	ingressRules := []networkingv1.NetworkPolicyIngressRule{{
-		Ports: []networkingv1.NetworkPolicyPort{{Port: ptrTo(intstr.FromInt32(instance.Spec.ContainerPort))}},
+		Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromInt32(instance.Spec.ContainerPort))}},
 		From:  namespaceSelectorPeers(np.IngressNamespaceSelector),
 	}}
 	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
 		ingressRules = append(ingressRules, networkingv1.NetworkPolicyIngressRule{
-			Ports: []networkingv1.NetworkPolicyPort{{Port: ptrTo(intstr.FromInt32(dashboardMetricsPort))}},
+			Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromInt32(dashboardMetricsPort))}},
 			From:  namespaceSelectorPeers(np.MetricsNamespaceSelector),
 		})
 	}
@@ -558,13 +558,13 @@ func (r *DashboardReconciler) networkPolicyForDashboard(instance *pagev1alpha1.D
 		egressRules = append(egressRules,
 			networkingv1.NetworkPolicyEgressRule{
 				Ports: []networkingv1.NetworkPolicyPort{
-					{Protocol: ptrTo(corev1.ProtocolUDP), Port: ptrTo(intstr.FromInt32(dnsPort))},
-					{Protocol: ptrTo(corev1.ProtocolTCP), Port: ptrTo(intstr.FromInt32(dnsPort))},
+					{Protocol: new(corev1.ProtocolUDP), Port: new(intstr.FromInt32(dnsPort))},
+					{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(dnsPort))},
 				},
 			},
 			networkingv1.NetworkPolicyEgressRule{
 				Ports: []networkingv1.NetworkPolicyPort{
-					{Protocol: ptrTo(corev1.ProtocolTCP), Port: ptrTo(intstr.FromInt32(apiServerPort))},
+					{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(apiServerPort))},
 				},
 			},
 		)
@@ -600,8 +600,6 @@ func namespaceSelectorPeers(selector *metav1.LabelSelector) []networkingv1.Netwo
 	}
 	return []networkingv1.NetworkPolicyPeer{{NamespaceSelector: selector}}
 }
-
-func ptrTo[T any](v T) *T { return &v }
 
 // reconcileNetworkPolicy ensures the NetworkPolicy for instance matches
 // spec.networkPolicy: an owned NetworkPolicy is created/updated when

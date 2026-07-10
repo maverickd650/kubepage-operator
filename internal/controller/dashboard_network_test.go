@@ -83,8 +83,8 @@ func TestHTTPRouteForDashboard(t *testing.T) {
 				Hostnames: []string{testDashboardHost, "dash.example.com"},
 				ParentRef: pagev1alpha1.GatewayParentRef{
 					Name:        "eg",
-					Namespace:   ptr.To("gateway-system"),
-					SectionName: ptr.To("https"),
+					Namespace:   new("gateway-system"),
+					SectionName: new("https"),
 				},
 				Annotations: map[string]string{testAnnotationKey: "hi"},
 			},
@@ -191,7 +191,7 @@ func TestHTTPRouteSpecsEqual(t *testing.T) {
 	defaultedBackendRef := base.Rules[0].BackendRefs[0]
 	defaultedBackendRef.Group = ptr.To(gatewayv1.Group(""))
 	defaultedBackendRef.Kind = ptr.To(gatewayv1.Kind("Service"))
-	defaultedBackendRef.Weight = ptr.To(int32(1))
+	defaultedBackendRef.Weight = new(int32(1))
 	defaulted.Rules = []gatewayv1.HTTPRouteRule{{BackendRefs: []gatewayv1.HTTPBackendRef{defaultedBackendRef}}}
 
 	if !httpRouteSpecsEqual(base, defaulted) {
@@ -336,7 +336,7 @@ func TestPortsEqualLengthMismatch(t *testing.T) {
 func TestIngressSpecsEqual(t *testing.T) {
 	pathType := networkingv1.PathTypePrefix
 	base := networkingv1.IngressSpec{
-		IngressClassName: ptr.To("nginx"),
+		IngressClassName: new("nginx"),
 		Rules: []networkingv1.IngressRule{{
 			Host: testDashboardHost,
 			IngressRuleValue: networkingv1.IngressRuleValue{
@@ -365,7 +365,7 @@ func TestIngressSpecsEqual(t *testing.T) {
 
 	t.Run("different IngressClassName", func(t *testing.T) {
 		other := base
-		other.IngressClassName = ptr.To("other-class")
+		other.IngressClassName = new("other-class")
 		if ingressSpecsEqual(base, other) {
 			t.Errorf("ingressSpecsEqual() = true, want false (IngressClassName differs)")
 		}

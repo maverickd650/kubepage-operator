@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -353,7 +352,7 @@ func TestDashboardReconcileBoundCountsError(t *testing.T) {
 func TestDashboardReconcileDeploymentNotReady(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newDashboardReconcileTestDashboard()
-	instance.Spec.Replicas = ptr.To(int32(1))
+	instance.Spec.Replicas = new(int32(1))
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).WithStatusSubresource(instance).Build()
 	r := newDashboardReconciler(cl)
@@ -385,7 +384,7 @@ func TestDashboardReconcileDeploymentNotReady(t *testing.T) {
 func TestDashboardReconcileDeploymentReadyGetError(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newDashboardReconcileTestDashboard()
-	instance.Spec.Replicas = ptr.To(int32(1))
+	instance.Spec.Replicas = new(int32(1))
 	wantErr := errors.New("get deployment boom")
 
 	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).WithStatusSubresource(instance).Build()

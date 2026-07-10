@@ -104,7 +104,7 @@ var _ = Describe("InfoWidget single-vs-multi form CRD schema validation", func()
 			ObjectMeta: metav1.ObjectMeta{Name: "iw-widgets-plus-secrets", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
-				Secrets:      map[string]pagev1alpha1.SecretValueSource{"token": {Value: ptrString("x")}},
+				Secrets:      map[string]pagev1alpha1.SecretValueSource{"token": {Value: new("x")}},
 				Widgets:      []pagev1alpha1.InfoWidgetEntry{{Type: testWidgetTypeDatetime}},
 			},
 		}

@@ -682,7 +682,7 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 					ImagePullSecrets:          instance.Spec.ImagePullSecrets,
 					PriorityClassName:         ptr.Deref(instance.Spec.PriorityClassName, ""),
 					SecurityContext: mergeOverride(corev1.PodSecurityContext{
-						RunAsNonRoot: ptr.To(true),
+						RunAsNonRoot: new(true),
 						// IMPORTANT: seccomProfile was introduced with Kubernetes 1.19
 						// If you are looking for to produce solutions to be supported
 						// on lower versions you must remove this option.
@@ -697,9 +697,9 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 						// Ensure restrictive context for the container
 						// More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
 						SecurityContext: mergeOverride(corev1.SecurityContext{
-							RunAsNonRoot:             ptr.To(true),
-							RunAsUser:                ptr.To(int64(568)),
-							AllowPrivilegeEscalation: ptr.To(false),
+							RunAsNonRoot:             new(true),
+							RunAsUser:                new(int64(568)),
+							AllowPrivilegeEscalation: new(false),
 							Capabilities: &corev1.Capabilities{
 								Drop: []corev1.Capability{
 									"ALL",
