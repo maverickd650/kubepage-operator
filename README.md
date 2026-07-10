@@ -39,7 +39,7 @@ the dashboard pod's memory for the duration of the poll. See
 | `prometheus` | Prometheus target health summary | none (open API) |
 | `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
 | `unifi` | UniFi Network controller site health | `Secrets["username"/"password"]`, `config: {site, insecureTLS}` |
-| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key) |
+| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the v2.0 REST API, which recent TrueNAS SCALE releases deprecate in favor of the WebSocket JSON-RPC API — works on installs that still serve REST |
 | `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
 | `linkwarden` | Linkwarden saved-link and collection counts | `Secrets["token"]` (Linkwarden API token) |
 | `homeassistant` | Home Assistant version/reachability | `Secrets["token"]` (long-lived access token) |
@@ -53,6 +53,7 @@ the dashboard pod's memory for the duration of the poll. See
 | `openmeteo` | Current weather, keyless (header only) | `config: {latitude, longitude, units, label}` |
 | `datetime` | Client-side clock (header only) | static, not polled |
 | `greeting` | Static greeting text (header only) | static, not polled |
+| `logo` | A static logo image in the header (header only) | `icon` for the image; static, not polled; `config: {href}` optionally links it |
 
 Every `ServiceWidget`/`InfoWidget` also accepts an optional `caCert`
 (`SecretValueSource`) to trust a self-hosted upstream's private CA instead of
@@ -67,7 +68,7 @@ on `InfoWidget` but not `ServiceCard`; all others work on both.
 | `DashboardStyle` (`pstyle`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. Exactly one per Dashboard — the object's name must match the Dashboard's name. |
 | `ServiceCard` (`pcard`) | One service card (with optional widgets polling that service's API) in a named group. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`errorDisplay` toggles. |
 | `Bookmark` (`pbmk`) | One static bookmark link in a named group. |
-| `InfoWidget` (`piw`) | One header-strip widget: `datetime` (client-side clock), `greeting` (static text), `openmeteo` (current weather), or `kubemetrics` (cluster-wide CPU/memory usage). |
+| `InfoWidget` (`piw`) | One header-strip widget: `datetime` (client-side clock), `greeting` (static text), `logo` (static header logo image), `openmeteo` (current weather, keyless), `openweathermap` (current weather via OpenWeatherMap), `glances` (host CPU/memory usage), `longhorn` (aggregate Longhorn cluster storage usage), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
 Every config CRD (`DashboardStyle`, `ServiceCard`, `Bookmark`, `InfoWidget`)
 carries a `dashboardRef.name` naming the `Dashboard` it belongs to, and any
