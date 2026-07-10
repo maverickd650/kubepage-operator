@@ -129,7 +129,10 @@ helm template dist/chart | kubeconform -strict \
 description = "Run fuzz tests on widget parsers (default 30s per target)"
 run = '''
 fuzztime="${FUZZ_TIME:-30s}"
-go test ./internal/dashboard/... -fuzz=FuzzWidgetParsers -fuzztime="$fuzztime"
+# -run='^$' skips the package's other Test funcs (some, like
+# TestRunStopsAllGoroutinesOnContextCancel, need envtest/KUBEBUILDER_ASSETS,
+# which this task deliberately doesn't set up) so only the fuzz target runs.
+go test ./internal/dashboard/... -run='^$' -fuzz=FuzzWidgetParsers -fuzztime="$fuzztime"
 '''
 
 [tasks.test-browser]

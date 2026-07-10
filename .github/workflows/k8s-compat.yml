@@ -28,6 +28,9 @@ concurrency:
 
 permissions: {}
 
+env:
+  IMG: example.com/kubepage-operator:v0.0.1
+
 jobs:
   unit-test-matrix:
     permissions:
@@ -84,7 +87,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: example.com/kubepage-operator:v0.0.1
+          tags: ${{ env.IMG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
