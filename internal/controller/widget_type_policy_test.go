@@ -25,7 +25,7 @@ import (
 var (
 	serviceEntryWidgetTypes = []string{
 		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
-		"prometheusmetric", "unifi", "truenas", "cloudflared", "linkwarden",
+		"prometheusmetric", "unifi", "truenas", testWidgetTypeCloudflared, "linkwarden",
 		"homeassistant", "mealie", "customapi", "iframe",
 		"sonarr", "radarr", "jellyfin", "jellyseerr", "immich", "adguard",
 		"pihole", "uptime-kuma", "portainer", "argocd", "gitea", "tautulli",

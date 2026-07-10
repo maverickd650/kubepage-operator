@@ -106,6 +106,20 @@ can be turned off with `--set admissionPolicies.enabled=false`. These are
 the floors implied by the API surface used; the CI-tested floor is higher —
 see [Development](#development).
 
+Widget `config`/`options` blocks (`ServiceWidget.Config`,
+`InfoWidgetEntry.Options`) are `PreserveUnknownFields` JSON, so a bad key
+inside them can't be caught by the CRD schema the way the invariants above
+are. Instead, `ServiceCardReconciler`/`InfoWidgetReconciler` validate each
+widget's block against its type's known required/optional keys on every
+reconcile: a missing required key (e.g. `cloudflared` without `tunnelId`)
+sets `Available=False` with reason `InvalidWidgetConfig`; a key that isn't
+recognized for that type (a likely typo, e.g. `acountId`) sets a separate
+`ConfigValid=False` condition with reason `UnknownConfigKeys` — deliberately
+without flipping `Available`, since an unrecognized key may just be
+forward-compatible with a newer operator version. `kubectl describe
+pcard`/`piw` on a misconfigured object names the offending entry, widget
+type, and keys directly in the condition message.
+
 ### Exposing the dashboard
 
 Every `Dashboard` always gets a `Service` (`ClusterIP` by default). Set

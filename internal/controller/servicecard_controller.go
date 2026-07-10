@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,8 +54,15 @@ func (r *ServiceCardReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
 	}
+
+	entries := entry.Spec.Entries()
+	availableOverride, configValid := validateWidgetConfigs(serviceCardWidgetConfigInstances(entries), entry.Generation)
+	if cond.Status == metav1.ConditionTrue && availableOverride != nil {
+		cond = *availableOverride
+	}
 	meta.SetStatusCondition(&entry.Status.Conditions, cond)
-	entry.Status.Entries = int32(len(entry.Spec.Entries()))
+	meta.SetStatusCondition(&entry.Status.Conditions, configValid)
+	entry.Status.Entries = int32(len(entries))
 
 	if err := r.Status().Update(ctx, entry); err != nil {
 		log.Error(err, "Failed to update ServiceCard status")
@@ -97,4 +106,25 @@ func (r *ServiceCardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}),
 		).
 		Complete(r)
+}
+
+// serviceCardWidgetConfigInstances flattens entries' widgets into the
+// widgetConfigInstance form validateWidgetConfigs expects, labeling each by
+// its entry name (or index, for an unnamed entry) and widget position.
+func serviceCardWidgetConfigInstances(entries []pagev1alpha1.ServiceEntry) []widgetConfigInstance {
+	var instances []widgetConfigInstance
+	for entryIdx, e := range entries {
+		label := e.Name
+		if label == "" {
+			label = fmt.Sprintf("entries[%d]", entryIdx)
+		}
+		for widgetIdx, w := range e.Widgets {
+			instances = append(instances, widgetConfigInstance{
+				Location:   fmt.Sprintf("entry %q widget[%d] (type %q)", label, widgetIdx, w.Type),
+				WidgetType: w.Type,
+				Raw:        w.Config,
+			})
+		}
+	}
+	return instances
 }

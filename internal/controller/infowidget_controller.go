@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,8 +56,15 @@ func (r *InfoWidgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
 	}
+
+	entries := widget.Spec.Entries()
+	availableOverride, configValid := validateWidgetConfigs(infoWidgetConfigInstances(entries), widget.Generation)
+	if cond.Status == metav1.ConditionTrue && availableOverride != nil {
+		cond = *availableOverride
+	}
 	meta.SetStatusCondition(&widget.Status.Conditions, cond)
-	widget.Status.Entries = int32(len(widget.Spec.Entries()))
+	meta.SetStatusCondition(&widget.Status.Conditions, configValid)
+	widget.Status.Entries = int32(len(entries))
 
 	if err := r.Status().Update(ctx, widget); err != nil {
 		log.Error(err, "Failed to update InfoWidget status")
@@ -99,4 +108,21 @@ func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}),
 		).
 		Complete(r)
+}
+
+// infoWidgetConfigInstances flattens entries into the widgetConfigInstance
+// form validateWidgetConfigs expects. URLSet is derived from each entry's
+// typed URL field, which satisfies a schema's "url" key (glances, longhorn)
+// the same way setting it via Options would.
+func infoWidgetConfigInstances(entries []pagev1alpha1.InfoWidgetEntry) []widgetConfigInstance {
+	instances := make([]widgetConfigInstance, 0, len(entries))
+	for widgetIdx, e := range entries {
+		instances = append(instances, widgetConfigInstance{
+			Location:   fmt.Sprintf("widget[%d] (type %q)", widgetIdx, e.Type),
+			WidgetType: e.Type,
+			Raw:        e.Options,
+			URLSet:     e.URL != nil,
+		})
+	}
+	return instances
 }

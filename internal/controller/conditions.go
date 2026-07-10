@@ -25,12 +25,32 @@ const (
 	// reasonBound marks Available=True on a config CRD whose dashboardRef
 	// resolves to an existing Dashboard.
 	reasonBound = "Bound"
+	// reasonInvalidWidgetConfig marks Available=False on a ServiceCard/
+	// InfoWidget with a widget whose config/options block is missing a
+	// required key (per widgetschema.ConfigSchemas) or isn't a JSON object
+	// at all; also used as ConfigValid=False's reason in the same case.
+	reasonInvalidWidgetConfig = "InvalidWidgetConfig"
+	// reasonUnknownConfigKeys marks ConfigValid=False on a ServiceCard/
+	// InfoWidget with a widget whose config/options block has a key not in
+	// widgetschema.ConfigSchemas' Required or Optional lists — not fatal
+	// (forward compatibility), so it never flips Available.
+	reasonUnknownConfigKeys = "UnknownConfigKeys"
+	// reasonConfigValid marks ConfigValid=True: every widget's config/
+	// options block has every required key and no unrecognized ones.
+	reasonConfigValid = "ConfigValid"
 )
 
 // typeAvailableBound represents whether a config CRD's dashboardRef resolves
 // to an existing Dashboard. Shared by every thin config-CRD controller
 // (DashboardStyle, ServiceCard, and future ones with the same shape).
 const typeAvailableBound = "Available"
+
+// typeConfigValid represents whether every widget on a ServiceCard/InfoWidget
+// has a config/options block whose keys match widgetschema.ConfigSchemas for
+// its type: no missing required keys, no unrecognized ones. Set
+// unconditionally (independent of typeAvailableBound) so a config typo is
+// visible even when the object is otherwise Available.
+const typeConfigValid = "ConfigValid"
 
 // boundDashboardCondition returns the Available condition for a config CRD
 // instance that carries an dashboardRef naming instanceRefName: True if that

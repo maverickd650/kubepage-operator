@@ -31,6 +31,7 @@ const (
 	testBookmarkNameGithub        = "Github"
 	testBookmarkNameWikipedia     = "Wikipedia"
 	testOptionLatitude            = "latitude"
+	testWidgetTypeCloudflared     = "cloudflared"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.
