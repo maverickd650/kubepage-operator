@@ -43,7 +43,15 @@ func TestCloudflaredWidgetPoll(t *testing.T) {
 			response:   `{"result":{"name":"home-tunnel","status":"down"}}`,
 			statusCode: http.StatusOK,
 			want: []Field{
-				{Label: labelStatus, Value: statusUnreach},
+				{Label: labelStatus, Value: statusDown},
+				{Label: labelTunnel, Value: testTunnelName},
+			},
+		},
+		"inactive tunnel": {
+			response:   `{"result":{"name":"home-tunnel","status":"inactive"}}`,
+			statusCode: http.StatusOK,
+			want: []Field{
+				{Label: labelStatus, Value: statusInactive},
 				{Label: labelTunnel, Value: testTunnelName},
 			},
 		},

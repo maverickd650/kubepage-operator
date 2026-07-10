@@ -22,7 +22,10 @@ const cloudflaredAPIBase = "https://api.cloudflare.com/client/v4"
 // cloudflaredWidget polls the Cloudflare API for one named tunnel's status.
 // Config: {"accountId": "...", "tunnelId": "..."} (not secret — these are
 // identifiers, not credentials). Secrets["token"] is a Cloudflare API token
-// scoped to read Tunnel status, sent as a Bearer token.
+// scoped to read Tunnel status, sent as a Bearer token. The tunnel's own
+// status ("healthy"/"degraded"/"down"/"inactive") is shown verbatim
+// (capitalized) rather than folded into statusUnreach: a down or inactive
+// tunnel is a fact reported by a successful poll, not a poll failure.
 type cloudflaredWidget struct{}
 
 type cloudflaredConfig struct {
@@ -75,8 +78,10 @@ func (cloudflaredWidget) Poll(ctx context.Context, httpClient *http.Client, cfg 
 		status = statusHealthy
 	case "degraded":
 		status = statusDegraded
-	case "down", "inactive":
-		status = statusUnreach
+	case "down":
+		status = statusDown
+	case "inactive":
+		status = statusInactive
 	}
 
 	return []Field{
