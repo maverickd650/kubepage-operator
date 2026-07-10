@@ -29,6 +29,9 @@ spec:
     - jsonPath: .spec.type
       name: Type
       type: string
+    - jsonPath: .status.entries
+      name: Entries
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -151,13 +154,14 @@ spec:
                     - openmeteo, openweathermap: latitude, longitude (both required),
                       units ("metric"/"imperial"), label
                     - kubemetrics: cpuLabel, memoryLabel
-                    - glances: url (required; Glances REST API base URL), apiVersion
-                      ("3" or "4"; defaults to "4")
-                    - longhorn: url (required; Longhorn Manager REST API base URL, e.g.
+                    - glances: url (required unless the typed URL field above is set;
+                      Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
+                    - longhorn: url (required unless the typed URL field above is set;
+                      Longhorn Manager REST API base URL, e.g.
                       http://longhorn-frontend.longhorn-system:80)
-                  Unlike ServiceCard's widgets, an InfoWidget has no dedicated url field,
-                  so any header widget type that polls an HTTP upstream takes its base
-                  URL via this options block's "url" key instead.
+                  For a header widget type that polls an HTTP upstream, the typed URL
+                  field above takes precedence over this options block's "url" key,
+                  which remains supported for backwards compatibility.
                   logo takes no options.
 
                   Type=object is set (in addition to PreserveUnknownFields) purely so the
@@ -230,8 +234,10 @@ spec:
                     rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1
                       : 0) == 1'
                 description: |-
-                  secrets are secret-bearing option fields. Merged into Options under the
-                  same field names once a renderer for this CRD exists.
+                  secrets are secret-bearing option fields, resolved in-process at poll
+                  time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
+                  WidgetConfig.Secrets map, keyed by the same field names used here —
+                  distinct from Options/Config, which never carry secret values.
 
                   RBAC note: the same caveat as ServiceCard's widgets.secrets applies
                   here — see ServiceWidget.Secrets' doc comment. Anyone who can create
@@ -258,15 +264,26 @@ spec:
                 - longhorn
                 - openweathermap
                 type: string
+              url:
+                description: |-
+                  url is the base URL this widget polls, for widget types with an HTTP
+                  upstream (glances, longhorn). Takes precedence over options' "url"
+                  key, which remains supported for backwards compatibility. Set only
+                  for the single-widget form; mutually exclusive with Widgets.
+                maxLength: 2048
+                minLength: 1
+                pattern: ^https?://
+                type: string
               widgets:
                 description: |-
                   widgets defines one entry per header widget, for an InfoWidget that
                   groups multiple header widgets (a whole dashboard's worth) into one
                   object instead of one InfoWidget per widget. Mutually exclusive with
                   the inline single-widget fields above (type, order, icon, align,
-                  secrets, caCert, options, pollIntervalSeconds). Unlike
+                  secrets, caCert, options, url, pollIntervalSeconds). Unlike
                   ServiceCard.Services/Bookmark.Bookmarks there is no shared-default
-                  field here (no Group concept for header widgets).
+                  field here (no Group concept for header widgets). A header strip never
+                  holds anywhere near 32 widgets, let alone more.
                 items:
                   description: |-
                     InfoWidgetEntry is one header widget's configuration. InfoWidgetSpec
@@ -361,13 +378,14 @@ spec:
                           - openmeteo, openweathermap: latitude, longitude (both required),
                             units ("metric"/"imperial"), label
                           - kubemetrics: cpuLabel, memoryLabel
-                          - glances: url (required; Glances REST API base URL), apiVersion
-                            ("3" or "4"; defaults to "4")
-                          - longhorn: url (required; Longhorn Manager REST API base URL, e.g.
+                          - glances: url (required unless the typed URL field below is set;
+                            Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
+                          - longhorn: url (required unless the typed URL field below is set;
+                            Longhorn Manager REST API base URL, e.g.
                             http://longhorn-frontend.longhorn-system:80)
-                        Unlike ServiceCard's widgets, an InfoWidget has no dedicated url field,
-                        so any header widget type that polls an HTTP upstream takes its base
-                        URL via this options block's "url" key instead.
+                        For a header widget type that polls an HTTP upstream, the typed URL
+                        field above takes precedence over this options block's "url" key,
+                        which remains supported for backwards compatibility.
                         logo takes no options.
                       x-kubernetes-preserve-unknown-fields: true
                     order:
@@ -433,8 +451,10 @@ spec:
                           rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef)
                             ? 1 : 0) == 1'
                       description: |-
-                        secrets are secret-bearing option fields. Merged into Options under the
-                        same field names once a renderer for this CRD exists.
+                        secrets are secret-bearing option fields, resolved in-process at poll
+                        time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
+                        WidgetConfig.Secrets map, keyed by the same field names used here —
+                        distinct from Options/Config, which never carry secret values.
 
                         RBAC note: the same caveat as ServiceCard's widgets.secrets applies
                         here — see ServiceWidget.Secrets' doc comment. Anyone who can create
@@ -460,8 +480,17 @@ spec:
                       - longhorn
                       - openweathermap
                       type: string
+                    url:
+                      description: |-
+                        url is the base URL this widget polls, for widget types with an HTTP
+                        upstream (glances, longhorn). Takes precedence over options' "url"
+                        key, which remains supported for backwards compatibility.
+                      maxLength: 2048
+                      minLength: 1
+                      pattern: ^https?://
+                      type: string
                   type: object
-                maxItems: 128
+                maxItems: 32
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
@@ -475,11 +504,11 @@ spec:
             - message: every widgets entry must set type
               rule: '!has(self.widgets) || self.widgets.all(w, has(w.type))'
             - message: when widgets is set, the single-widget inline fields (order,
-                icon, align, secrets, caCert, options, pollIntervalSeconds) must be
-                absent
+                icon, align, secrets, caCert, options, url, pollIntervalSeconds) must
+                be absent
               rule: '!has(self.widgets) || (!has(self.order) && !has(self.icon) &&
                 !has(self.align) && !has(self.secrets) && !has(self.caCert) && !has(self.options)
-                && !has(self.pollIntervalSeconds))'
+                && !has(self.url) && !has(self.pollIntervalSeconds))'
           status:
             description: status defines the observed state of InfoWidget
             minProperties: 1
@@ -545,6 +574,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              entries:
+                description: |-
+                  entries is the number of entries this object defines (1 for the
+                  single-widget form, len(spec.widgets) for the multi-widget form).
+                format: int32
+                type: integer
             type: object
         required:
         - spec

@@ -55,6 +55,7 @@ func (r *InfoWidgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 	meta.SetStatusCondition(&widget.Status.Conditions, cond)
+	widget.Status.Entries = int32(len(widget.Spec.Entries()))
 
 	if err := r.Status().Update(ctx, widget); err != nil {
 		log.Error(err, "Failed to update InfoWidget status")

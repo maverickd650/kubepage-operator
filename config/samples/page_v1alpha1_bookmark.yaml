@@ -8,7 +8,21 @@ metadata:
 spec:
   dashboardRef:
     name: dashboard-sample
+  # group is the default group for any entry below that doesn't set its own
+  # (Wikipedia overrides it to "Reference"). The multi-bookmark form
+  # (bookmarks) is the documented default — see BookmarkSpec's doc comment —
+  # even for a Bookmark defining just one bookmark.
   group: Developer
-  name: Github
-  href: https://github.com/
-  abbr: GH
+  bookmarks:
+    - name: Github
+      href: https://github.com/
+      abbr: GH
+    - name: Go Docs
+      href: https://pkg.go.dev/
+      abbr: GO
+      description: Go package documentation
+    - name: Wikipedia
+      group: Reference
+      href: https://wikipedia.org/
+      abbr: WK
+      target: _self
