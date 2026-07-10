@@ -24,7 +24,7 @@ import (
 // for a type *addition*.
 var (
 	serviceEntryWidgetTypes = []string{
-		"plex", "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
+		testWidgetTypePlex, "stash", "paperlessngx", testWidgetTypeGrafana, testWidgetTypePrometheus,
 		"prometheusmetric", "unifi", "truenas", testWidgetTypeCloudflared, "linkwarden",
 		"homeassistant", "mealie", "customapi", "iframe",
 		"sonarr", "radarr", "jellyfin", "jellyseerr", "immich", "adguard",

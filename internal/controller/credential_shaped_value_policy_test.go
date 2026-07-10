@@ -191,4 +191,57 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
 		})
 	})
+
+	Describe("Dashboard widgetDefaults secrets", func() {
+		It("warns when a credential-shaped field name uses an inline value", func() {
+			dash := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash-cred-shaped", Namespace: policyTestNamespace},
+				Spec: pagev1alpha1.DashboardSpec{
+					WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+						testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{
+							testCredShapedFieldAPIKey: {Value: ptrString("plaintext-value")},
+						}},
+					},
+				},
+			}
+			Expect(warningClient.Create(ctx, dash)).To(Succeed(), "Warn actions must not block the request")
+			defer func() { _ = warningClient.Delete(ctx, dash) }()
+			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
+		})
+
+		It("does not warn for a non-credential-shaped field name using an inline value", func() {
+			dash := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash-not-cred-shaped", Namespace: policyTestNamespace},
+				Spec: pagev1alpha1.DashboardSpec{
+					WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+						"openweathermap": {Secrets: map[string]pagev1alpha1.SecretValueSource{
+							testOptionLatitude: {Value: ptrString("51.5")},
+						}},
+					},
+				},
+			}
+			Expect(warningClient.Create(ctx, dash)).To(Succeed())
+			defer func() { _ = warningClient.Delete(ctx, dash) }()
+			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
+		})
+
+		It("does not warn when the credential-shaped field uses secretKeyRef", func() {
+			dash := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash-cred-shaped-ref", Namespace: policyTestNamespace},
+				Spec: pagev1alpha1.DashboardSpec{
+					WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+						testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{
+							testCredShapedFieldAPIKey: {SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
+								Key:                  secretField,
+							}},
+						}},
+					},
+				},
+			}
+			Expect(warningClient.Create(ctx, dash)).To(Succeed())
+			defer func() { _ = warningClient.Delete(ctx, dash) }()
+			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
+		})
+	})
 })
