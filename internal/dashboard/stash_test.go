@@ -34,7 +34,7 @@ func TestStashWidgetPoll(t *testing.T) {
 		testCaseNon200: {
 			statusCode: http.StatusForbidden,
 			want: []Field{
-				{Label: labelStatus, Value: "HTTP 403"},
+				{Label: labelStatus, Value: testHTTP403},
 			},
 		},
 	}

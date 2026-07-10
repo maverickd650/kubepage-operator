@@ -38,14 +38,26 @@ the dashboard pod's memory for the duration of the poll. See
 | `grafana` | Grafana database/version health | `Secrets["token"]` optional Bearer token |
 | `prometheus` | Prometheus target health summary | none (open API) |
 | `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
-| `unifi` | UniFi Network controller site health | `Secrets["username"/"password"]`, `config: {site, insecureTLS}` |
-| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the v2.0 REST API, which recent TrueNAS SCALE releases deprecate in favor of the WebSocket JSON-RPC API — works on installs that still serve REST |
+| `unifi` | UniFi Network controller site health | `Secrets["apiKey"]` (Network Integration API key), `config: {site, insecureTLS}` |
+| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the WebSocket JSON-RPC API (`/api/current`) |
 | `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
 | `linkwarden` | Linkwarden saved-link and collection counts | `Secrets["token"]` (Linkwarden API token) |
 | `homeassistant` | Home Assistant version/reachability | `Secrets["token"]` (long-lived access token) |
 | `mealie` | Mealie recipe count | `Secrets["token"]` (Mealie API token) |
 | `customapi` | Arbitrary JSON endpoint, JSONPath-mapped fields | `Secrets["token"]` optional, `config: {mappings: [...]}` |
 | `iframe` | An embedded `<iframe>` on the card instead of stat chips | widget `url` is the embed source, `config: {height}` |
+| `sonarr` | Sonarr library/queue size | `Secrets["apiKey"]` (`X-Api-Key` header) |
+| `radarr` | Radarr library/queue size | `Secrets["apiKey"]` (`X-Api-Key` header) |
+| `jellyfin` | Jellyfin version and active stream count | `Secrets["token"]` (`X-Emby-Token` header) |
+| `jellyseerr` | Jellyseerr version and pending request count | `Secrets["apiKey"]` (`X-Api-Key` header) |
+| `immich` | Immich library photo/video counts | `Secrets["apiKey"]` (`x-api-key` header) |
+| `adguard` | AdGuard Home DNS query/block stats | `Secrets["username"/"password"]` (HTTP Basic auth, not an API key) |
+| `pihole` | Pi-hole v6 DNS query/block stats | `Secrets["password"]` (regular or app password); session-based v6 REST API, logs in fresh every poll |
+| `uptime-kuma` | Uptime Kuma public status-page monitor up/down counts | `config: {slug}` required; no auth, status page must be published |
+| `portainer` | Portainer-managed Docker environment container counts | `Secrets["apiKey"]` (`X-API-Key` header), `config: {endpointId}` required |
+| `argocd` | Argo CD application count by sync/health status | `Secrets["token"]` (Bearer token) |
+| `gitea` | Gitea version, best-effort total repository count | `Secrets["token"]` (`Authorization: token <token>`) |
+| `tautulli` | Tautulli current Plex stream count and bandwidth | `Secrets["apiKey"]` sent as the `apikey` query parameter, not a header |
 | `openweathermap` | Current weather via OpenWeatherMap (header only) | `Secrets["apiKey"]` required, `config: {latitude, longitude, units, label}` |
 | `kubemetrics` | Cluster-wide CPU/memory usage (header only) | `config: {cpuLabel, memoryLabel}`; reads the Kubernetes API, not HTTP |
 | `glances` | Host CPU/memory usage via Glances (header only) | `config: {url, apiVersion}` |

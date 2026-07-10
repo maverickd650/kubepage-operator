@@ -4469,6 +4469,18 @@ spec:
                             - mealie
                             - customapi
                             - iframe
+                            - sonarr
+                            - radarr
+                            - jellyfin
+                            - jellyseerr
+                            - immich
+                            - adguard
+                            - pihole
+                            - uptime-kuma
+                            - portainer
+                            - argocd
+                            - gitea
+                            - tautulli
                             type: string
                           url:
                             description: url is the base URL the widget talks to.
@@ -4815,6 +4827,18 @@ spec:
                       - mealie
                       - customapi
                       - iframe
+                      - sonarr
+                      - radarr
+                      - jellyfin
+                      - jellyseerr
+                      - immich
+                      - adguard
+                      - pihole
+                      - uptime-kuma
+                      - portainer
+                      - argocd
+                      - gitea
+                      - tautulli
                       type: string
                     url:
                       description: url is the base URL the widget talks to.

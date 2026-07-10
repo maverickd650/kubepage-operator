@@ -17,6 +17,7 @@ const (
 	testCaseNon200      = "non-200"
 	testHTTP500         = "HTTP 500"
 	testHTTP401         = "HTTP 401"
+	testHTTP403         = "HTTP 403"
 	testUnreachableAddr = "http://127.0.0.1:1"
 
 	// Shared literals across the look/monitor/header tests.

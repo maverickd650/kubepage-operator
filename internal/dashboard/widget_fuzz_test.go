@@ -72,11 +72,12 @@ func FuzzWidgetParsers(f *testing.F) {
 		cfg := WidgetConfig{
 			URL: srv.URL,
 			Secrets: map[string]string{
-				testSecretField:     fuzzSecretValue,
-				unifiSecretUsername: fuzzSecretValue,
-				unifiSecretPassword: fuzzSecretValue,
+				testSecretField: fuzzSecretValue,
+				secretAPIKey:    fuzzSecretValue,
+				secretPassword:  fuzzSecretValue,
+				secretUsername:  fuzzSecretValue,
 			},
-			Config: json.RawMessage(`{"fields":[{"path":"status"}]}`),
+			Config: json.RawMessage(`{"fields":[{"path":"status"}],"slug":"fuzz","endpointId":1}`),
 		}
 
 		for _, wtype := range RegisteredTypes() {
