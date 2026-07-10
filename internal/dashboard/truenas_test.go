@@ -1,66 +1,122 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
+
+const truenasTestToken = "nastok"
+
+// truenasMockServer stands up a JSON-RPC 2.0 WebSocket server answering
+// auth.login_with_api_key and system.info exactly like truenas.go's Poll
+// expects: one request per method, in order. loginResult controls whether
+// the mock reports a successful login; systemInfoResult is written verbatim
+// as system.info's JSON-RPC result (skipped if loginResult is false, since a
+// real TrueNAS wouldn't accept further calls on a failed login either).
+func truenasMockServer(t *testing.T, loginResult bool, systemInfoResult string) (*httptest.Server, *string) {
+	t.Helper()
+	gotToken := new(string)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		ctx := r.Context()
+
+		var loginReq jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &loginReq); err != nil {
+			return
+		}
+		if len(loginReq.Params) > 0 {
+			if s, ok := loginReq.Params[0].(string); ok {
+				*gotToken = s
+			}
+		}
+		loginResultJSON, _ := json.Marshal(loginResult)
+		if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: loginReq.ID, Result: loginResultJSON}); err != nil {
+			return
+		}
+		if !loginResult {
+			return
+		}
+
+		var infoReq jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &infoReq); err != nil {
+			return
+		}
+		_ = wsjson.Write(ctx, conn, jsonrpcResponse{ID: infoReq.ID, Result: json.RawMessage(systemInfoResult)})
+
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}))
+	return srv, gotToken
+}
 
 func TestTruenasWidgetPoll(t *testing.T) {
 	tests := map[string]struct {
-		response   string
-		statusCode int
-		want       []Field
+		systemInfoResult string
+		wantVersion      string
+		wantUptime       string
 	}{
 		"multi-day uptime": {
-			response:   `{"version":"TrueNAS-SCALE-23.10.1","uptime_seconds":266461}`,
-			statusCode: http.StatusOK,
-			want: []Field{
-				{Label: labelVersion, Value: "TrueNAS-SCALE-23.10.1"},
-				{Label: labelUptime, Value: "3d 2h"},
-			},
+			systemInfoResult: `{"version":"TrueNAS-SCALE-23.10.1","uptime_seconds":266461}`,
+			wantVersion:      "TrueNAS-SCALE-23.10.1",
+			wantUptime:       "3d 2h",
 		},
 		"sub-day uptime": {
-			response:   `{"version":"TrueNAS-SCALE-23.10.1","uptime_seconds":5400}`,
-			statusCode: http.StatusOK,
-			want: []Field{
-				{Label: labelVersion, Value: "TrueNAS-SCALE-23.10.1"},
-				{Label: labelUptime, Value: "1h 30m"},
-			},
-		},
-		testCaseNon200: {
-			statusCode: http.StatusUnauthorized,
-			want: []Field{
-				{Label: labelStatus, Value: testHTTP401},
-			},
+			systemInfoResult: `{"version":"TrueNAS-SCALE-23.10.1","uptime_seconds":5400}`,
+			wantVersion:      "TrueNAS-SCALE-23.10.1",
+			wantUptime:       "1h 30m",
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			var gotAuth string
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				gotAuth = r.Header.Get("Authorization")
-				w.WriteHeader(tc.statusCode)
-				_, _ = w.Write([]byte(tc.response))
-			}))
+			srv, gotToken := truenasMockServer(t, true, tc.systemInfoResult)
 			defer srv.Close()
 
 			got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
-				Secrets: map[string]string{testSecretField: "nastok"},
+				Secrets: map[string]string{testSecretField: truenasTestToken},
 			})
 			if err != nil {
 				t.Fatalf("Poll() unexpected error: %v", err)
 			}
-			if !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("Poll() = %+v, want %+v", got, tc.want)
+			want := []Field{
+				{Label: labelVersion, Value: tc.wantVersion},
+				{Label: labelUptime, Value: tc.wantUptime},
 			}
-			if gotAuth != "Bearer nastok" {
-				t.Errorf("Authorization header = %q, want %q", gotAuth, "Bearer nastok")
+			if !reflect.DeepEqual(want, got) {
+				t.Errorf("Poll() = %+v, want %+v", got, want)
+			}
+			if *gotToken != truenasTestToken {
+				t.Errorf("auth.login_with_api_key param = %q, want %q", *gotToken, truenasTestToken)
 			}
 		})
+	}
+}
+
+func TestTruenasWidgetPollAuthFailure(t *testing.T) {
+	srv, _ := truenasMockServer(t, false, "")
+	defer srv.Close()
+
+	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{testSecretField: "wrong"},
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: statusUnreach}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
 }
 
@@ -78,6 +134,44 @@ func TestTruenasWidgetPollUnreachable(t *testing.T) {
 	want := []Field{{Label: labelStatus, Value: statusUnreach}}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+func TestTruenasWidgetPollNonWebSocketServer(t *testing.T) {
+	// A plain HTTP server that never upgrades the connection: the dial
+	// itself should fail cleanly rather than hang or panic.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{testSecretField: truenasTestToken},
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: statusUnreach}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+func TestTruenasWebSocketURL(t *testing.T) {
+	tests := map[string]string{
+		"http://truenas.local":       "ws://truenas.local/api/current",
+		"https://truenas.local":      "wss://truenas.local/api/current",
+		"https://truenas.local:444/": "wss://truenas.local:444/api/current",
+	}
+	for in, want := range tests {
+		got, err := truenasWebSocketURL(in)
+		if err != nil {
+			t.Fatalf("truenasWebSocketURL(%q) unexpected error: %v", in, err)
+		}
+		if got != want {
+			t.Errorf("truenasWebSocketURL(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

@@ -13,6 +13,15 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
+// schemeHTTP and schemeHTTPS are the two URL schemes this package derives
+// from or switches on in more than one place (ingressHref below, truenas.go's
+// http(s)->ws(s) scheme mapping), pulled out so goconst doesn't flag the
+// repeated literal.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // defaultDiscoveryPrefix is DiscoverySpec.AnnotationPrefix's default.
 const defaultDiscoveryPrefix = "kubepage.io/"
 
@@ -149,10 +158,10 @@ func ingressHref(ing *networkingv1.Ingress) string {
 	}
 	host := ing.Spec.Rules[0].Host
 
-	scheme := "http"
+	scheme := schemeHTTP
 	for _, tls := range ing.Spec.TLS {
 		if slices.Contains(tls.Hosts, host) {
-			scheme = "https"
+			scheme = schemeHTTPS
 			break
 		}
 	}

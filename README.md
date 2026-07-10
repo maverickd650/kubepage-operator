@@ -39,7 +39,7 @@ the dashboard pod's memory for the duration of the poll. See
 | `prometheus` | Prometheus target health summary | none (open API) |
 | `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
 | `unifi` | UniFi Network controller site health | `Secrets["username"/"password"]`, `config: {site, insecureTLS}` |
-| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the v2.0 REST API, which recent TrueNAS SCALE releases deprecate in favor of the WebSocket JSON-RPC API — works on installs that still serve REST |
+| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the WebSocket JSON-RPC API (`/api/current`) |
 | `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
 | `linkwarden` | Linkwarden saved-link and collection counts | `Secrets["token"]` (Linkwarden API token) |
 | `homeassistant` | Home Assistant version/reachability | `Secrets["token"]` (long-lived access token) |
