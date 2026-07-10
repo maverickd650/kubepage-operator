@@ -1005,19 +1005,21 @@ func TestPollerPruneWidgetLastPolledRemovesUnkept(t *testing.T) {
 
 func TestMetricErrTreatsUnreachableAndHTTPStatusAsError(t *testing.T) {
 	cases := []struct {
-		name   string
-		fields []Field
+		name    string
+		fields  []Field
+		wantErr bool
 	}{
-		{"unreachable status", []Field{{Label: labelStatus, Value: statusUnreach}}},
-		{"http error status", []Field{{Label: labelStatus, Value: testHTTP500}}},
-		{"healthy status is not an error", []Field{{Label: labelStatus, Value: statusHealthy}}},
+		{"unreachable status", []Field{{Label: labelStatus, Value: statusUnreach}}, true},
+		{"http error status", []Field{{Label: labelStatus, Value: testHTTP500}}, true},
+		{"healthy status is not an error", []Field{{Label: labelStatus, Value: statusHealthy}}, false},
+		{"down tunnel status is not an error", []Field{{Label: labelStatus, Value: statusDown}}, false},
+		{"inactive tunnel status is not an error", []Field{{Label: labelStatus, Value: statusInactive}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := metricErr(nil, tc.fields)
-			wantErr := tc.name != "healthy status is not an error"
-			if (err != nil) != wantErr {
-				t.Errorf("metricErr(nil, %+v) = %v, want error presence %v", tc.fields, err, wantErr)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("metricErr(nil, %+v) = %v, want error presence %v", tc.fields, err, tc.wantErr)
 			}
 		})
 	}

@@ -17,7 +17,7 @@ func TestGlancesWidgetPoll(t *testing.T) {
 		want       []Field
 	}{
 		"default version": {
-			response:   `{"cpu":{"total":49.6},"mem":{"percent":70.1}}`,
+			response:   `{"cpu":49.6,"mem":70.1}`,
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelCPU, Value: "50%", Percent: &fifty},
@@ -26,7 +26,7 @@ func TestGlancesWidgetPoll(t *testing.T) {
 		},
 		"v3": {
 			config:     `{"apiVersion":"3"}`,
-			response:   `{"cpu":{"total":49.6},"mem":{"percent":70.1}}`,
+			response:   `{"cpu":49.6,"mem":70.1}`,
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelCPU, Value: "50%", Percent: &fifty},
@@ -64,7 +64,7 @@ func TestGlancesWidgetPoll(t *testing.T) {
 				if tc.config != "" {
 					wantVersion = "3"
 				}
-				if wantPath := "/api/" + wantVersion + "/all"; gotPath != wantPath {
+				if wantPath := "/api/" + wantVersion + "/quicklook"; gotPath != wantPath {
 					t.Errorf("request path = %q, want %q", gotPath, wantPath)
 				}
 			}

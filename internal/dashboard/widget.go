@@ -94,10 +94,10 @@ func Lookup(widgetType string) (Widget, bool) {
 }
 
 // RegisteredTypes returns every widget type currently registered, sorted.
-// Used by internal/controller's widget-type admission policy tests to catch
-// a widget added here without also adding it to the corresponding CEL
-// allow-list in config/admission/widget_type_policy.yaml — see that test for
-// why this drift can't otherwise be caught short of a real apiserver
+// Used by internal/controller's widget-type policy test
+// (widget_type_policy_test.go) to catch a widget added here without also
+// adding it to the corresponding CEL enum on the CRD types — see that test
+// for why this drift can't otherwise be caught short of a real apiserver
 // rejecting a previously-valid type.
 func RegisteredTypes() []string {
 	return slices.Sorted(maps.Keys(registry))

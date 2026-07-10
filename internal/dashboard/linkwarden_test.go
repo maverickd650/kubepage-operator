@@ -13,15 +13,21 @@ func TestLinkwardenWidgetPoll(t *testing.T) {
 		statusCode int
 		want       []Field
 	}{
-		"some links": {
-			response:   `{"response":[{},{},{}]}`,
+		"two collections": {
+			response:   `{"response":[{"_count":{"links":40}},{"_count":{"links":2}}]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: labelLinks, Value: "3"}},
+			want: []Field{
+				{Label: labelLinks, Value: "42"},
+				{Label: labelCollections, Value: "2"},
+			},
 		},
-		"no links": {
+		"no collections": {
 			response:   `{"response":[]}`,
 			statusCode: http.StatusOK,
-			want:       []Field{{Label: labelLinks, Value: "0"}},
+			want: []Field{
+				{Label: labelLinks, Value: "0"},
+				{Label: labelCollections, Value: "0"},
+			},
 		},
 		testCaseNon200: {
 			statusCode: http.StatusUnauthorized,
@@ -31,8 +37,9 @@ func TestLinkwardenWidgetPoll(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			var gotAuth string
+			var gotPath, gotAuth string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
 				gotAuth = r.Header.Get("Authorization")
 				w.WriteHeader(tc.statusCode)
 				_, _ = w.Write([]byte(tc.response))
@@ -48,6 +55,9 @@ func TestLinkwardenWidgetPoll(t *testing.T) {
 			}
 			if !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("Poll() = %+v, want %+v", got, tc.want)
+			}
+			if gotPath != "/api/v1/collections" {
+				t.Errorf("request path = %q, want /api/v1/collections", gotPath)
 			}
 			if gotAuth != "Bearer lwtok" {
 				t.Errorf("Authorization header = %q, want %q", gotAuth, "Bearer lwtok")
@@ -75,8 +85,8 @@ func TestLinkwardenWidgetPollUnreachable(t *testing.T) {
 
 func TestLinkwardenWidgetSample(t *testing.T) {
 	got := (linkwardenWidget{}).Sample(WidgetConfig{})
-	if len(got) != 1 || got[0].Label != labelLinks {
-		t.Errorf("Sample() = %+v, want a single Links field", got)
+	if len(got) != 2 || got[0].Label != labelLinks || got[1].Label != labelCollections {
+		t.Errorf("Sample() = %+v, want Links/Collections fields", got)
 	}
 	assertSampleDeterministic(t, linkwardenWidget{})
 }

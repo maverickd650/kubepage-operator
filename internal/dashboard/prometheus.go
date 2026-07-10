@@ -19,6 +19,13 @@ const (
 	statusDegraded = "Degraded"
 	statusUnknown  = "Unknown"
 	statusUnreach  = "Unreachable"
+	// statusInactive is cloudflared.go's own tunnel-status mapping (alongside
+	// monitor.go's statusDown, reused here) — distinct from statusUnreach so
+	// that a legitimately down/inactive tunnel (a fact reported by a
+	// successful poll) isn't conflated with a failed poll: poller.go's
+	// metricErr treats a Status field of statusUnreach as a poll failure,
+	// which a down tunnel is not.
+	statusInactive = "Inactive"
 )
 
 // prometheusWidget polls a Prometheus server's /api/v1/targets endpoint and

@@ -60,7 +60,7 @@ func (kubeMetricsWidget) PollCluster(ctx context.Context, reader client.Reader, 
 
 	var nodes corev1.NodeList
 	if err := reader.List(ctx, &nodes); err != nil {
-		return nil, fmt.Errorf("listing nodes: %w", err)
+		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
 
 	var cpuTotal, memTotal resource.Quantity

@@ -91,6 +91,35 @@ func TestKubeMetricsWidgetSample(t *testing.T) {
 	}
 }
 
+// TestKubeMetricsWidgetPollClusterNodesListFailure covers a failure listing
+// the core Node objects (capacity), which previously returned a bare Go
+// error — a different failure convention than a failed NodeMetrics List
+// (usage), which returns an Unreachable status Field with a nil error so the
+// card renders a status instead of falling back to card.Err. Both List calls
+// now follow the same convention.
+func TestKubeMetricsWidgetPollClusterNodesListFailure(t *testing.T) {
+	scheme := kubeMetricsScheme(t)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		nodeMetrics("n1", "500m", "2Gi"),
+	).Build()
+	failing := errInjectingReader{
+		Reader: c,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*corev1.NodeList)
+			return ok
+		},
+	}
+
+	got, err := (kubeMetricsWidget{}).PollCluster(t.Context(), failing, WidgetConfig{})
+	if err != nil {
+		t.Fatalf("PollCluster() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: statusUnreach}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("PollCluster() = %+v, want %+v", got, want)
+	}
+}
+
 func TestUsageHighlight(t *testing.T) {
 	tests := map[string]struct {
 		pct  *int
