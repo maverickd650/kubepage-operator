@@ -34,7 +34,7 @@ func bootPreview(t *testing.T, opts dashboard.PreviewOptions) (baseURL string, s
 	opts.Addr = addr
 	opts.MetricsAddr = "127.0.0.1:0"
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	errCh := make(chan error, 1)

@@ -58,7 +58,7 @@ func TestBrowserHTMXPolling(t *testing.T) {
 
 	baseURL := fmt.Sprintf("http://%s", ln.Addr().String())
 
-	ctx, cancel := chromedp.NewContext(context.Background())
+	ctx, cancel := chromedp.NewContext(t.Context())
 	defer cancel()
 
 	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)

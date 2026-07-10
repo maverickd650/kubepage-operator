@@ -283,7 +283,7 @@ func TestPollerRunPollsOnIntervalAndStopsOnCancel(t *testing.T) {
 		}
 
 		store := NewStore()
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		p := &Poller{
 			Reader: counting, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
 			Interval: 10 * time.Second, HTTPClient: http.DefaultClient, Store: store,

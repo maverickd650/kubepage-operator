@@ -42,22 +42,25 @@ func IconURL(icon *string) string {
 		return v
 	}
 
-	switch {
-	case strings.HasPrefix(v, "mdi-"):
-		return iconifyIconURL("mdi", strings.TrimPrefix(v, "mdi-"))
-	case strings.HasPrefix(v, "si-"):
-		return iconifyIconURL("simple-icons", strings.TrimPrefix(v, "si-"))
-	case strings.HasPrefix(v, "lucide-"):
-		return iconifyIconURL("lucide", strings.TrimPrefix(v, "lucide-"))
-	case strings.HasPrefix(v, "wi-"):
-		return iconifyIconURL("wi", strings.TrimPrefix(v, "wi-"))
-	case strings.HasPrefix(v, "fa6-solid-"):
-		return iconifyIconURL("fa6-solid", strings.TrimPrefix(v, "fa6-solid-"))
-	case strings.HasPrefix(v, "sh-"):
-		return selfhstIconURL(strings.TrimPrefix(v, "sh-"))
-	default:
-		return dashboardIconsBaseURL + strings.ToLower(v) + ".png"
+	if rest, ok := strings.CutPrefix(v, "mdi-"); ok {
+		return iconifyIconURL("mdi", rest)
 	}
+	if rest, ok := strings.CutPrefix(v, "si-"); ok {
+		return iconifyIconURL("simple-icons", rest)
+	}
+	if rest, ok := strings.CutPrefix(v, "lucide-"); ok {
+		return iconifyIconURL("lucide", rest)
+	}
+	if rest, ok := strings.CutPrefix(v, "wi-"); ok {
+		return iconifyIconURL("wi", rest)
+	}
+	if rest, ok := strings.CutPrefix(v, "fa6-solid-"); ok {
+		return iconifyIconURL("fa6-solid", rest)
+	}
+	if rest, ok := strings.CutPrefix(v, "sh-"); ok {
+		return selfhstIconURL(rest)
+	}
+	return dashboardIconsBaseURL + strings.ToLower(v) + ".png"
 }
 
 // iconifyIconURL builds an Iconify SVG API URL for setName/slug, splitting

@@ -1,7 +1,6 @@
 package preview
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,21 +25,21 @@ func TestSwappableReaderDelegatesToCurrent(t *testing.T) {
 	sw := NewSwappableReader(first)
 
 	var bm pagev1alpha1.Bookmark
-	if err := sw.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "a"}, &bm); err != nil {
+	if err := sw.Get(t.Context(), types.NamespacedName{Namespace: "ns", Name: "a"}, &bm); err != nil {
 		t.Fatalf("Get(a) before swap: %v", err)
 	}
 
 	sw.Store(second)
 
-	if err := sw.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "a"}, &bm); err == nil {
+	if err := sw.Get(t.Context(), types.NamespacedName{Namespace: "ns", Name: "a"}, &bm); err == nil {
 		t.Error("Get(a) after swap should fail: 'a' only exists in the pre-swap reader")
 	}
-	if err := sw.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "b"}, &bm); err != nil {
+	if err := sw.Get(t.Context(), types.NamespacedName{Namespace: "ns", Name: "b"}, &bm); err != nil {
 		t.Errorf("Get(b) after swap: %v", err)
 	}
 
 	var list pagev1alpha1.BookmarkList
-	if err := sw.List(context.Background(), &list); err != nil {
+	if err := sw.List(t.Context(), &list); err != nil {
 		t.Fatalf("List after swap: %v", err)
 	}
 	if len(list.Items) != 1 || list.Items[0].Name != "b" {
@@ -118,7 +117,7 @@ func TestWatchReloadsOnFileChange(t *testing.T) {
 
 	// Not present yet.
 	var list pagev1alpha1.BookmarkList
-	if err := reader.List(context.Background(), &list); err != nil {
+	if err := reader.List(t.Context(), &list); err != nil {
 		t.Fatal(err)
 	}
 	if len(list.Items) != 0 {
@@ -139,7 +138,7 @@ spec:
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if err := reader.List(context.Background(), &list); err != nil {
+		if err := reader.List(t.Context(), &list); err != nil {
 			t.Fatal(err)
 		}
 		if len(list.Items) == 1 {
@@ -195,7 +194,7 @@ spec: {}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		var dash pagev1alpha1.Dashboard
-		err := reader.Get(context.Background(), types.NamespacedName{Namespace: "custom-ns", Name: "sample"}, &dash)
+		err := reader.Get(t.Context(), types.NamespacedName{Namespace: "custom-ns", Name: "sample"}, &dash)
 		if err == nil {
 			return
 		}
@@ -278,7 +277,7 @@ spec:
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		var list pagev1alpha1.BookmarkList
-		if err := reader.List(context.Background(), &list); err != nil {
+		if err := reader.List(t.Context(), &list); err != nil {
 			t.Fatal(err)
 		}
 		if len(list.Items) == 1 {
@@ -317,7 +316,7 @@ func TestWatchKeepsLastGoodConfigOnBrokenReload(t *testing.T) {
 	time.Sleep(2 * debounceInterval)
 
 	var dash pagev1alpha1.Dashboard
-	if err := reader.Get(context.Background(),
+	if err := reader.Get(t.Context(),
 		types.NamespacedName{Namespace: result.Namespace, Name: result.DashboardName}, &dash); err != nil {
 		t.Errorf("Get(sample Dashboard) after a broken reload: %v, want the last-good config to still be served", err)
 	}

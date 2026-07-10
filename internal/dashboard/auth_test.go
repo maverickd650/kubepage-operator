@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -219,7 +218,7 @@ func TestInvalidateAuthCacheForcesRefetch(t *testing.T) {
 	}
 	secretCl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
-	entries, enabled, err := loadBasicAuth(context.Background(), cl, secretCl, testNamespace, testDashboardName)
+	entries, enabled, err := loadBasicAuth(t.Context(), cl, secretCl, testNamespace, testDashboardName)
 	if err != nil || !enabled {
 		t.Fatalf("loadBasicAuth() = %v, %v, %v", entries, enabled, err)
 	}
@@ -235,7 +234,7 @@ func TestInvalidateAuthCacheForcesRefetch(t *testing.T) {
 	updatedSecret.Data = map[string][]byte{htpasswdSecretKey: []byte("bob:" + string(secondHash))}
 	secretCl2 := fake.NewClientBuilder().WithScheme(scheme).WithObjects(updatedSecret).Build()
 
-	staleEntries, _, err := loadBasicAuth(context.Background(), cl, secretCl2, testNamespace, testDashboardName)
+	staleEntries, _, err := loadBasicAuth(t.Context(), cl, secretCl2, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +244,7 @@ func TestInvalidateAuthCacheForcesRefetch(t *testing.T) {
 
 	InvalidateAuthCache(testNamespace, testDashboardName)
 
-	freshEntries, _, err := loadBasicAuth(context.Background(), cl, secretCl2, testNamespace, testDashboardName)
+	freshEntries, _, err := loadBasicAuth(t.Context(), cl, secretCl2, testNamespace, testDashboardName)
 	if err != nil {
 		t.Fatal(err)
 	}
