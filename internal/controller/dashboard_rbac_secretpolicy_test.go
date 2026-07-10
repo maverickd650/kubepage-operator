@@ -52,7 +52,7 @@ func newMultiCardSecretRefServiceCard(instance *pagev1alpha1.Dashboard, secretNa
 			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
 			Group:        "g",
 			Services: []pagev1alpha1.ServiceEntry{{
-				Name: "svc",
+				Name: testServiceCardObjName,
 				Widgets: []pagev1alpha1.ServiceWidget{{
 					Type: "prometheus",
 					Secrets: map[string]pagev1alpha1.SecretValueSource{
