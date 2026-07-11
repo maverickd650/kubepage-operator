@@ -13,11 +13,21 @@ concurrency:
 
 permissions: {}
 
+# Split into three jobs that run concurrently instead of one long serial job:
+# unit tests, the -race -count=5 flake check, and the cross-compile dry-run +
+# generated-file drift check each gate the PR independently, so wall clock is
+# max(unit, flake, dist) + one setup-go-env instead of the sum of all three.
+#
+# Branch protection's required status check is pinned to the job name "Test"
+# (see skip-docs-checks.yaml's comment on why a required check must never
+# stop reporting). Since that check only tracks one job by name, the `test`
+# aggregator job below fans in all three real jobs so none of them silently
+# becomes optional — without it, only unit-tests would actually gate merges.
 jobs:
-  test:
+  unit-tests:
     permissions:
       contents: read
-    name: Test
+    name: Unit Tests
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -36,24 +46,61 @@ jobs:
       - name: Running Tests
         run: mise run test
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: cover.out
+          fail_ci_if_error: false
+
+  flake-check:
+    permissions:
+      contents: read
+    name: Flake Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go environment
+        uses: ./.github/actions/setup-go-env
+
       - name: Flake-check internal/dashboard under -race -count=5
         run: mise run test-flaky-check
+
+  dist-dry-run:
+    permissions:
+      contents: read
+    name: Dist Dry Run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go environment
+        uses: ./.github/actions/setup-go-env
 
       - name: Dry-run cross-compiling release binaries
         # Catches a platform-specific build break (e.g. a GOOS-guarded file,
         # or a dependency without arm64/windows support) on the PR that
         # introduces it, rather than at release time when release.yaml's own
         # `mise run build-dist` runs for real. dist-bin/ is gitignored, so
-        # nothing here needs cleaning up.
+        # nothing here needs cleaning up. This also regenerates
+        # manifests/deepcopy/templ/fmt output (build-dist's own `depends`),
+        # which the drift check below relies on — without running the full
+        # `mise run test` suite.
         env:
           VERSION: 0.0.0-dryrun
           REVISION: dryrun
         run: mise run build-dist
 
       - name: Check generated files are committed and up to date
-        # `mise run test` already regenerates manifests/deepcopy/templ/fmt
-        # output above but never touches dist/, so also run
-        # helm-chart-refresh here — otherwise a PR that edits *_types.go or a
+        # helm-chart-refresh never runs as part of build-dist's `depends`, so
+        # run it explicitly — otherwise a PR that edits *_types.go or a
         # .templ file without committing the regenerated output (including
         # dist/) would pass CI green and leave config/crd/bases/,
         # zz_generated.*.go, *_templ.go, or dist/ stale on main.
@@ -70,9 +117,14 @@ jobs:
             exit 1
           fi
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: cover.out
-          fail_ci_if_error: false
+  test:
+    name: Test
+    needs: [unit-tests, flake-check, dist-dry-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all Tests jobs succeeded
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::One or more Tests jobs failed: ${{ toJSON(needs) }}"
+          exit 1
