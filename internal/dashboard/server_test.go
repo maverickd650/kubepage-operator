@@ -699,10 +699,11 @@ func TestServerServiceWorkerRoute(t *testing.T) {
 }
 
 // TestServerAssetRejectsServiceWorkerFilename guards against sw.js being
-// double-served under /assets/ (immutably cached, via handleAsset's
-// go:embed glob picking it up like any other .js asset) alongside its real
-// GET /sw.js route (handleServiceWorker, no-cache) — see handleAsset's doc
-// comment for why only the latter is a valid way to reach this script.
+// double-served under /assets/ (immutably cached, since handleAsset's
+// embedded filesystem glob picks it up like any other .js asset) alongside
+// its real GET /sw.js route (handleServiceWorker, no-cache) — see
+// handleAsset's doc comment for why only the latter is a valid way to reach
+// this script.
 func TestServerAssetRejectsServiceWorkerFilename(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/assets/sw.js", nil)

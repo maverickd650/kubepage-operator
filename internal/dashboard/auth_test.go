@@ -257,6 +257,25 @@ func TestInvalidateAuthCacheForcesRefetch(t *testing.T) {
 	}
 }
 
+// TestHandleIndexReturns500WhenBasicAuthResolutionFails guards handleIndex's
+// own loadBasicAuth call (used to compute indexData.AuthEnabled, distinct
+// from — but identical in shape to — basicAuthMiddleware's own check).
+// basicAuthMiddleware wraps every route including "/", so a real request
+// through Routes() would never reach handleIndex with a broken auth
+// resolution; calling the handler directly is the only way to exercise its
+// own error path.
+func TestHandleIndexReturns500WhenBasicAuthResolutionFails(t *testing.T) {
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), nil) // Secret referenced but missing
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.handleIndex(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when the basic-auth Secret is missing", rec.Code)
+	}
+}
+
 // TestIndexOmitsServiceWorkerRegistrationWhenAuthEnabled guards
 // indexData.AuthEnabled: Cache Storage isn't itself gated by HTTP Basic
 // Auth, so the offline-shell service worker (which would cache this very

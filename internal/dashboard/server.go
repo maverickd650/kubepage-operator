@@ -414,6 +414,21 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(b)
 }
 
+// swJS is the offline-shell service worker's script, read once at package
+// init rather than per-request: "assets/sw.js" is a fixed path the
+// `//go:embed assets/*.js` directive above already guarantees exists at
+// compile time (unlike handleAsset's {file}, which comes from the request
+// URL and can legitimately name a missing asset), so there's no real
+// per-request failure mode to handle — see generateNonce's doc comment for
+// the same reasoning applied to a different "should never happen" read.
+var swJS = func() []byte {
+	b, err := assetFS.ReadFile("assets/sw.js")
+	if err != nil {
+		panic("dashboard: reading embedded assets/sw.js: " + err.Error())
+	}
+	return b
+}()
+
 // handleServiceWorker serves the offline app-shell service worker
 // (assets/sw.js) at the root path rather than under /assets/ — a service
 // worker's default registration scope is the directory of its own URL, and
@@ -425,14 +440,9 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 // effect promptly instead of potentially being stuck behind a stale cached
 // copy of the worker script.
 func handleServiceWorker(w http.ResponseWriter, r *http.Request) {
-	b, err := assetFS.ReadFile("assets/sw.js")
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write(b)
+	_, _ = w.Write(swJS)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
