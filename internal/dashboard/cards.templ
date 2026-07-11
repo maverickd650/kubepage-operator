@@ -103,7 +103,7 @@ templ serviceCardView(c Card, siteTarget string) {
 templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
 	<a
 		class={ "card", "bookmark", templ.KV("bookmark-icons-only", iconsOnly) }
-		href={ b.Href }
+		href={ templ.SafeURL(b.Href) }
 		target={ bookmarkTarget(b, siteTarget) }
 		if isNewTabTarget(bookmarkTarget(b, siteTarget)) {
 			rel="noopener noreferrer"

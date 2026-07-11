@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -561,7 +562,16 @@ func deploymentTemplateChanged(found, desired *appsv1.Deployment) bool {
 		!reflect.DeepEqual(foundSpec.Affinity, desiredSpec.Affinity) ||
 		!reflect.DeepEqual(foundSpec.TopologySpreadConstraints, desiredSpec.TopologySpreadConstraints) ||
 		!reflect.DeepEqual(foundSpec.ImagePullSecrets, desiredSpec.ImagePullSecrets) ||
-		!reflect.DeepEqual(foundSpec.Volumes, desiredSpec.Volumes) ||
+		// DeepDerivative, not DeepEqual: the API server defaults several
+		// VolumeSource fields on the stored object that a bare Volumes
+		// struct literal never sets (e.g. configMap/secret/projected/
+		// downwardAPI's defaultMode: 420) — a plain DeepEqual would see
+		// permanent drift on any volume that doesn't repeat those defaults
+		// explicitly, the same defaulting pitfall Ports.Protocol above is
+		// hand-set to avoid. DeepDerivative treats a zero-valued field in
+		// desired as "unspecified" rather than "must be zero", so a
+		// server-added default in found doesn't count as drift.
+		!apiequality.Semantic.DeepDerivative(desiredSpec.Volumes, foundSpec.Volumes) ||
 		foundSpec.PriorityClassName != desiredSpec.PriorityClassName
 }
 

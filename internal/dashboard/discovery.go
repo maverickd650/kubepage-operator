@@ -97,10 +97,18 @@ func discoverServices(ctx context.Context, reader client.Reader, namespace strin
 	if err := reader.List(ctx, &ingresses, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing Ingresses: %w", err)
 	}
+	// A failure listing one extra namespace (e.g. a namespace named in
+	// spec.discovery.namespaces that doesn't exist, or whose RoleBinding
+	// hasn't been (re)created yet) degrades that namespace only, rather than
+	// failing the whole discovery pass — the caller (Poller.pollOnce) would
+	// otherwise prune every previously-discovered card, including
+	// perfectly-healthy own-namespace ones, on every single poll cycle
+	// until the one bad namespace is fixed.
 	for _, ns := range extraNamespaces {
 		var extra networkingv1.IngressList
 		if err := extraReader.List(ctx, &extra, client.InNamespace(ns)); err != nil {
-			return nil, fmt.Errorf("listing Ingresses in namespace %s: %w", ns, err)
+			pollerLog.Error(err, "discovering Ingresses in extra namespace", "namespace", ns)
+			continue
 		}
 		ingresses.Items = append(ingresses.Items, extra.Items...)
 	}
@@ -201,10 +209,14 @@ func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace str
 	if err := reader.List(ctx, &routes, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing HTTPRoutes: %w", err)
 	}
+	// See discoverServices' matching loop: a bad extra namespace degrades
+	// that namespace only, rather than failing (and pruning) discovery
+	// cluster-wide.
 	for _, ns := range extraNamespaces {
 		var extra gatewayv1.HTTPRouteList
 		if err := extraReader.List(ctx, &extra, client.InNamespace(ns)); err != nil {
-			return nil, fmt.Errorf("listing HTTPRoutes in namespace %s: %w", ns, err)
+			pollerLog.Error(err, "discovering HTTPRoutes in extra namespace", "namespace", ns)
+			continue
 		}
 		routes.Items = append(routes.Items, extra.Items...)
 	}

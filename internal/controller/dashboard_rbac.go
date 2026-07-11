@@ -682,15 +682,30 @@ func (r *DashboardReconciler) reconcileDiscoveryRBAC(ctx context.Context, instan
 	}
 
 	// Record every namespace a RoleBinding might now exist in *before*
-	// creating any of them: if a Create below fails partway through desired
-	// (e.g. one bad/nonexistent namespace name among several good ones), the
-	// namespaces that already succeeded must still be tracked for cleanup —
-	// otherwise a RoleBinding that really was created would never be
-	// recorded in status, and neither this reconcile's own cleanup diff nor
-	// the finalizer would ever find it to delete, leaking a standing grant
-	// in exactly the namespace this field exists to scope tightly. Narrowed
-	// back down to desired only once every namespace below has succeeded.
+	// creating any of them, and persist it to the API server immediately —
+	// not just in-memory on instance — rather than leaving it for whichever
+	// Status().Update happens to run later in this Reconcile call: several
+	// of reconcileDeployment's own early-return paths (creating the
+	// Deployment for the first time, or finding it already up to date) hit
+	// "handled" returns that skip every later step, including the final
+	// status write, so without this explicit update a RoleBinding created
+	// here could sit untracked until whatever future reconcile happens to
+	// reach the end of the function. If a Create below then fails partway
+	// through desired (e.g. one bad/nonexistent namespace name among
+	// several good ones), or the Dashboard is deleted in that same window,
+	// the namespaces that already succeeded must still be tracked for
+	// cleanup — otherwise a RoleBinding that really was created would never
+	// be recorded in status, and neither this reconcile's own cleanup diff
+	// nor the finalizer would ever find it to delete, leaking a standing
+	// grant in exactly the namespace this field exists to scope tightly.
+	// Narrowed back down to desired only once every namespace below has
+	// succeeded — but not persisted again immediately, since overtracking
+	// (status naming a namespace whose RoleBinding is already gone) is
+	// harmless: deleteDiscoveryRoleBindings tolerates an absent object.
 	instance.Status.DiscoveryNamespaces = unionSortedDeduped(previous, desired)
+	if err := r.Status().Update(ctx, instance); err != nil {
+		return fmt.Errorf("persisting discovery namespaces before creating RoleBindings: %w", err)
+	}
 
 	for _, ns := range desired {
 		if err := r.reconcileDiscoveryRoleBinding(ctx, instance, ns); err != nil {

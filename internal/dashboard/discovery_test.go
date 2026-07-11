@@ -142,6 +142,40 @@ func TestDiscoverServicesScansExtraNamespaces(t *testing.T) {
 	})
 }
 
+// TestDiscoverServicesExtraNamespaceFailureDegradesGracefully verifies a
+// failure listing one extra namespace (e.g. its RBAC RoleBinding hasn't been
+// created yet, or the namespace no longer exists) doesn't fail the whole
+// discovery pass — only the primary (own) namespace's failure should, since
+// otherwise a single misconfigured extra namespace would prune every
+// previously-discovered card, including healthy own-namespace ones, on
+// every poll cycle.
+func TestDiscoverServicesExtraNamespaceFailureDegradesGracefully(t *testing.T) {
+	scheme := testScheme(t)
+	own := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(own).Build()
+
+	failingExtra := errInjectingReader{
+		Reader: cl,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*networkingv1.IngressList)
+			return ok
+		},
+	}
+
+	services, err := discoverServices(t.Context(), cl, testNamespace, failingExtra, []string{"nonexistent-ns"}, pagev1alpha1.DiscoverySpec{})
+	if err != nil {
+		t.Fatalf("discoverServices() error = %v, want nil (extra-namespace failure should degrade, not fail the pass)", err)
+	}
+	if len(services) != 1 || services[0].Key != "discovery/"+testNamespace+"/"+testDiscoveredAppKey {
+		t.Errorf("discoverServices() = %+v, want the own-namespace entry despite the extra namespace failing", services)
+	}
+}
+
 func TestDiscoverServicesHomepageCompat(t *testing.T) {
 	scheme := testScheme(t)
 	ing := &networkingv1.Ingress{
