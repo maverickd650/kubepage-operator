@@ -29,6 +29,7 @@ var (
 		"homeassistant", "mealie", "customapi", "iframe",
 		"sonarr", "radarr", "jellyfin", "jellyseerr", "immich", "adguard",
 		"pihole", "uptime-kuma", "portainer", "argocd", "gitea", "tautulli",
+		"proxmox", "nextcloud", "opnsense", "netdata", "speedtest", "gatus",
 	}
 	// infoWidgetPollableTypes is the subset of InfoWidgetSpec.Type's Enum
 	// allow-list that's also a registered dashboard.Widget; "greeting" and
