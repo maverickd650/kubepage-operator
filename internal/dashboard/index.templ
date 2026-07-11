@@ -229,6 +229,14 @@ templ Index(data indexData) {
 				}
 				.color-menu.open { display: grid; }
 				.color-menu button { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); cursor: pointer; padding: 0; }
+				/* Motion-sensitive users get the same end states (hover lift,
+				   open caret) instantly rather than animated. Targeted rules
+				   rather than a blanket "* { transition: none }", matching this
+				   stylesheet's existing preference for specific selectors. */
+				@media (prefers-reduced-motion: reduce) {
+					.card { transition: none; }
+					details.group summary::before { transition: none; }
+				}
 			</style>
 			if data.Site.Background != nil {
 				@templ.Raw(backgroundStyle(templ.GetNonce(ctx), data.Site.Background))

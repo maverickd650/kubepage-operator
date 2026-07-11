@@ -108,10 +108,7 @@ func panelID(i int) string {
 // default-active tab is correct before any client-side JS runs. index.templ's
 // showTab() keeps both in sync with the client-selected tab afterward.
 func ariaSelectedAttr(selected bool) string {
-	if selected {
-		return "true"
-	}
-	return "false"
+	return strconv.FormatBool(selected)
 }
 
 func tabIndexAttr(selected bool) string {
