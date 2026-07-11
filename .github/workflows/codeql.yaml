@@ -29,23 +29,25 @@ jobs:
         with:
           persist-credentials: false
 
-      # Use actions/setup-go rather than mise here: buildless extraction still
-      # expects a real `go` binary on PATH, and mise exposes `go` as a shim
-      # that's not reliable for this. Version tracks go.mod.
+      # Use actions/setup-go rather than mise here: CodeQL's build tracer needs a
+      # real `go` binary on PATH, and mise exposes `go` as a shim the tracer
+      # can't follow (yields "no source code seen"). Version tracks go.mod.
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
-      # build-mode: none skips compiling the project entirely (buildless
-      # extraction, supported for Go since early 2024) instead of autobuild's
-      # full `go build`, roughly halving analyze job time. Revert to
-      # autobuild if this is found to regress finding quality.
+      # build-mode: none was tried here to skip compiling the project
+      # entirely (buildless extraction), but the pinned CodeQL CLI
+      # (github/codeql-action v4.37.0, bundling CodeQL 2.26.0) hard-fails Go
+      # with "Go does not support the none build mode" — buildless Go
+      # extraction isn't available yet on this toolchain, so stick with
+      # autobuild.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           languages: go
-          build-mode: none
+          build-mode: autobuild
           queries: security-and-quality
           config-file: ./.github/codeql/codeql-config.yml
 
