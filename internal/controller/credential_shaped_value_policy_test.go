@@ -70,18 +70,51 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		warningClient, err = client.New(&warnCfg, client.Options{Scheme: k8sClient.Scheme()})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Same warm-up pattern as admission_policy_test.go: poll until the
-		// policy is actually being enforced before asserting individual
-		// cases, since policy/binding creation isn't instantaneous.
+		// Poll until each of the three ValidatingAdmissionPolicyBindings
+		// (ServiceCard, InfoWidget, Dashboard) is actually being enforced
+		// before asserting individual cases, since policy/binding creation
+		// isn't instantaneous and each resource's binding can become active
+		// at a different time.
 		Eventually(func() bool {
 			collector.reset()
-			se := serviceCardWithSecret("warn-warmup", pagev1alpha1.SecretValueSource{Value: new("plaintext-value")})
+			se := serviceCardWithSecret("warn-warmup-sc", pagev1alpha1.SecretValueSource{Value: new("plaintext-value")})
 			if err := warningClient.Create(ctx, se); err != nil {
 				return false
 			}
 			_ = warningClient.Delete(ctx, se)
 			return collector.containsCredentialShapedWarning()
-		}, 30*time.Second, time.Second).Should(BeTrue(), "policy should begin warning on credential-shaped inline values")
+		}, 30*time.Second, time.Second).Should(BeTrue(), "ServiceCard policy should begin warning on credential-shaped inline values")
+
+		Eventually(func() bool {
+			collector.reset()
+			iw := infoWidgetWithSecret("warn-warmup-iw", pagev1alpha1.SecretValueSource{Value: new("plaintext-value")})
+			if err := warningClient.Create(ctx, iw); err != nil {
+				return false
+			}
+			_ = warningClient.Delete(ctx, iw)
+			return collector.containsCredentialShapedWarning()
+		}, 30*time.Second, time.Second).Should(BeTrue(), "InfoWidget policy should begin warning on credential-shaped inline values")
+
+		Eventually(func() bool {
+			collector.reset()
+			dash := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: "warn-warmup-dash", Namespace: policyTestNamespace},
+				Spec: pagev1alpha1.DashboardSpec{
+					WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+						testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{
+							testCredShapedFieldAPIKey: {Value: new("plaintext-value")},
+						}},
+					},
+				},
+			}
+			if err := warningClient.Create(ctx, dash); err != nil {
+				return false
+			}
+			_ = warningClient.Delete(ctx, dash)
+			return collector.containsCredentialShapedWarning()
+		}, 30*time.Second, time.Second).Should(BeTrue(), "Dashboard policy should begin warning on credential-shaped inline values")
+
+		collector.reset()
 	})
 
 	BeforeEach(func() {
