@@ -61,7 +61,7 @@ func (portainerWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 
 	running, stopped := 0, 0
 	for _, c := range containers {
-		if c.State == "running" {
+		if c.State == apiStatusRunning {
 			running++
 		} else {
 			stopped++
