@@ -37,7 +37,9 @@ func newKubeMetricsInfoWidget(instance *pagev1alpha1.Dashboard) *pagev1alpha1.In
 		ObjectMeta: metav1.ObjectMeta{Name: testInfoWidgetNameMetrics, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
-			Type:         kubeMetricsWidgetType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: kubeMetricsWidgetType},
+			},
 		},
 	}
 }
@@ -119,15 +121,18 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
-			Group:        "G", Name: "N",
-			Widgets: []pagev1alpha1.ServiceWidget{{
-				Type: testWidgetTypeGrafana,
-				Secrets: map[string]pagev1alpha1.SecretValueSource{
-					secretField: {SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: wantSecret},
-						Key:                  secretField,
-					}},
-				},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: "N",
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetTypeGrafana,
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						secretField: {SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: wantSecret},
+							Key:                  secretField,
+						}},
+					},
+				}},
 			}},
 		},
 	}
@@ -135,15 +140,18 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: "svc-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
-			Group:        "G", Name: "N",
-			Widgets: []pagev1alpha1.ServiceWidget{{
-				Type: testWidgetTypeGrafana,
-				Secrets: map[string]pagev1alpha1.SecretValueSource{
-					secretField: {SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "should-not-appear"},
-						Key:                  secretField,
-					}},
-				},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: "N",
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetTypeGrafana,
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						secretField: {SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "should-not-appear"},
+							Key:                  secretField,
+						}},
+					},
+				}},
 			}},
 		},
 	}
@@ -151,7 +159,9 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: "iw-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
-			Type:         testWidgetTypeOpenMeteo,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: testWidgetTypeOpenMeteo},
+			},
 		},
 	}
 	wantWidgetSecret := "widget-creds"
@@ -159,13 +169,15 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
-			Type:         testWidgetTypeOpenMeteo,
-			Secrets: map[string]pagev1alpha1.SecretValueSource{
-				secretField: {SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: wantWidgetSecret},
-					Key:                  secretField,
-				}},
-			},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testWidgetTypeOpenMeteo,
+				Secrets: map[string]pagev1alpha1.SecretValueSource{
+					secretField: {SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: wantWidgetSecret},
+						Key:                  secretField,
+					}},
+				},
+			}},
 		},
 	}
 

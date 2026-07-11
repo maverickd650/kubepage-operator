@@ -42,10 +42,12 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Group:        policyTestGroup,
-					Name:         testMultiFormNamePlex,
-					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type:   testWidgetTypeCloudflared,
-						Config: &apiextensionsv1.JSON{Raw: []byte(`{"accountId":"abc"}`)},
+					Services: []pagev1alpha1.ServiceEntry{{
+						Name: testMultiFormNamePlex,
+						Widgets: []pagev1alpha1.ServiceWidget{{
+							Type:   testWidgetTypeCloudflared,
+							Config: &apiextensionsv1.JSON{Raw: []byte(`{"accountId":"abc"}`)},
+						}},
 					}},
 				},
 			}
@@ -73,10 +75,12 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Group:        policyTestGroup,
-					Name:         testMultiFormNamePlex,
-					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type:   "prometheusmetric",
-						Config: &apiextensionsv1.JSON{Raw: []byte(`{"query":"up","labell":"typo"}`)},
+					Services: []pagev1alpha1.ServiceEntry{{
+						Name: testMultiFormNamePlex,
+						Widgets: []pagev1alpha1.ServiceWidget{{
+							Type:   "prometheusmetric",
+							Config: &apiextensionsv1.JSON{Raw: []byte(`{"query":"up","labell":"typo"}`)},
+						}},
 					}},
 				},
 			}
@@ -108,10 +112,12 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Group:        policyTestGroup,
-					Name:         testMultiFormNamePlex,
-					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type:   testWidgetTypeCloudflared,
-						Config: &apiextensionsv1.JSON{Raw: []byte(`{"accountId":"abc","tunnelId":"def"}`)},
+					Services: []pagev1alpha1.ServiceEntry{{
+						Name: testMultiFormNamePlex,
+						Widgets: []pagev1alpha1.ServiceWidget{{
+							Type:   testWidgetTypeCloudflared,
+							Config: &apiextensionsv1.JSON{Raw: []byte(`{"accountId":"abc","tunnelId":"def"}`)},
+						}},
 					}},
 				},
 			}
@@ -143,8 +149,10 @@ var _ = Describe("Widget config validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
-					Type:         testWidgetTypeOpenMeteo,
-					Options:      &apiextensionsv1.JSON{Raw: []byte(`{"longitude":1.2}`)},
+					Widgets: []pagev1alpha1.InfoWidgetEntry{{
+						Type:    testWidgetTypeOpenMeteo,
+						Options: &apiextensionsv1.JSON{Raw: []byte(`{"longitude":1.2}`)},
+					}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
@@ -170,8 +178,10 @@ var _ = Describe("Widget config validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
-					Type:         "glances",
-					URL:          new("http://glances.example.invalid"),
+					Widgets: []pagev1alpha1.InfoWidgetEntry{{
+						Type: "glances",
+						URL:  new("http://glances.example.invalid"),
+					}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
@@ -199,8 +209,10 @@ var _ = Describe("Widget config validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
-					Type:         testWidgetTypeOpenMeteo,
-					Options:      &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0,"latitude2":3.0}`)},
+					Widgets: []pagev1alpha1.InfoWidgetEntry{{
+						Type:    testWidgetTypeOpenMeteo,
+						Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0,"latitude2":3.0}`)},
+					}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, iw)).To(Succeed())
@@ -230,8 +242,10 @@ var _ = Describe("Widget config validation", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
-					Type:         testWidgetTypeOpenMeteo,
-					Options:      &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0}`)},
+					Widgets: []pagev1alpha1.InfoWidgetEntry{{
+						Type:    testWidgetTypeOpenMeteo,
+						Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0}`)},
+					}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, iw)).To(Succeed())

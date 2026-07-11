@@ -78,9 +78,9 @@ on `InfoWidget` but not `ServiceCard`; all others work on both.
 |------|---------|
 | `Dashboard` (`pdash`) | The dashboard Deployment, Service, optional Ingress, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `dashboardRef`. |
 | `DashboardStyle` (`pstyle`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. Exactly one per Dashboard — the object's name must match the Dashboard's name. |
-| `ServiceCard` (`pcard`) | One or many service cards (`services`, the documented default; `name` for a single card is soft-deprecated) in a named group, each with optional widgets polling that service's API. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`errorDisplay` toggles. |
-| `Bookmark` (`pbmk`) | One or many static bookmark links (`bookmarks`, the documented default; `name`/`href` for a single bookmark is soft-deprecated) in a named group, each with an optional per-bookmark link `target`. |
-| `InfoWidget` (`piw`) | One or many header-strip widgets (`widgets`, the documented default; `type` for a single widget is soft-deprecated): `datetime` (client-side clock), `greeting` (static text), `logo` (static header logo image), `openmeteo` (current weather, keyless), `openweathermap` (current weather via OpenWeatherMap), `glances` (host CPU/memory usage), `longhorn` (aggregate Longhorn cluster storage usage), or `kubemetrics` (cluster-wide CPU/memory usage). |
+| `ServiceCard` (`pcard`) | One or many service cards (`services`) in a named group, each with optional widgets polling that service's API. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`errorDisplay` toggles. |
+| `Bookmark` (`pbmk`) | One or many static bookmark links (`bookmarks`) in a named group, each with an optional per-bookmark link `target`. |
+| `InfoWidget` (`piw`) | One or many header-strip widgets (`widgets`): `datetime` (client-side clock), `greeting` (static text), `logo` (static header logo image), `openmeteo` (current weather, keyless), `openweathermap` (current weather via OpenWeatherMap), `glances` (host CPU/memory usage), `longhorn` (aggregate Longhorn cluster storage usage), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
 Every config CRD (`DashboardStyle`, `ServiceCard`, `Bookmark`, `InfoWidget`)
 carries a `dashboardRef.name` naming the `Dashboard` it belongs to, and any

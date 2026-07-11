@@ -11,32 +11,9 @@ const (
 	testHrefGithub     = "https://github.com/"
 )
 
-// TestBookmarkSpecEntriesSingleForm verifies the single-bookmark form (no
-// Bookmarks set) normalizes to a one-element slice built from spec's own
-// inline fields.
-func TestBookmarkSpecEntriesSingleForm(t *testing.T) {
-	spec := &BookmarkSpec{
-		Group: testGroupDeveloper,
-		Name:  testNameGithub,
-		Href:  testHrefGithub,
-	}
-
-	entries := spec.Entries()
-	if len(entries) != 1 {
-		t.Fatalf("Entries() = %d entries, want 1", len(entries))
-	}
-	if entries[0].Group != testGroupDeveloper || entries[0].Name != testNameGithub {
-		t.Errorf("entries[0] = %+v, want Group=Developer Name=Github", entries[0])
-	}
-	if entries[0].Href != testHrefGithub {
-		t.Errorf("entries[0].Href = %q, want %q", entries[0].Href, testHrefGithub)
-	}
-}
-
-// TestBookmarkSpecEntriesMultiFormGroupDefaulting verifies the multi-bookmark
-// form (Bookmarks set): an entry with its own Group keeps it, and an entry
-// without one inherits spec.Group.
-func TestBookmarkSpecEntriesMultiFormGroupDefaulting(t *testing.T) {
+// TestBookmarkSpecEntriesGroupDefaulting verifies that an entry with its own
+// Group keeps it, and an entry without one inherits spec.Group.
+func TestBookmarkSpecEntriesGroupDefaulting(t *testing.T) {
 	spec := &BookmarkSpec{
 		Group: testGroupDeveloper,
 		Bookmarks: []BookmarkEntry{
@@ -62,10 +39,10 @@ func TestBookmarkSpecEntriesMultiFormGroupDefaulting(t *testing.T) {
 	}
 }
 
-// TestBookmarkSpecEntriesMultiFormDeepCopyIsolation guards against a future
-// change accidentally aliasing the returned slice's backing array with
+// TestBookmarkSpecEntriesDeepCopyIsolation guards against a future change
+// accidentally aliasing the returned slice's backing array with
 // spec.Bookmarks.
-func TestBookmarkSpecEntriesMultiFormDeepCopyIsolation(t *testing.T) {
+func TestBookmarkSpecEntriesDeepCopyIsolation(t *testing.T) {
 	spec := &BookmarkSpec{
 		Group:     testGroupDeveloper,
 		Bookmarks: []BookmarkEntry{{Name: testNameGithub, Href: testHrefGithub}},

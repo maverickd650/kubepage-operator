@@ -26,9 +26,6 @@ spec:
     - jsonPath: .spec.dashboardRef.name
       name: Dashboard
       type: string
-    - jsonPath: .spec.type
-      name: Type
-      type: string
     - jsonPath: .status.entries
       name: Entries
       type: integer
@@ -60,61 +57,6 @@ spec:
           spec:
             description: spec defines the desired state of InfoWidget
             properties:
-              align:
-                description: |-
-                  align places this widget in the header strip's left or right slot,
-                  matching homepage's right-aligned info widgets. Unset defaults to
-                  "Left" for "greeting"/"datetime" and "Right" for every other type
-                  (homepage's own default layout: greeting/clock on the left, live
-                  stats on the right).
-                enum:
-                - Left
-                - Right
-                type: string
-              caCert:
-                description: |-
-                  caCert optionally supplies a PEM-encoded CA certificate (or bundle)
-                  used, in addition to the system trust store, to verify this widget's
-                  upstream. See ServiceWidget.CACert's doc comment for the full
-                  rationale.
-                properties:
-                  secretKeyRef:
-                    description: secretKeyRef selects a key of a Secret in the same
-                      namespace.
-                    properties:
-                      key:
-                        description: The key of the secret to select from.  Must be
-                          a valid secret key.
-                        type: string
-                      name:
-                        default: ""
-                        description: |-
-                          Name of the referent.
-                          This field is effectively required, but due to backwards compatibility is
-                          allowed to be empty. Instances of this type with an empty value here are
-                          almost certainly wrong.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                        type: string
-                      optional:
-                        description: Specify whether the Secret or its key must be
-                          defined
-                        type: boolean
-                    required:
-                    - key
-                    type: object
-                    x-kubernetes-map-type: atomic
-                  value:
-                    description: |-
-                      value is a literal value. Avoid this for real credentials; prefer
-                      SecretKeyRef so the value isn't stored in the CR.
-                    maxLength: 4096
-                    minLength: 1
-                    type: string
-                type: object
-                x-kubernetes-validations:
-                - message: exactly one of value or secretKeyRef must be set
-                  rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1 :
-                    0) == 1'
               dashboardRef:
                 description: dashboardRef names the Dashboard this InfoWidget belongs
                   to.
@@ -127,170 +69,19 @@ spec:
                 required:
                 - name
                 type: object
-              icon:
-                description: |-
-                  icon shown to the left of this widget's value(s) in the header strip,
-                  matching homepage's Resource component. Resolved the same way as
-                  ServiceCard/Bookmark Icon: a full URL passes through unchanged,
-                  anything else is treated as a dashboard-icons slug. Ignored by the
-                  "greeting" and "datetime" widget types, which homepage renders without
-                  an icon. Every other polled type (openmeteo/openweathermap,
-                  kubemetrics, glances, longhorn) already renders a sensible built-in
-                  icon when this is unset — openmeteo/openweathermap's tracks the
-                  current weather condition each poll — so this field only needs
-                  setting to override that default.
-                maxLength: 256
-                minLength: 1
-                type: string
-              options:
-                description: |-
-                  options holds every widget-type-specific field; unrecognized keys are
-                  silently ignored rather than rejected (see internal/dashboard's
-                  per-widget source for the authoritative shape). Known keys by type:
-                    - greeting: text (the message shown)
-                    - datetime: format (a JSON-encoded Intl.DateTimeFormat options
-                      object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
-                      to medium date/short time, i.e. no seconds)
-                    - openmeteo, openweathermap: latitude, longitude (both required),
-                      units ("metric"/"imperial"), label
-                    - kubemetrics: cpuLabel, memoryLabel
-                    - glances: url (required unless the typed URL field above is set;
-                      Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
-                    - longhorn: url (required unless the typed URL field above is set;
-                      Longhorn Manager REST API base URL, e.g.
-                      http://longhorn-frontend.longhorn-system:80)
-                  For a header widget type that polls an HTTP upstream, the typed URL
-                  field above takes precedence over this options block's "url" key,
-                  which remains supported for backwards compatibility.
-                  logo takes no options.
-
-                  Type=object is set (in addition to PreserveUnknownFields) purely so the
-                  mutual-exclusion CEL rule above can call has(self.options): a
-                  preserve-unknown-fields field with no declared type isn't structural
-                  enough for CEL to reference at all ("undefined field"), even just to
-                  test presence.
-                type: object
-                x-kubernetes-preserve-unknown-fields: true
-              order:
-                description: |-
-                  order controls rendering position: widgets are sorted by Order (nil
-                  sorts last), ties broken by the InfoWidget object's name, since CRDs
-                  have no inherent ordering of their own.
-                format: int32
-                type: integer
-              pollIntervalSeconds:
-                description: |-
-                  pollIntervalSeconds overrides the dashboard's global --poll-interval
-                  for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
-                  "datetime"/"greeting"/"logo", which aren't polled at all.
-                format: int32
-                minimum: 1
-                type: integer
-              secrets:
-                additionalProperties:
-                  description: |-
-                    SecretValueSource is an inline value or a reference to a key in a Secret,
-                    used for any config field that may hold a credential (e.g. a widget API
-                    key). Exactly one of Value or SecretKeyRef must be set; this is enforced by
-                    the CRD schema's CEL rule below, so neither a secret that sets both nor one
-                    that sets neither reaches the dashboard, which resolves whichever is set
-                    in-process at poll time.
-                  properties:
-                    secretKeyRef:
-                      description: secretKeyRef selects a key of a Secret in the same
-                        namespace.
-                      properties:
-                        key:
-                          description: The key of the secret to select from.  Must
-                            be a valid secret key.
-                          type: string
-                        name:
-                          default: ""
-                          description: |-
-                            Name of the referent.
-                            This field is effectively required, but due to backwards compatibility is
-                            allowed to be empty. Instances of this type with an empty value here are
-                            almost certainly wrong.
-                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                          type: string
-                        optional:
-                          description: Specify whether the Secret or its key must
-                            be defined
-                          type: boolean
-                      required:
-                      - key
-                      type: object
-                      x-kubernetes-map-type: atomic
-                    value:
-                      description: |-
-                        value is a literal value. Avoid this for real credentials; prefer
-                        SecretKeyRef so the value isn't stored in the CR.
-                      maxLength: 4096
-                      minLength: 1
-                      type: string
-                  type: object
-                  x-kubernetes-validations:
-                  - message: exactly one of value or secretKeyRef must be set
-                    rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1
-                      : 0) == 1'
-                description: |-
-                  secrets are secret-bearing option fields, resolved in-process at poll
-                  time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
-                  WidgetConfig.Secrets map, keyed by the same field names used here —
-                  distinct from Options/Config, which never carry secret values.
-
-                  RBAC note: the same caveat as ServiceCard's widgets.secrets applies
-                  here — see ServiceWidget.Secrets' doc comment. Anyone who can create
-                  an InfoWidget in this namespace can read any Secret in it by
-                  referencing it via secretKeyRef and pointing this widget's options at
-                  a server they control.
-                minProperties: 1
-                type: object
-              type:
-                description: |-
-                  type is the widget type: "greeting"/"datetime" render statically
-                  (internal/dashboard/server.go); the rest are polled header widgets
-                  (openmeteo, openweathermap, glances, longhorn) or cluster-sourced
-                  (kubemetrics). internal/controller/widget_type_policy_test.go asserts
-                  this enum stays in sync with the internal/dashboard widget registry.
-                  Set only for the single-widget form; mutually exclusive with Widgets.
-                enum:
-                - greeting
-                - datetime
-                - logo
-                - openmeteo
-                - kubemetrics
-                - glances
-                - longhorn
-                - openweathermap
-                type: string
-              url:
-                description: |-
-                  url is the base URL this widget polls, for widget types with an HTTP
-                  upstream (glances, longhorn). Takes precedence over options' "url"
-                  key, which remains supported for backwards compatibility. Set only
-                  for the single-widget form; mutually exclusive with Widgets.
-                maxLength: 2048
-                minLength: 1
-                pattern: ^https?://
-                type: string
               widgets:
                 description: |-
                   widgets defines one entry per header widget, for an InfoWidget that
                   groups multiple header widgets (a whole dashboard's worth) into one
-                  object instead of one InfoWidget per widget. Mutually exclusive with
-                  the inline single-widget fields above (type, order, icon, align,
-                  secrets, caCert, options, url, pollIntervalSeconds). Unlike
+                  object instead of one InfoWidget per widget. Unlike
                   ServiceCard.Services/Bookmark.Bookmarks there is no shared-default
                   field here (no Group concept for header widgets). A header strip never
                   holds anywhere near 32 widgets, let alone more.
                 items:
                   description: |-
-                    InfoWidgetEntry is one header widget's configuration. InfoWidgetSpec
-                    duplicates InfoWidgetEntry's fields inline for the single-widget form (one
-                    InfoWidget object per widget, the original wire format), and holds a list
-                    of them in Widgets for the multi-widget form (one InfoWidget object per
-                    whole dashboard).
+                    InfoWidgetEntry is one header widget's configuration. An InfoWidgetSpec
+                    holds a list of these in Widgets, one InfoWidget object per whole
+                    dashboard.
 
                     Unlike BookmarkEntry/ServiceEntry there is no Group field: header widgets
                     are a flat, ordered list rather than grouped like ServiceCard/Bookmark, so
@@ -489,6 +280,8 @@ spec:
                       minLength: 1
                       pattern: ^https?://
                       type: string
+                  required:
+                  - type
                   type: object
                 maxItems: 32
                 minItems: 1
@@ -496,19 +289,8 @@ spec:
                 x-kubernetes-list-type: atomic
             required:
             - dashboardRef
+            - widgets
             type: object
-            x-kubernetes-validations:
-            - message: exactly one of type (single-widget form) or widgets (multi-widget
-                form) must be set
-              rule: has(self.type) != has(self.widgets)
-            - message: every widgets entry must set type
-              rule: '!has(self.widgets) || self.widgets.all(w, has(w.type))'
-            - message: when widgets is set, the single-widget inline fields (order,
-                icon, align, secrets, caCert, options, url, pollIntervalSeconds) must
-                be absent
-              rule: '!has(self.widgets) || (!has(self.order) && !has(self.icon) &&
-                !has(self.align) && !has(self.secrets) && !has(self.caCert) && !has(self.options)
-                && !has(self.url) && !has(self.pollIntervalSeconds))'
           status:
             description: status defines the observed state of InfoWidget
             minProperties: 1
@@ -575,9 +357,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               entries:
-                description: |-
-                  entries is the number of entries this object defines (1 for the
-                  single-widget form, len(spec.widgets) for the multi-widget form).
+                description: entries is the number of entries this object defines
+                  (len(spec.widgets)).
                 format: int32
                 type: integer
             type: object

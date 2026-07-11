@@ -75,10 +75,7 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		// cases, since policy/binding creation isn't instantaneous.
 		Eventually(func() bool {
 			collector.reset()
-			se := serviceEntryWithSecret("warn-warmup", &pagev1alpha1.SecretValueSource{Value: new("x")})
-			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				secretField: {Value: new("plaintext-value")},
-			}
+			se := serviceCardWithSecret("warn-warmup", pagev1alpha1.SecretValueSource{Value: new("plaintext-value")})
 			if err := warningClient.Create(ctx, se); err != nil {
 				return false
 			}
@@ -91,10 +88,10 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		collector.reset()
 	})
 
-	Describe("ServiceCard widget secrets", func() {
+	Describe("ServiceCard widget secrets (services[].widgets[].secrets)", func() {
 		It("warns when a credential-shaped field name uses an inline value", func() {
-			se := serviceEntryWithSecret("se-cred-shaped", nil)
-			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
+			se := serviceCardWithSecret("se-cred-shaped", pagev1alpha1.SecretValueSource{})
+			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
 				testCredShapedFieldAPIKey: {Value: new("plaintext-value")},
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed(), "Warn actions must not block the request")
@@ -103,8 +100,8 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		})
 
 		It("does not warn for a non-credential-shaped field name using an inline value", func() {
-			se := serviceEntryWithSecret("se-not-cred-shaped", nil)
-			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
+			se := serviceCardWithSecret("se-not-cred-shaped", pagev1alpha1.SecretValueSource{})
+			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
 				testOptionLatitude: {Value: new("51.5")},
 			}
 			Expect(warningClient.Create(ctx, se)).To(Succeed())
@@ -113,8 +110,8 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		})
 
 		It("does not warn when the credential-shaped field uses secretKeyRef", func() {
-			se := serviceEntryWithSecret("se-cred-shaped-ref", nil)
-			se.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
+			se := serviceCardWithSecret("se-cred-shaped-ref", pagev1alpha1.SecretValueSource{})
+			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
 				testCredShapedFieldAPIKey: {SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretRefName},
 					Key:                  secretField,
@@ -126,63 +123,19 @@ var _ = Describe("Credential-shaped-value Warn ValidatingAdmissionPolicies", Ord
 		})
 	})
 
-	Describe("ServiceCard multi-card form (services[].widgets[].secrets)", func() {
-		It("warns when a credential-shaped field name under services[].widgets[] uses an inline value", func() {
-			se := multiServiceCardWithNestedSecret("se-multi-cred-shaped", pagev1alpha1.SecretValueSource{})
-			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				testCredShapedFieldAPIKey: {Value: new("plaintext-value")},
-			}
-			Expect(warningClient.Create(ctx, se)).To(Succeed(), "Warn actions must not block the request")
-			defer func() { _ = warningClient.Delete(ctx, se) }()
-			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
-		})
-
-		It("does not warn for a non-credential-shaped field name under services[].widgets[] using an inline value", func() {
-			se := multiServiceCardWithNestedSecret("se-multi-not-cred-shaped", pagev1alpha1.SecretValueSource{})
-			se.Spec.Services[0].Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				testOptionLatitude: {Value: new("51.5")},
-			}
-			Expect(warningClient.Create(ctx, se)).To(Succeed())
-			defer func() { _ = warningClient.Delete(ctx, se) }()
-			Expect(collector.containsCredentialShapedWarning()).To(BeFalse())
-		})
-	})
-
-	Describe("InfoWidget secrets", func() {
+	Describe("InfoWidget secrets (widgets[].secrets)", func() {
 		It("warns when a credential-shaped field name uses an inline value", func() {
-			iw := &pagev1alpha1.InfoWidget{
-				ObjectMeta: metav1.ObjectMeta{Name: "iw-cred-shaped", Namespace: policyTestNamespace},
-				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
-					Type:         testWidgetTypeOpenMeteo,
-					Secrets: map[string]pagev1alpha1.SecretValueSource{
-						"password": {Value: new("plaintext-value")},
-					},
-				},
+			iw := infoWidgetWithSecret("iw-cred-shaped", pagev1alpha1.SecretValueSource{})
+			iw.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
+				"password": {Value: new("plaintext-value")},
 			}
 			Expect(warningClient.Create(ctx, iw)).To(Succeed())
 			defer func() { _ = warningClient.Delete(ctx, iw) }()
 			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
 		})
-	})
 
-	Describe("InfoWidget multi-widget form (widgets[].secrets)", func() {
-		It("warns when a credential-shaped field name under widgets[] uses an inline value", func() {
-			iw := multiInfoWidgetWithNestedSecret("iw-multi-cred-shaped", pagev1alpha1.SecretValueSource{
-				Value: new("plaintext-value"),
-			})
-			iw.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
-				testCredShapedFieldAPIKey: {Value: new("plaintext-value")},
-			}
-			Expect(warningClient.Create(ctx, iw)).To(Succeed(), "Warn actions must not block the request")
-			defer func() { _ = warningClient.Delete(ctx, iw) }()
-			Expect(collector.containsCredentialShapedWarning()).To(BeTrue())
-		})
-
-		It("does not warn for a non-credential-shaped field name under widgets[] using an inline value", func() {
-			iw := multiInfoWidgetWithNestedSecret("iw-multi-not-cred-shaped", pagev1alpha1.SecretValueSource{
-				Value: new("51.5"),
-			})
+		It("does not warn for a non-credential-shaped field name using an inline value", func() {
+			iw := infoWidgetWithSecret("iw-not-cred-shaped", pagev1alpha1.SecretValueSource{})
 			iw.Spec.Widgets[0].Secrets = map[string]pagev1alpha1.SecretValueSource{
 				testOptionLatitude: {Value: new("51.5")},
 			}

@@ -10,9 +10,7 @@ spec:
     name: dashboard-sample
   # widgets defines the whole header strip in one object instead of one
   # InfoWidget per widget; there's no group concept here (header widgets are
-  # a flat, ordered list). The multi-widget form (widgets) is the documented
-  # default — see InfoWidgetSpec's doc comment — even for an InfoWidget
-  # defining a single widget.
+  # a flat, ordered list).
   widgets:
     - type: greeting
       order: 1

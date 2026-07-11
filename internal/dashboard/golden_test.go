@@ -157,14 +157,18 @@ func TestGoldenHeader(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Type:         "datetime",
+				Widgets: []pagev1alpha1.InfoWidgetEntry{{
+					Type: "datetime",
+				}},
 			},
 		},
 		&pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: testGreetName, Namespace: testNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Type:         "greeting",
+				Widgets: []pagev1alpha1.InfoWidgetEntry{{
+					Type: "greeting",
+				}},
 			},
 		},
 		&pagev1alpha1.DashboardStyle{

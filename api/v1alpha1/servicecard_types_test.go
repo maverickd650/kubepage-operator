@@ -10,33 +10,9 @@ const (
 	testNamePlex   = "Plex"
 )
 
-// TestServiceCardSpecEntriesSingleForm verifies the single-card form (no
-// Services set) normalizes to a one-element slice built from spec's own
-// inline fields.
-func TestServiceCardSpecEntriesSingleForm(t *testing.T) {
-	href := "https://example.invalid"
-	spec := &ServiceCardSpec{
-		Group: testGroupMedia,
-		Name:  testNamePlex,
-		Href:  &href,
-	}
-
-	entries := spec.Entries()
-	if len(entries) != 1 {
-		t.Fatalf("Entries() = %d entries, want 1", len(entries))
-	}
-	if entries[0].Group != testGroupMedia || entries[0].Name != testNamePlex {
-		t.Errorf("entries[0] = %+v, want Group=Media Name=Plex", entries[0])
-	}
-	if entries[0].Href != &href && (entries[0].Href == nil || *entries[0].Href != href) {
-		t.Errorf("entries[0].Href = %v, want %q", entries[0].Href, href)
-	}
-}
-
-// TestServiceCardSpecEntriesMultiFormGroupDefaulting verifies the multi-card
-// form (Services set): an entry with its own Group keeps it, and an entry
-// without one inherits spec.Group.
-func TestServiceCardSpecEntriesMultiFormGroupDefaulting(t *testing.T) {
+// TestServiceCardSpecEntriesGroupDefaulting verifies that an entry with its
+// own Group keeps it, and an entry without one inherits spec.Group.
+func TestServiceCardSpecEntriesGroupDefaulting(t *testing.T) {
 	spec := &ServiceCardSpec{
 		Group: testGroupMedia,
 		Services: []ServiceEntry{
@@ -62,10 +38,10 @@ func TestServiceCardSpecEntriesMultiFormGroupDefaulting(t *testing.T) {
 	}
 }
 
-// TestServiceCardSpecEntriesMultiFormDeepCopyIsolation guards against a
-// future change accidentally aliasing the returned slice's backing array
-// with spec.Services.
-func TestServiceCardSpecEntriesMultiFormDeepCopyIsolation(t *testing.T) {
+// TestServiceCardSpecEntriesDeepCopyIsolation guards against a future change
+// accidentally aliasing the returned slice's backing array with
+// spec.Services.
+func TestServiceCardSpecEntriesDeepCopyIsolation(t *testing.T) {
 	spec := &ServiceCardSpec{
 		Group:    testGroupMedia,
 		Services: []ServiceEntry{{Name: testNamePlex}},

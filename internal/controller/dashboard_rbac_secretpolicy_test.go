@@ -31,26 +31,6 @@ func newSecretRefServiceCard(instance *pagev1alpha1.Dashboard, secretName string
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
 			Group:        "g",
-			Name:         testServiceCardObjName,
-			Widgets: []pagev1alpha1.ServiceWidget{{
-				Type: "prometheus",
-				Secrets: map[string]pagev1alpha1.SecretValueSource{
-					secretField: {SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-						Key:                  secretField,
-					}},
-				},
-			}},
-		},
-	}
-}
-
-func newMultiCardSecretRefServiceCard(instance *pagev1alpha1.Dashboard, secretName string) *pagev1alpha1.ServiceCard {
-	return &pagev1alpha1.ServiceCard{
-		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
-		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
-			Group:        "g",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name: testServiceCardObjName,
 				Widgets: []pagev1alpha1.ServiceWidget{{
@@ -64,23 +44,6 @@ func newMultiCardSecretRefServiceCard(instance *pagev1alpha1.Dashboard, secretNa
 				}},
 			}},
 		},
-	}
-}
-
-func TestReferencedSecretNamesIncludesMultiCardFormWidgetSecret(t *testing.T) {
-	scheme := networkTestScheme(t)
-	instance := newSecretPolicyTestDashboard(nil)
-	entry := newMultiCardSecretRefServiceCard(instance, "multicard-secret")
-
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry).Build()
-	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
-
-	got, err := r.referencedSecretNames(t.Context(), instance)
-	if err != nil {
-		t.Fatalf("referencedSecretNames() error = %v", err)
-	}
-	if len(got) != 1 || got[0] != "multicard-secret" {
-		t.Errorf("referencedSecretNames() = %v, want [multicard-secret] for a widget secret referenced via spec.services[].widgets[].secrets", got)
 	}
 }
 

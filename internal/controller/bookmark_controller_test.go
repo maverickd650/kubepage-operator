@@ -41,8 +41,9 @@ var _ = Describe("Bookmark Controller", func() {
 					Spec: pagev1alpha1.BookmarkSpec{
 						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 						Group:        "Group",
-						Name:         "Name",
-						Href:         "https://example.com",
+						Bookmarks: []pagev1alpha1.BookmarkEntry{
+							{Name: "Name", Href: "https://example.com"},
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

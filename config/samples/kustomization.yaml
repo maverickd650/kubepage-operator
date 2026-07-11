@@ -3,9 +3,6 @@ resources:
 - page_v1alpha1_dashboard.yaml
 - page_v1alpha1_dashboardstyle.yaml
 - page_v1alpha1_servicecard.yaml
-- page_v1alpha1_servicecard_single.yaml
 - page_v1alpha1_bookmark.yaml
-- page_v1alpha1_bookmark_single.yaml
 - page_v1alpha1_infowidget.yaml
-- page_v1alpha1_infowidget_single.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -13,36 +13,13 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
-// These specs verify that ServiceCardReconciler sets status.entries to the
-// number of entries ServiceCardSpec.Entries() resolves — 1 for the
-// single-card form, len(spec.services) for the multi-card form — so
-// `kubectl get pcard`'s Entries printcolumn reads correctly for both forms.
+// This spec verifies that ServiceCardReconciler sets status.entries to the
+// number of entries ServiceCardSpec.Entries() resolves (len(spec.services)),
+// so `kubectl get pcard`'s Entries printcolumn reads correctly.
 var _ = Describe("ServiceCard status.entries", func() {
 	ctx := context.Background()
 
-	It("sets entries to 1 for the single-card form", func() {
-		name := "sc-entries-single"
-		sc := &pagev1alpha1.ServiceCard{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
-			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
-				Group:        policyTestGroup,
-				Name:         testMultiFormNamePlex,
-			},
-		}
-		Expect(k8sClient.Create(ctx, sc)).To(Succeed())
-		defer func() { Expect(k8sClient.Delete(ctx, sc)).To(Succeed()) }()
-
-		reconciler := &ServiceCardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: policyTestNamespace}})
-		Expect(err).NotTo(HaveOccurred())
-
-		got := &pagev1alpha1.ServiceCard{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: policyTestNamespace}, got)).To(Succeed())
-		Expect(got.Status.Entries).To(Equal(int32(1)))
-	})
-
-	It("sets entries to len(services) for the multi-card form", func() {
+	It("sets entries to len(services)", func() {
 		name := "sc-entries-multi"
 		sc := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},

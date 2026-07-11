@@ -89,20 +89,22 @@ func TestPollerPollOnce(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testGroup,
-			Name:         testServiceName,
-			Href:         &href,
-			Widgets: []pagev1alpha1.ServiceWidget{
-				{
-					Type: testWidgetType,
-					URL:  &url,
-					Secrets: map[string]pagev1alpha1.SecretValueSource{
-						testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName},
-							Key:                  testSecretField,
-						}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testServiceName,
+				Href: &href,
+				Widgets: []pagev1alpha1.ServiceWidget{
+					{
+						Type: testWidgetType,
+						URL:  &url,
+						Secrets: map[string]pagev1alpha1.SecretValueSource{
+							testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: testSecretName},
+								Key:                  testSecretField,
+							}},
+						},
 					},
 				},
-			},
+			}},
 		},
 	}
 
@@ -111,8 +113,10 @@ func TestPollerPollOnce(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-main"},
 			Group:        testOtherGroup,
-			Name:         "Skip me",
-			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:    "Skip me",
+				Widgets: []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			}},
 		},
 	}
 
@@ -153,8 +157,8 @@ func TestPollerPollOnce(t *testing.T) {
 	}
 }
 
-// TestPollerMultiCardFormProducesPerEntryCards exercises the multi-card form
-// (ServiceCardSpec.Services): one ServiceCard object with three entries — one
+// TestPollerMultiCardFormProducesPerEntryCards exercises a multi-entry
+// ServiceCard: one ServiceCard object with three entries — one
 // with a widget and its own group, one with a widget that falls back to
 // spec.group, and one monitor-only entry with no widget — must produce one
 // Card per entry (per widget, for the widget entries), each keyed by
@@ -244,9 +248,8 @@ func TestPollerMultiCardFormProducesPerEntryCards(t *testing.T) {
 	}
 
 	// A second poll cycle after removing the "Stash" entry must prune its
-	// card from Store, mirroring how a deleted single-card ServiceCard's
-	// card is pruned — Store.Prune has no special casing for the multi-card
-	// form.
+	// card from Store, the same way a deleted ServiceCard's cards are
+	// pruned — Store.Prune has no per-entry special casing.
 	entry.Spec.Services = []pagev1alpha1.ServiceEntry{entry.Spec.Services[0], entry.Spec.Services[2]}
 	if err := cl.Update(t.Context(), entry); err != nil {
 		t.Fatalf("updating ServiceCard: %v", err)
@@ -351,8 +354,10 @@ func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testin
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         testSvcDisplayName,
-			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:    testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			}},
 		},
 	}
 
@@ -389,8 +394,10 @@ func TestPollerUnsupportedWidgetType(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         "Mystery",
-			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testDoesNotExist, URL: &url}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:    "Mystery",
+				Widgets: []pagev1alpha1.ServiceWidget{{Type: testDoesNotExist, URL: &url}},
+			}},
 		},
 	}
 
@@ -422,9 +429,11 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         "Monitored",
-			SiteMonitor:  &srv.URL,
-			StatusStyle:  &style,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        "Monitored",
+				SiteMonitor: &srv.URL,
+				StatusStyle: &style,
+			}},
 		},
 	}
 
@@ -464,13 +473,15 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         "Pinged",
-			Ping:         &srv.URL,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: "Pinged",
+				Ping: &srv.URL,
+			}},
 		},
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], false, statusStyleDot, func(string) {})
+	status, style, latency := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], statusStyleDot, func(string) {})
 	if status != "Up" {
 		t.Errorf("monitor(Ping) status = %q, want Up", status)
 	}
@@ -486,9 +497,11 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			PodSelector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{{Key: testAppLabelKey, Operator: testBogusWhen, Values: []string{"x"}}},
-			},
+			Services: []pagev1alpha1.ServiceEntry{{
+				PodSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{{Key: testAppLabelKey, Operator: testBogusWhen, Values: []string{"x"}}},
+				},
+			}},
 		},
 	}
 
@@ -509,7 +522,9 @@ func TestPollerPodStatusListPodsError(t *testing.T) {
 	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
+			}},
 		},
 	}
 
@@ -575,9 +590,11 @@ func TestPollerPodSelector(t *testing.T) {
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 					Group:        "G",
-					Name:         "PodService",
-					PodSelector:  selector,
-					StatusStyle:  &style,
+					Services: []pagev1alpha1.ServiceEntry{{
+						Name:        "PodService",
+						PodSelector: selector,
+						StatusStyle: &style,
+					}},
 				},
 			}
 
@@ -621,10 +638,12 @@ func TestPollerShowStatsAndHideErrors(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         "Flags",
-			ShowStats:    &showStats,
-			ErrorDisplay: &hideErrors,
-			Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:         "Flags",
+				ShowStats:    &showStats,
+				ErrorDisplay: &hideErrors,
+				Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+			}},
 		},
 	}
 
@@ -662,8 +681,10 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    testOpenMeteoType,
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+			}},
 		},
 	}
 	// A datetime InfoWidget carries no registered widget, so it must NOT
@@ -672,7 +693,9 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeDatetime,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: headerTypeDatetime,
+			}},
 		},
 	}
 
@@ -733,8 +756,10 @@ func TestPollerPollOnceBoundsConcurrency(t *testing.T) {
 			Spec: pagev1alpha1.ServiceCardSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testGroup,
-				Name:         fmt.Sprintf("Service %d", i),
-				Widgets:      []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+				Services: []pagev1alpha1.ServiceEntry{{
+					Name:    fmt.Sprintf("Service %d", i),
+					Widgets: []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &url}},
+				}},
 			},
 		})
 	}
@@ -782,16 +807,18 @@ func TestPollerMissingSecret(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         testSvcDisplayName,
-			Widgets: []pagev1alpha1.ServiceWidget{{
-				Type: testWidgetType,
-				URL:  &url,
-				Secrets: map[string]pagev1alpha1.SecretValueSource{
-					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
-						Key:                  testSecretField,
-					}},
-				},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetType,
+					URL:  &url,
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
+							Key:                  testSecretField,
+						}},
+					},
+				}},
 			}},
 		},
 	}
@@ -835,10 +862,12 @@ func TestPollerWidgetDefaultsSuppliesMissingSecret(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
-			Name:         testSvcDisplayName,
-			Widgets: []pagev1alpha1.ServiceWidget{{
-				Type: testWidgetTypePlex,
-				URL:  &url,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetTypePlex,
+					URL:  &url,
+				}},
 			}},
 		},
 	}
@@ -896,10 +925,12 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			Group:       testGroup,
-			Name:        testSvcAName,
-			Description: &description,
-			Target:      &target,
+			Group: testGroup,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        testSvcAName,
+				Description: &description,
+				Target:      &target,
+			}},
 		},
 	}
 	widget := &pagev1alpha1.ServiceWidget{
@@ -944,7 +975,12 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	overrideSeconds := int32(100)
 	entry := pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
-		Spec:       pagev1alpha1.ServiceCardSpec{Group: testGroup, Name: testSvcAName},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			Group: testGroup,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcAName,
+			}},
+		},
 	}
 	widget := &pagev1alpha1.ServiceWidget{Type: testWidgetType, URL: &url, PollIntervalSeconds: &overrideSeconds}
 
@@ -990,10 +1026,12 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	iw := pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef:        pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:                testOpenMeteoType,
-			Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
-			PollIntervalSeconds: &overrideSeconds,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:                testOpenMeteoType,
+				Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+				PollIntervalSeconds: &overrideSeconds,
+			}},
 		},
 	}
 
@@ -1103,13 +1141,15 @@ func TestPollerInfoWidgetSecretErrorSetsCardErr(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
-			Secrets: map[string]pagev1alpha1.SecretValueSource{
-				testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
-					Key:                  testSecretField,
-				}},
-			},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testOpenMeteoType,
+				Secrets: map[string]pagev1alpha1.SecretValueSource{
+					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
+						Key:                  testSecretField,
+					}},
+				},
+			}},
 		},
 	}
 
@@ -1140,7 +1180,9 @@ func TestPollerInfoWidgetClusterWidgetUsesKubeReader(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testKubeMetricsType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testKubeMetricsType,
+			}},
 		},
 	}
 
@@ -1169,7 +1211,9 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "metric", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         "prometheusmetric",
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: "prometheusmetric",
+			}},
 		},
 	}
 
@@ -1199,9 +1243,11 @@ func TestPollerInfoWidgetURLFieldBeatsOptionsURL(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
-			URL:          &entryURL,
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"http://127.0.0.1:1"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    testOpenMeteoType,
+				URL:     &entryURL,
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"http://127.0.0.1:1"}`)},
+			}},
 		},
 	}
 
@@ -1232,8 +1278,10 @@ func TestPollerInfoWidgetOptionsURLStillWorksAlone(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    testOpenMeteoType,
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+			}},
 		},
 	}
 
@@ -1515,17 +1563,26 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 	defer srv.Close()
 
 	entry := pagev1alpha1.ServiceCard{
-		Spec: pagev1alpha1.ServiceCardSpec{Ping: &srv.URL},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			Services: []pagev1alpha1.ServiceEntry{{
+				Ping: &srv.URL,
+			}},
+		},
 	}
 	p := &Poller{HTTPClient: srv.Client()}
-	_, style, _ := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], false, testStatusBasic, func(string) {})
+	_, style, _ := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], testStatusBasic, func(string) {})
 	if style != testStatusBasic {
 		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceCard.StatusStyle is unset", style, testStatusBasic)
 	}
 }
 
 func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
-	entry := pagev1alpha1.ServiceCard{Spec: pagev1alpha1.ServiceCardSpec{Group: testGroup, Name: testSvcAName}}
+	entry := pagev1alpha1.ServiceCard{Spec: pagev1alpha1.ServiceCardSpec{
+		Group: testGroup,
+		Services: []pagev1alpha1.ServiceEntry{{
+			Name: testSvcAName,
+		}},
+	}}
 	widget := &pagev1alpha1.ServiceWidget{Type: testDoesNotExist}
 
 	store := NewStore()
@@ -1675,17 +1732,19 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testGroup,
-			Name:         testSvcDisplayName,
-			SiteMonitor:  &monitorURL,
-			Widgets: []pagev1alpha1.ServiceWidget{{
-				Type: testWidgetType,
-				URL:  &widgetURL,
-				Secrets: map[string]pagev1alpha1.SecretValueSource{
-					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
-						Key:                  testSecretField,
-					}},
-				},
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        testSvcDisplayName,
+				SiteMonitor: &monitorURL,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetType,
+					URL:  &widgetURL,
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+							Key:                  testSecretField,
+						}},
+					},
+				}},
 			}},
 		},
 	}
@@ -1693,7 +1752,9 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testKubeMetricsType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testKubeMetricsType,
+			}},
 		},
 	}
 
@@ -1750,7 +1811,9 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 func TestPollerProbePodSelectorSampleData(t *testing.T) {
 	entry := pagev1alpha1.ServiceCard{
 		Spec: pagev1alpha1.ServiceCardSpec{
-			PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
+			Services: []pagev1alpha1.ServiceEntry{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
+			}},
 		},
 	}
 	p := &Poller{SampleData: true}
@@ -1773,7 +1836,12 @@ func TestPollerPollWidgetSampleUnsupportedType(t *testing.T) {
 	t.Cleanup(func() { delete(registry, stubType) })
 
 	url := testExampleURL
-	entry := pagev1alpha1.ServiceCard{Spec: pagev1alpha1.ServiceCardSpec{Group: testGroup, Name: testSvcAName}}
+	entry := pagev1alpha1.ServiceCard{Spec: pagev1alpha1.ServiceCardSpec{
+		Group: testGroup,
+		Services: []pagev1alpha1.ServiceEntry{{
+			Name: testSvcAName,
+		}},
+	}}
 	widget := &pagev1alpha1.ServiceWidget{Type: stubType, URL: &url}
 
 	store := NewStore()
@@ -1797,7 +1865,9 @@ func TestPollerPollInfoWidgetSampleUnsupportedType(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "stub", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         stubType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: stubType,
+			}},
 		},
 	}
 

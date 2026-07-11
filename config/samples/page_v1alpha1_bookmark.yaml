@@ -9,9 +9,7 @@ spec:
   dashboardRef:
     name: dashboard-sample
   # group is the default group for any entry below that doesn't set its own
-  # (Wikipedia overrides it to "Reference"). The multi-bookmark form
-  # (bookmarks) is the documented default — see BookmarkSpec's doc comment —
-  # even for a Bookmark defining just one bookmark.
+  # (Wikipedia overrides it to "Reference").
   group: Developer
   bookmarks:
     - name: Github

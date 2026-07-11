@@ -317,24 +317,30 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeGreeting,
-			Order:        &order2,
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    headerTypeGreeting,
+				Order:   &order2,
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
+			}},
 		},
 	}
 	clock := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeDatetime,
-			Order:        &order1,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:  headerTypeDatetime,
+				Order: &order1,
+			}},
 		},
 	}
 	other := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testDiscoverySkipKey, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
-			Type:         headerTypeGreeting,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: headerTypeGreeting,
+			}},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(greeting, clock, other).Build()
@@ -361,13 +367,23 @@ func TestHeaderWidgetsResolvesAlign(t *testing.T) {
 	explicitLeft := pagev1alpha1.AlignLeft
 	items := []pagev1alpha1.InfoWidget{
 		{ObjectMeta: metav1.ObjectMeta{Name: testGreetName}, Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Type: headerTypeGreeting,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: headerTypeGreeting,
+			}},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather}, Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Type: testOpenMeteoType,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testOpenMeteoType,
+			}},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: testCPUName}, Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}, Type: testKubeMetricsType, Align: &explicitLeft,
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:  testKubeMetricsType,
+				Align: &explicitLeft,
+			}},
 		}},
 	}
 
@@ -471,21 +487,35 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "bm1", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Group:        testBookmarkGroup, Name: "Second", Href: "https://example.invalid/2", Order: &order2,
+			Group:        testBookmarkGroup,
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name:  "Second",
+				Href:  "https://example.invalid/2",
+				Order: &order2,
+			}},
 		},
 	}
 	bm2 := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm2", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Group:        testBookmarkGroup, Name: testLabelFirst, Href: "https://example.invalid/1", Order: &order1,
+			Group:        testBookmarkGroup,
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name:  testLabelFirst,
+				Href:  "https://example.invalid/1",
+				Order: &order1,
+			}},
 		},
 	}
 	other := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm3", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
-			Group:        testBookmarkGroup, Name: "Skip me", Href: "https://example.invalid/skip",
+			Group:        testBookmarkGroup,
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "Skip me",
+				Href: "https://example.invalid/skip",
+			}},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bm1, bm2, other).Build()
@@ -607,20 +637,35 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Group:        testBookmarkGroup, Name: "Z", Href: "https://example.invalid/z", Order: &order5,
+				Group:        testBookmarkGroup,
+				Bookmarks: []pagev1alpha1.BookmarkEntry{{
+					Name:  "Z",
+					Href:  "https://example.invalid/z",
+					Order: &order5,
+				}},
 			},
 		},
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Group:        testBookmarkGroup, Name: "A", Href: testBookmarkHrefA, Order: &order1,
-				Abbr: &abbr, Description: &desc,
+				Group:        testBookmarkGroup,
+				Bookmarks: []pagev1alpha1.BookmarkEntry{{
+					Name:        "A",
+					Href:        testBookmarkHrefA,
+					Order:       &order1,
+					Abbr:        &abbr,
+					Description: &desc,
+				}},
 			},
 		},
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Group:        testOtherGroup, Name: "Only", Href: "https://example.invalid/only",
+				Group:        testOtherGroup,
+				Bookmarks: []pagev1alpha1.BookmarkEntry{{
+					Name: "Only",
+					Href: "https://example.invalid/only",
+				}},
 			},
 		},
 	}
@@ -639,11 +684,10 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	}
 }
 
-// TestGroupBookmarksMultiFormGroupDefaultingAndOverride verifies a single
-// Bookmark object using the multi-bookmark form (spec.bookmarks) flattens
-// into per-entry cards the same way the single-bookmark form does: an entry
-// without its own group inherits the object's spec.group, and an entry that
-// sets its own group renders in that group instead.
+// TestGroupBookmarksMultiFormGroupDefaultingAndOverride verifies a Bookmark
+// object with multiple entries (spec.bookmarks) flattens into per-entry
+// cards: an entry without its own group inherits the object's spec.group,
+// and an entry that sets its own group renders in that group instead.
 func TestGroupBookmarksMultiFormGroupDefaultingAndOverride(t *testing.T) {
 	abbr := "WK"
 	items := []pagev1alpha1.Bookmark{
@@ -690,7 +734,11 @@ func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Group:        testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+				Group:        testBookmarkGroup,
+				Bookmarks: []pagev1alpha1.BookmarkEntry{{
+					Name: "A",
+					Href: testBookmarkHrefA,
+				}},
 			},
 		},
 	}
@@ -737,7 +785,11 @@ func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Group:        testBookmarkGroup, Name: "A", Href: testBookmarkHrefA,
+				Group:        testBookmarkGroup,
+				Bookmarks: []pagev1alpha1.BookmarkEntry{{
+					Name: "A",
+					Href: testBookmarkHrefA,
+				}},
 			},
 		},
 	}

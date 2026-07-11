@@ -82,8 +82,9 @@ spec:
   dashboardRef:
     name: %[1]s
   group: Links
-  name: %[4]s
-  href: https://example.com
+  bookmarks:
+    - name: %[4]s
+      href: https://example.com
 `, e2eDashboardName, dashboardTestNamespace, dashboardConfigTitle, dashboardBookmarkName)
 
 var _ = Describe("Manager", Ordered, func() {

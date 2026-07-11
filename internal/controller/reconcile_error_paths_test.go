@@ -42,8 +42,9 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 					Spec: pagev1alpha1.BookmarkSpec{
 						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
 						Group:        "G",
-						Name:         "N",
-						Href:         "https://example.com",
+						Bookmarks: []pagev1alpha1.BookmarkEntry{
+							{Name: "N", Href: "https://example.com"},
+						},
 					},
 				}
 			},
@@ -72,7 +73,9 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
 					Spec: pagev1alpha1.InfoWidgetSpec{
 						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
-						Type:         "datetime",
+						Widgets: []pagev1alpha1.InfoWidgetEntry{
+							{Type: "datetime"},
+						},
 					},
 				}
 			},
@@ -88,7 +91,9 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 					Spec: pagev1alpha1.ServiceCardSpec{
 						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
 						Group:        "G",
-						Name:         "N",
+						Services: []pagev1alpha1.ServiceEntry{
+							{Name: "N"},
+						},
 					},
 				}
 			},

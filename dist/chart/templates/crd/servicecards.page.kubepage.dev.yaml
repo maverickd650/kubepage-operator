@@ -72,136 +72,26 @@ spec:
                 required:
                 - name
                 type: object
-              description:
-                description: description overrides the default description shown on
-                  the card.
-                maxLength: 1024
-                minLength: 1
-                type: string
-              errorDisplay:
-                description: |-
-                  errorDisplay controls whether a widget's error text is shown on the
-                  card (e.g. set "Hidden" for a service that is expected to be
-                  intermittently unreachable). Defaults to "Shown".
-                enum:
-                - Shown
-                - Hidden
-                type: string
               group:
                 description: |-
-                  group is the name of the (top-level) group this entry belongs to (the
-                  single-card form), or the default group for any Services entry that
-                  doesn't set its own group (the multi-card form).
+                  group is the name of the (top-level) group this ServiceCard belongs
+                  to, used as the default group for any Services entry that doesn't set
+                  its own group.
                 maxLength: 256
                 minLength: 1
                 type: string
-              href:
-                description: href makes the card's title a link to the service.
-                maxLength: 2048
-                minLength: 1
-                pattern: ^https?://
-                type: string
-              icon:
-                description: |-
-                  icon resolves as a dashboard-icons slug, or passes through as-is if
-                  it's already a full URL.
-                maxLength: 256
-                minLength: 1
-                type: string
-              name:
-                description: |-
-                  name is the service's display name (the card title). Set only for the
-                  single-card form; mutually exclusive with Services.
-                maxLength: 256
-                minLength: 1
-                type: string
-              order:
-                description: |-
-                  order controls rendering position: groups and entries are sorted by
-                  Order (nil sorts last), ties broken by Name, since CRDs have no
-                  inherent ordering but the dashboard's groups/entries are displayed in a
-                  fixed order.
-                format: int32
-                type: integer
-              ping:
-                description: |-
-                  ping is a URL probed over HTTP for reachability and latency, shown as
-                  an up/down status on the card. (Raw ICMP is not used, so a pod needs
-                  no elevated capabilities.)
-                maxLength: 2048
-                minLength: 1
-                pattern: ^https?://
-                type: string
-              podSelector:
-                description: |-
-                  podSelector selects pods in this ServiceCard's namespace whose
-                  readiness determines this service's up/down status — a
-                  Kubernetes-native alternative to Ping/SiteMonitor for services that
-                  run as pods in this cluster, needing no externally reachable URL.
-                  With multiple matches, any Ready pod renders "Up"; the card shows
-                  "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
-                  Mutually exclusive with Ping and SiteMonitor (enforced by this spec's
-                  CEL validation rule).
-                properties:
-                  matchExpressions:
-                    description: matchExpressions is a list of label selector requirements.
-                      The requirements are ANDed.
-                    items:
-                      description: |-
-                        A label selector requirement is a selector that contains values, a key, and an operator that
-                        relates the key and values.
-                      properties:
-                        key:
-                          description: key is the label key that the selector applies
-                            to.
-                          type: string
-                        operator:
-                          description: |-
-                            operator represents a key's relationship to a set of values.
-                            Valid operators are In, NotIn, Exists and DoesNotExist.
-                          type: string
-                        values:
-                          description: |-
-                            values is an array of string values. If the operator is In or NotIn,
-                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                            the values array must be empty. This array is replaced during a strategic
-                            merge patch.
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                      required:
-                      - key
-                      - operator
-                      type: object
-                    type: array
-                    x-kubernetes-list-type: atomic
-                  matchLabels:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                      map is equivalent to an element of matchExpressions, whose key field is "key", the
-                      operator is "In", and the values array contains only "value". The requirements are ANDed.
-                    type: object
-                type: object
-                x-kubernetes-map-type: atomic
               services:
                 description: |-
                   services defines one entry per service card, for a ServiceCard that
                   groups multiple cards (a whole group, or a whole dashboard) into one
                   object instead of one ServiceCard per card. group is optional on each
                   entry: an entry without its own group falls back to spec.group as a
-                  shared default. Mutually exclusive with the inline single-card fields
-                  above (name, href, target, icon, description, showStats, errorDisplay,
-                  ping, siteMonitor, podSelector, statusStyle, widgets, order).
+                  shared default.
                 items:
                   description: |-
                     ServiceEntry is one service card's configuration: display fields, monitor
-                    source, and widgets. ServiceCardSpec embeds one ServiceEntry inline for
-                    the single-card form (one ServiceCard object per card, the original wire
-                    format), and holds a list of them in Services for the multi-card form (one
-                    ServiceCard object per group, or per whole dashboard).
+                    source, and widgets. A ServiceCardSpec holds a list of these in Services,
+                    one ServiceCard object per group, or per whole dashboard.
 
                     Nested groups (a group inside another group) are not supported in this
                     version of the operator; Group always names a top-level group.
@@ -224,9 +114,9 @@ spec:
                     group:
                       description: |-
                         group is the name of the (top-level) group this entry belongs to.
-                        Entries sharing a Group are rendered together. In the multi-card form
-                        (ServiceCardSpec.Services), an entry that omits group falls back to
-                        ServiceCardSpec.Group as a shared default (see ServiceCardSpec.Entries).
+                        Entries sharing a Group are rendered together. An entry that omits
+                        group falls back to ServiceCardSpec.Group as a shared default (see
+                        ServiceCardSpec.Entries).
                       maxLength: 256
                       minLength: 1
                       type: string
@@ -670,6 +560,8 @@ spec:
                       minItems: 1
                       type: array
                       x-kubernetes-list-type: atomic
+                  required:
+                  - name
                   type: object
                   x-kubernetes-validations:
                   - message: at most one of ping, siteMonitor, or podSelector may
@@ -680,381 +572,14 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
-              showStats:
-                description: |-
-                  showStats controls whether the polled widget fields are displayed on
-                  the card. Defaults to "Show"; set "Hide" to show only the title/icon/
-                  description (and any monitor status).
-                enum:
-                - Show
-                - Hide
-                type: string
-              siteMonitor:
-                description: |-
-                  siteMonitor is a URL probed over HTTP, shown as an up/down status with
-                  response latency on the card.
-                maxLength: 2048
-                minLength: 1
-                pattern: ^https?://
-                type: string
-              statusStyle:
-                description: |-
-                  statusStyle controls how the Ping/SiteMonitor/PodSelector status
-                  renders: "dot" a colored status dot, "basic" up/down text. Ignored
-                  unless one of Ping, SiteMonitor, or PodSelector is set.
-                enum:
-                - dot
-                - basic
-                type: string
-              target:
-                description: |-
-                  target overrides the DashboardStyle's default link target for this
-                  card's Href ("_blank" opens a new tab, "_self" the same tab).
-                enum:
-                - _blank
-                - _self
-                type: string
-              widgets:
-                description: |-
-                  widgets attached to this service. Zero, one, or many are allowed; the
-                  dashboard polls each one independently and shows its fields on the
-                  card.
-                items:
-                  description: |-
-                    ServiceWidget configures one of the native dashboard's pollable widgets
-                    (internal/dashboard's Widget interface) for a service card. Type and URL
-                    are typed because nearly every widget has them; everything else
-                    (widget-type-specific options) goes in Config. Secret-bearing fields (e.g.
-                    API tokens) go in Secrets instead of Config: the dashboard resolves them
-                    directly in-process at poll time, so the plaintext value never appears in
-                    pod env, a ConfigMap, or a projected file.
-                  properties:
-                    caCert:
-                      description: |-
-                        caCert optionally supplies a PEM-encoded CA certificate (or bundle)
-                        used, in addition to the system trust store, to verify this widget's
-                        url. An alternative to Config's per-widget "insecureTLS" escape hatch
-                        (e.g. unifi.go) for self-hosted upstreams with a private CA: this lets
-                        the connection stay verified instead of skipping verification
-                        entirely. Resolved the same way as Secrets (never stored outside this
-                        object beyond the dashboard pod's in-memory TLS config).
-                      properties:
-                        secretKeyRef:
-                          description: secretKeyRef selects a key of a Secret in the
-                            same namespace.
-                          properties:
-                            key:
-                              description: The key of the secret to select from.  Must
-                                be a valid secret key.
-                              type: string
-                            name:
-                              default: ""
-                              description: |-
-                                Name of the referent.
-                                This field is effectively required, but due to backwards compatibility is
-                                allowed to be empty. Instances of this type with an empty value here are
-                                almost certainly wrong.
-                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                              type: string
-                            optional:
-                              description: Specify whether the Secret or its key must
-                                be defined
-                              type: boolean
-                          required:
-                          - key
-                          type: object
-                          x-kubernetes-map-type: atomic
-                        value:
-                          description: |-
-                            value is a literal value. Avoid this for real credentials; prefer
-                            SecretKeyRef so the value isn't stored in the CR.
-                          maxLength: 4096
-                          minLength: 1
-                          type: string
-                      type: object
-                      x-kubernetes-validations:
-                      - message: exactly one of value or secretKeyRef must be set
-                        rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef)
-                          ? 1 : 0) == 1'
-                    config:
-                      description: |-
-                        config holds the remaining widget-type-specific options; unrecognized
-                        keys are silently ignored rather than rejected (see internal/dashboard's
-                        per-widget source for the authoritative shape). Known keys by type:
-                          - cloudflared: accountId, tunnelId (both required)
-                          - customapi: mappings (required) — a list of {label, jsonpath, suffix}
-                          - prometheusmetric: query (required), label (defaults to "Value")
-                          - unifi: site (defaults to "default"), insecureTLS (bool)
-                          - iframe: height (a CSS length, e.g. "300px"; defaults to "300px")
-                          - glances: apiVersion ("3" or "4"; defaults to "4")
-                        Every other registered type takes no Config options.
-                      x-kubernetes-preserve-unknown-fields: true
-                    fields:
-                      description: |-
-                        fields restricts which of the widget's returned fields are rendered,
-                        by label (e.g. "queued", "wanted"). Unset (the default) renders every
-                        field the widget returns.
-                      items:
-                        maxLength: 64
-                        minLength: 1
-                        type: string
-                      maxItems: 32
-                      minItems: 1
-                      type: array
-                      x-kubernetes-list-type: set
-                    highlight:
-                      additionalProperties:
-                        description: |-
-                          FieldHighlight configures highlight rules for one widget field, keyed by
-                          the field's label in ServiceWidget.Highlight.
-                        properties:
-                          rules:
-                            description: |-
-                              rules are evaluated in order; the first match sets the field's
-                              highlight level. No match leaves the field unhighlighted.
-                            items:
-                              description: |-
-                                HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules
-                                are evaluated in order; the first match sets the field's highlight level.
-                                Mirrors homepage's per-field highlight rule, see
-                                https://gethomepage.dev/configs/services/#block-highlighting.
-                              properties:
-                                caseSensitive:
-                                  description: |-
-                                    caseSensitive makes a string operator's comparison case-sensitive.
-                                    Defaults to "CaseInsensitive"; ignored by numeric operators.
-                                  enum:
-                                  - CaseSensitive
-                                  - CaseInsensitive
-                                  type: string
-                                level:
-                                  description: level this rule sets when it matches.
-                                  enum:
-                                  - good
-                                  - warn
-                                  - danger
-                                  type: string
-                                negate:
-                                  description: |-
-                                    negate inverts the rule's match ("Negate") instead of the default
-                                    ("Match").
-                                  enum:
-                                  - Match
-                                  - Negate
-                                  type: string
-                                value:
-                                  description: |-
-                                    value is the rule's comparison value: a number for a numeric
-                                    operator, text for a string operator. For "between"/"outside" this is
-                                    the lower bound.
-                                  maxLength: 256
-                                  minLength: 1
-                                  type: string
-                                value2:
-                                  description: |-
-                                    value2 is the upper bound for the "between"/"outside" operators;
-                                    ignored by every other operator.
-                                  maxLength: 256
-                                  minLength: 1
-                                  type: string
-                                when:
-                                  description: |-
-                                    when is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/
-                                    ne/between/outside (Value/Value2 parsed as numbers); string fields use
-                                    equals/includes/startsWith/endsWith/regex (Value compared as text).
-                                  enum:
-                                  - gt
-                                  - gte
-                                  - lt
-                                  - lte
-                                  - eq
-                                  - ne
-                                  - between
-                                  - outside
-                                  - equals
-                                  - includes
-                                  - startsWith
-                                  - endsWith
-                                  - regex
-                                  type: string
-                              required:
-                              - level
-                              - value
-                              - when
-                              type: object
-                              x-kubernetes-validations:
-                              - message: value2 is required when when is "between"
-                                  or "outside"
-                                rule: '!(self.when in [''between'',''outside'']) ||
-                                  has(self.value2)'
-                            maxItems: 32
-                            minItems: 1
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          scope:
-                            description: |-
-                              scope controls how much of the stat chip a matching rule highlights:
-                              "WholeField" (the default) highlights the whole chip, label included;
-                              "ValueOnly" highlights just the value.
-                            enum:
-                            - WholeField
-                            - ValueOnly
-                            type: string
-                        required:
-                        - rules
-                        type: object
-                      description: |-
-                        highlight tints a field's stat chip by severity (good/warn/danger),
-                        keyed by the field's label. See FieldHighlight.
-                      minProperties: 1
-                      type: object
-                    pollIntervalSeconds:
-                      description: |-
-                        pollIntervalSeconds overrides the dashboard's global --poll-interval
-                        for this widget only, letting a slow upstream (e.g. weather) poll less
-                        often than a fast one (e.g. Prometheus) without slowing every other
-                        widget down to match. Unset polls at the global interval every cycle.
-                        Floor-clamped to the global interval: a value smaller than it would
-                        have no effect anyway, since the poller only ever runs once per cycle.
-                      format: int32
-                      minimum: 1
-                      type: integer
-                    secrets:
-                      additionalProperties:
-                        description: |-
-                          SecretValueSource is an inline value or a reference to a key in a Secret,
-                          used for any config field that may hold a credential (e.g. a widget API
-                          key). Exactly one of Value or SecretKeyRef must be set; this is enforced by
-                          the CRD schema's CEL rule below, so neither a secret that sets both nor one
-                          that sets neither reaches the dashboard, which resolves whichever is set
-                          in-process at poll time.
-                        properties:
-                          secretKeyRef:
-                            description: secretKeyRef selects a key of a Secret in
-                              the same namespace.
-                            properties:
-                              key:
-                                description: The key of the secret to select from.  Must
-                                  be a valid secret key.
-                                type: string
-                              name:
-                                default: ""
-                                description: |-
-                                  Name of the referent.
-                                  This field is effectively required, but due to backwards compatibility is
-                                  allowed to be empty. Instances of this type with an empty value here are
-                                  almost certainly wrong.
-                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                type: string
-                              optional:
-                                description: Specify whether the Secret or its key
-                                  must be defined
-                                type: boolean
-                            required:
-                            - key
-                            type: object
-                            x-kubernetes-map-type: atomic
-                          value:
-                            description: |-
-                              value is a literal value. Avoid this for real credentials; prefer
-                              SecretKeyRef so the value isn't stored in the CR.
-                            maxLength: 4096
-                            minLength: 1
-                            type: string
-                        type: object
-                        x-kubernetes-validations:
-                        - message: exactly one of value or secretKeyRef must be set
-                          rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef)
-                            ? 1 : 0) == 1'
-                      description: |-
-                        secrets are secret-bearing widget fields (commonly "token", sometimes
-                        "username"/"password" depending on widget type), resolved directly by
-                        the dashboard backend rather than stored inline.
-
-                        RBAC note: creating a ServiceCard that references a secretKeyRef
-                        grants no RBAC to the creator, but it does let the dashboard pod read
-                        that Secret and send its plaintext value to this widget's own url —
-                        so anyone who can create a ServiceCard in this namespace can read any
-                        Secret in it by pointing url at a server they control, without ever
-                        needing "get secrets" themselves. Only grant ServiceCard create
-                        access to principals you'd also trust with every Secret in the
-                        namespace.
-                      minProperties: 1
-                      type: object
-                    type:
-                      description: |-
-                        type is the widget type. Must be one of the service widget types
-                        registered in internal/dashboard (each widget's init() Register call);
-                        internal/controller/widget_type_policy_test.go asserts this enum stays
-                        in sync with the registry.
-                      enum:
-                      - plex
-                      - stash
-                      - paperlessngx
-                      - grafana
-                      - prometheus
-                      - prometheusmetric
-                      - unifi
-                      - truenas
-                      - cloudflared
-                      - linkwarden
-                      - homeassistant
-                      - mealie
-                      - customapi
-                      - iframe
-                      - sonarr
-                      - radarr
-                      - jellyfin
-                      - jellyseerr
-                      - immich
-                      - adguard
-                      - pihole
-                      - uptime-kuma
-                      - portainer
-                      - argocd
-                      - gitea
-                      - tautulli
-                      type: string
-                    url:
-                      description: url is the base URL the widget talks to.
-                      maxLength: 2048
-                      minLength: 1
-                      pattern: ^https?://
-                      type: string
-                  required:
-                  - type
-                  type: object
-                maxItems: 16
-                minItems: 1
-                type: array
-                x-kubernetes-list-type: atomic
             required:
             - dashboardRef
+            - services
             type: object
             x-kubernetes-validations:
-            - message: exactly one of name (single-card form) or services (multi-card
-                form) must be set
-              rule: has(self.name) != has(self.services)
-            - message: when services is set, the single-card inline fields (href,
-                target, icon, description, showStats, errorDisplay, ping, siteMonitor,
-                podSelector, statusStyle, widgets, order) must be absent; group is
-                still allowed as the default group for entries
-              rule: '!has(self.services) || (!has(self.href) && !has(self.target)
-                && !has(self.icon) && !has(self.description) && !has(self.showStats)
-                && !has(self.errorDisplay) && !has(self.ping) && !has(self.siteMonitor)
-                && !has(self.podSelector) && !has(self.statusStyle) && !has(self.widgets)
-                && !has(self.order))'
-            - message: every services entry must set name
-              rule: '!has(self.services) || self.services.all(s, has(s.name))'
             - message: 'every services entry must resolve a group: set spec.group
                 as a default, or set group on every entry'
-              rule: '!has(self.services) || has(self.group) || self.services.all(s,
-                has(s.group))'
-            - message: the single-card form requires both name and group
-              rule: has(self.services) || (has(self.name) && has(self.group))
-            - message: at most one of ping, siteMonitor, or podSelector may be set
-              rule: '(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) +
-                (has(self.podSelector) ? 1 : 0) <= 1'
+              rule: has(self.group) || self.services.all(s, has(s.group))
           status:
             description: status defines the observed state of ServiceCard
             minProperties: 1
@@ -1121,9 +646,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               entries:
-                description: |-
-                  entries is the number of entries this object defines (1 for the
-                  single-card form, len(spec.services) for the multi-card form).
+                description: entries is the number of entries this object defines
+                  (len(spec.services)).
                 format: int32
                 type: integer
             type: object
