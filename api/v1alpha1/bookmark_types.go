@@ -58,7 +58,9 @@ type BookmarkEntry struct {
 	Abbr *string `json:"abbr,omitempty"`
 
 	// icon overrides the group header's icon, resolved as a dashboard-icons
-	// slug (or passed through as-is if it's already a full URL).
+	// slug, passed through as-is if it's already a full URL, or accepts
+	// homepage's icon prefix syntax ("mdi-X"/"si-X"/"lucide-X"/"wi-X"/
+	// "fa6-solid-X"/"sh-X", see ServiceEntry.Icon).
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +optional
