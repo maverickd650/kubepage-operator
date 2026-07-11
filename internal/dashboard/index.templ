@@ -58,7 +58,15 @@ templ Index(data indexData) {
 				.sample-data-banner::before { content: "⚠"; }
 				.page-title { margin: 0; font-size: 1.5rem; }
 				.page-desc { margin: 0.25rem 0 1rem; color: var(--muted); }
-				.footer { margin-top: 2rem; text-align: center; font-size: 0.75rem; color: var(--muted); }
+				/* Same translucent-chip treatment as h2 above: the footer sits
+				   directly over any configured background image, so give it its
+				   own chip rather than rendering bare text over the image. */
+				.footer {
+					width: fit-content; margin: 2rem auto 0; text-align: center; font-size: 0.75rem; color: var(--muted);
+					padding: 0.25rem 0.6rem; border-radius: 0.4rem;
+					background: color-mix(in srgb, var(--panel) 60%, transparent);
+					backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+				}
 				.header-strip { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
 				/* Homepage keeps information widgets unboxed unless boxedWidgets is selected. */
 				.header-widget { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
