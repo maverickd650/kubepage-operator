@@ -108,7 +108,7 @@ func Header(data headerData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = icon(w.IconURL).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = icon(w.IconURL, 19).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -117,13 +117,13 @@ func Header(data headerData) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = icon(w.IconURL).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = icon(w.IconURL, 19).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 			default:
-				templ_7745c5c3_Err = icon(w.IconURL).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = icon(w.IconURL, 19).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -201,13 +201,13 @@ func Header(data headerData) templ.Component {
 							var templ_7745c5c3_Var11 string
 							templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.IconURL)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 35, Col: 50}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 37, Col: 27}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" alt=\"\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" alt=\"\" width=\"13\" height=\"13\" loading=\"lazy\" referrerpolicy=\"no-referrer\">")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -219,7 +219,7 @@ func Header(data headerData) templ.Component {
 							var templ_7745c5c3_Var12 string
 							templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(f.Label)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 37, Col: 40}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/dashboard/header.templ`, Line: 45, Col: 40}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 							if templ_7745c5c3_Err != nil {

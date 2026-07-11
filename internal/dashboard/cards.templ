@@ -1,8 +1,24 @@
 package dashboard
 
-templ icon(url string) {
+// icon renders a CRD-configured remote icon URL. sizePx must match the
+// element's CSS-rendered size at the call site (img.icon is 1.2rem/~19px by
+// default, .card h3 img.icon is 2rem/~32px — see index.templ) so the
+// width/height attributes reserve the right box and avoid layout shift while
+// the image loads; CSS still controls the final rendered size.
+// referrerpolicy="no-referrer" avoids leaking the dashboard's URL to
+// whatever third-party host serves the icon, and loading="lazy" defers
+// off-screen icons.
+templ icon(url string, sizePx int) {
 	if url != "" {
-		<img class="icon" src={ url } alt=""/>
+		<img
+			class="icon"
+			src={ url }
+			alt=""
+			width={ intToStr(sizePx) }
+			height={ intToStr(sizePx) }
+			loading="lazy"
+			referrerpolicy="no-referrer"
+		/>
 	}
 }
 
@@ -23,7 +39,7 @@ templ usageBar(percent *int) {
 templ serviceCardView(c Card, siteTarget string) {
 	<div class="card" id={ "card-" + c.Key } data-name={ c.ServiceName } data-description={ c.Description }>
 		<h3>
-			@icon(c.IconURL)
+			@icon(c.IconURL, 32)
 			if c.Href != "" {
 				<a
 					href={ c.Href }
@@ -38,7 +54,12 @@ templ serviceCardView(c Card, siteTarget string) {
 			if c.Status != "" {
 				switch c.StatusStyle {
 					case "dot":
-						<span class={ "status-dot", "status-" + c.Status } title={ statusWithLatency(c.Status, c.Latency) }></span>
+						<span
+							class={ "status-dot", "status-" + c.Status }
+							role="img"
+							aria-label={ statusWithLatency(c.Status, c.Latency) }
+							title={ statusWithLatency(c.Status, c.Latency) }
+						></span>
 					case "basic":
 					default:
 						<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
@@ -92,7 +113,7 @@ templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
 		title={ b.Name }
 	>
 		if b.IconURL != "" {
-			@icon(b.IconURL)
+			@icon(b.IconURL, 19)
 		} else if b.Abbr != "" {
 			<span class="abbr">{ b.Abbr }</span>
 		}
@@ -108,7 +129,7 @@ templ bookmarkCardView(b BookmarkCard, siteTarget string, iconsOnly bool) {
 // groupHeading renders a group's icon+name, shared by the collapsible
 // (<summary>) and plain (<h2>) group header markup below.
 templ groupHeading(name, iconURL string) {
-	@icon(iconURL)
+	@icon(iconURL, 19)
 	{ " " }
 	{ name }
 }
@@ -189,12 +210,28 @@ templ Cards(data fragmentData) {
 	if len(data.Tabs) > 1 {
 		<div class="tabs" role="tablist">
 			for i, t := range data.Tabs {
-				<button type="button" class={ "tab-btn", templ.KV("active", i == 0) } onclick={ templ.JSFuncCall("showTab", i) }>{ t.Name }</button>
+				<button
+					type="button"
+					id={ tabID(i) }
+					class={ "tab-btn", templ.KV("active", i == 0) }
+					role="tab"
+					aria-controls={ panelID(i) }
+					aria-selected={ ariaSelectedAttr(i == 0) }
+					tabindex={ tabIndexAttr(i == 0) }
+					onclick={ templ.JSFuncCall("showTab", i) }
+				>{ t.Name }</button>
 			}
 		</div>
 	}
 	for i, t := range data.Tabs {
-		<div class={ "tab-panel", templ.KV("hidden", i != 0) }>
+		<div
+			class={ "tab-panel", templ.KV("hidden", i != 0) }
+			if len(data.Tabs) > 1 {
+				id={ panelID(i) }
+				role="tabpanel"
+				aria-labelledby={ tabID(i) }
+			}
+		>
 			for _, g := range t.Groups {
 				@serviceGroupBlock(g, data.SiteTarget, !data.DisableCollapse)
 			}

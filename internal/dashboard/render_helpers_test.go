@@ -160,6 +160,23 @@ func TestLangOrDefault(t *testing.T) {
 	}
 }
 
+func TestThemeColorHex(t *testing.T) {
+	ramp := Ramp{C50: "#f8fafc", C900: "#0f172a"}
+	tests := map[string]struct{ theme, want string }{
+		"light theme uses C50":        {theme: "light", want: ramp.C50},
+		"dark theme uses C900":        {theme: "dark", want: ramp.C900},
+		"empty theme defaults dark":   {theme: "", want: ramp.C900},
+		"unknown theme defaults dark": {theme: "sepia", want: ramp.C900},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := themeColorHex(tc.theme, ramp); got != tc.want {
+				t.Errorf("themeColorHex(%q, ramp) = %q, want %q", tc.theme, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRootVarsCSS(t *testing.T) {
 	ramp := Ramp{C50: "1", C100: "2", C200: "3", C300: "4", C400: "5", C500: "6", C600: "7", C700: "8", C800: "9", C900: "10"}
 
@@ -219,7 +236,7 @@ func TestBackgroundStyle(t *testing.T) {
 
 	t.Run("plain image URL is embedded as-is", func(t *testing.T) {
 		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL})
-		want := `<style nonce="test-nonce">body { background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`
+		want := `<style nonce="test-nonce">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; }</style>`
 		if got != want {
 			t.Errorf("backgroundStyle() = %q, want %q", got, want)
 		}

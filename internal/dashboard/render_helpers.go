@@ -91,6 +91,33 @@ func statusPillText(c Card) string {
 	return c.Status
 }
 
+// tabID and panelID derive stable, index-based ids for a tab button and its
+// associated panel (e.g. "tab-0"/"panel-0"), linked by aria-controls/
+// aria-labelledby per the WAI-ARIA tabs pattern. Index-based rather than
+// name-based since a tab's Name isn't guaranteed unique or slug-safe.
+func tabID(i int) string {
+	return "tab-" + strconv.Itoa(i)
+}
+
+func panelID(i int) string {
+	return "panel-" + strconv.Itoa(i)
+}
+
+// ariaSelectedAttr and tabIndexAttr render a tab button's initial
+// aria-selected/tabindex state server-side (see cards.templ's Cards), so the
+// default-active tab is correct before any client-side JS runs. index.templ's
+// showTab() keeps both in sync with the client-selected tab afterward.
+func ariaSelectedAttr(selected bool) string {
+	return strconv.FormatBool(selected)
+}
+
+func tabIndexAttr(selected bool) string {
+	if selected {
+		return "0"
+	}
+	return "-1"
+}
+
 // intToStr is a small formatting helper for use inside .templ attribute
 // expressions, which can't call strconv.Itoa with a `+` concatenation
 // against string literals directly.
@@ -126,6 +153,19 @@ func rootVarsCSS(accentHex string, ramp Ramp, cardBlur string, background *Backg
 	return b.String()
 }
 
+// themeColorHex picks the color for the <meta name="theme-color"> tag,
+// which browsers/OSes use to tint native UI chrome (mobile address bar,
+// task switcher, etc.) around the page. It mirrors the page's own
+// [data-theme="dark"/"light"] --bg custom property (see index.templ) so the
+// native chrome matches the page background rather than a fixed color that
+// looks wrong on the theme currently in effect.
+func themeColorHex(theme string, ramp Ramp) string {
+	if theme == themeLight {
+		return ramp.C50
+	}
+	return ramp.C900
+}
+
 // cssStringEscape escapes a value for safe embedding both inside a
 // double-quoted CSS string literal (e.g. url("...")) and inside the raw,
 // unescaped <style> element backgroundStyle emits via @templ.Raw.
@@ -145,11 +185,19 @@ func cssStringEscape(s string) string {
 	return s
 }
 
-// backgroundStyle returns a complete "<style>body { ... }</style>" element
-// setting the background image, for emission via @templ.Raw as ordinary
-// element content (a sibling node, not text typed inside a literal <style>
-// tag in the .templ source — templ treats a <style> tag's own text content
-// as raw/opaque and won't evaluate an @templ.Raw call written inside it).
+// backgroundStyle returns a complete "<style>body::before { ... }</style>"
+// element setting the background image on a viewport-fixed pseudo-element,
+// for emission via @templ.Raw as ordinary element content (a sibling node,
+// not text typed inside a literal <style> tag in the .templ source — templ
+// treats a <style> tag's own text content as raw/opaque and won't evaluate
+// an @templ.Raw call written inside it). The image is applied via
+// `position: fixed` on body::before rather than `background-attachment:
+// fixed` on body itself: iOS Safari doesn't support background-attachment:
+// fixed and instead sizes/positions the image against the whole scrollable
+// document, producing a hugely zoomed-in image. z-index: -1 keeps the
+// pseudo-element behind all page content (checked: the only other z-indexed
+// elements in this page are the quick-launch overlay at 50 and the color
+// menu at 40, both far above).
 // It's a full <style> tag rather than a style="" attribute value because
 // the quoted url("...") it needs would otherwise go through templ's
 // HTML-attribute escaping twice — once for the quotes templ.SafeCSS itself
@@ -170,7 +218,7 @@ func backgroundStyle(nonce string, bg *Background) string {
 	if bg == nil {
 		return ""
 	}
-	return fmt.Sprintf(`<style nonce="%s">body { background-image: url("%s"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`,
+	return fmt.Sprintf(`<style nonce="%s">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("%s"); background-size: cover; background-position: center; }</style>`,
 		nonce, cssStringEscape(bg.Image))
 }
 

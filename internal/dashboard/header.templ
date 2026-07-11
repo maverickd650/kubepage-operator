@@ -11,13 +11,13 @@ templ Header(data headerData) {
 				case headerTypeLogo:
 					if w.Href != "" {
 						<a href={ w.Href }>
-							@icon(w.IconURL)
+							@icon(w.IconURL, 19)
 						</a>
 					} else {
-						@icon(w.IconURL)
+						@icon(w.IconURL, 19)
 					}
 				default:
-					@icon(w.IconURL)
+					@icon(w.IconURL, 19)
 					if w.Err != "" {
 						<span class="err">{ w.Err }</span>
 					} else {
@@ -32,7 +32,15 @@ templ Header(data headerData) {
 									<span class="header-field-row">
 										<span class="value">{ f.Value }</span>
 										if f.IconURL != "" {
-											<img class="field-icon" src={ f.IconURL } alt=""/>
+											<img
+												class="field-icon"
+												src={ f.IconURL }
+												alt=""
+												width="13"
+												height="13"
+												loading="lazy"
+												referrerpolicy="no-referrer"
+											/>
 										} else if f.Label != "" {
 											<span class="label">{ f.Label }</span>
 										}
