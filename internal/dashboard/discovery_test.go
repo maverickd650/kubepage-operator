@@ -13,6 +13,20 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
+// TestExtraDiscoveryNamespacesFiltersOwnNamespace verifies the read-side
+// counterpart to internal/controller's discoveryNamespaces: a Dashboard's
+// own namespace listed (redundantly) in spec.discovery.namespaces isn't
+// passed through to the extra-namespace reader, since it's already covered
+// by the primary namespace-scoped reader.
+func TestExtraDiscoveryNamespacesFiltersOwnNamespace(t *testing.T) {
+	spec := pagev1alpha1.DiscoverySpec{Namespaces: []string{"media", testNamespace, "monitoring"}}
+	got := extraDiscoveryNamespaces(spec, testNamespace)
+	want := []string{"media", "monitoring"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("extraDiscoveryNamespaces() = %v, want %v (own namespace filtered)", got, want)
+	}
+}
+
 func TestDiscoverServicesFiltersAndDefaults(t *testing.T) {
 	scheme := testScheme(t)
 
@@ -366,6 +380,36 @@ func TestDiscoverHTTPRoutesScansExtraNamespaces(t *testing.T) {
 	}
 	if _, ok := byKey[wantOtherKey]; !ok {
 		t.Errorf("discoverHTTPRoutes() missing extra-namespace entry %q: %+v", wantOtherKey, services)
+	}
+}
+
+// TestDiscoverHTTPRoutesExtraNamespaceFailureDegradesGracefully mirrors
+// TestDiscoverServicesExtraNamespaceFailureDegradesGracefully for
+// discoverHTTPRoutes.
+func TestDiscoverHTTPRoutesExtraNamespaceFailureDegradesGracefully(t *testing.T) {
+	scheme := testScheme(t)
+	own := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(own).Build()
+
+	failingExtra := errInjectingReader{
+		Reader: cl,
+		failList: func(list client.ObjectList) bool {
+			_, ok := list.(*gatewayv1.HTTPRouteList)
+			return ok
+		},
+	}
+
+	services, err := discoverHTTPRoutes(t.Context(), cl, testNamespace, failingExtra, []string{"nonexistent-ns"}, pagev1alpha1.DiscoverySpec{})
+	if err != nil {
+		t.Fatalf("discoverHTTPRoutes() error = %v, want nil (extra-namespace failure should degrade, not fail the pass)", err)
+	}
+	if len(services) != 1 || services[0].Key != "discovery/httproute/"+testNamespace+"/"+testDiscoveredAppKey {
+		t.Errorf("discoverHTTPRoutes() = %+v, want the own-namespace entry despite the extra namespace failing", services)
 	}
 }
 

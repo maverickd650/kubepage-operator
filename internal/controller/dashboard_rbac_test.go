@@ -116,6 +116,40 @@ func TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled(t *testing.T) {
 	}
 }
 
+// TestDiscoveryClusterRoleRules verifies discoveryClusterRoleRules includes
+// the Ingress rule whenever Sources selects it, and the HTTPRoute rule only
+// when Sources selects it *and* the cluster has Gateway API installed —
+// mirroring dashboardRoles' same in-namespace gating (dashboardHTTPRouteRule
+// must never be granted for a Kind the apiserver doesn't recognize).
+func TestDiscoveryClusterRoleRules(t *testing.T) {
+	ingressOnly := &pagev1alpha1.DiscoverySpec{}
+	rules := discoveryClusterRoleRules(ingressOnly, true)
+	if len(rules) != 1 || !slices.Contains(rules[0].Resources, "ingresses") {
+		t.Fatalf("discoveryClusterRoleRules() with default Sources = %+v, want just the Ingress rule", rules)
+	}
+
+	both := &pagev1alpha1.DiscoverySpec{Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute}}
+
+	rules = discoveryClusterRoleRules(both, true)
+	if len(rules) != 2 {
+		t.Fatalf("discoveryClusterRoleRules() with both Sources and Gateway API enabled = %+v, want 2 rules", rules)
+	}
+	foundHTTPRoute := false
+	for _, r := range rules {
+		if slices.Contains(r.Resources, "httproutes") {
+			foundHTTPRoute = true
+		}
+	}
+	if !foundHTTPRoute {
+		t.Errorf("discoveryClusterRoleRules() with HTTPRoute source and Gateway API enabled = %+v, want an httproutes rule", rules)
+	}
+
+	rules = discoveryClusterRoleRules(both, false)
+	if len(rules) != 1 {
+		t.Fatalf("discoveryClusterRoleRules() with HTTPRoute source but Gateway API disabled = %+v, want just the Ingress rule", rules)
+	}
+}
+
 // TestDashboardRolesGrantsPods guards against the per-Dashboard Role losing
 // its pods access, which would silently break PodSelector-based status for
 // every Dashboard: internal/dashboard/poller.go's monitor lists Pods through

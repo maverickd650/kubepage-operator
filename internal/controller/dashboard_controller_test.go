@@ -1032,6 +1032,61 @@ var _ = Describe("Dashboard controller", func() {
 				g.Expect(dep.Spec.Template.Labels).To(HaveKeyWithValue("custom-label", "yes"))
 			}).Should(Succeed())
 		})
+
+		It("does not perpetually re-reconcile a Deployment whose stored Volumes were server-defaulted, and still detects a real volume change", func() {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: namespace.Name},
+				Data:       map[string]string{"ca.crt": "dummy"},
+			}
+			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.DashboardSpec{
+					Replicas: new(int32(1)), ContainerPort: 8080,
+					// No defaultMode set — the API server fills one in on
+					// the stored object (ConfigMapVolumeSource defaults to
+					// 0644), which a naive reflect.DeepEqual against the
+					// raw desired spec would see as permanent drift.
+					Volumes: []corev1.Volume{{
+						Name:         "ca-bundle",
+						VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: cm.Name}}},
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			reconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", "ca-bundle")))
+			}).Should(Succeed())
+			resourceVersionAfterCreate := dep.ResourceVersion
+
+			By("reconciling again sees no drift from the server-defaulted Volumes and does not update the Deployment")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			Expect(dep.ResourceVersion).To(Equal(resourceVersionAfterCreate), "reconciling with an unchanged Volumes spec should not update the Deployment")
+
+			By("a real Volumes change is still detected as drift")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Volumes = append(instance.Spec.Volumes, corev1.Volume{
+				Name:         "extra",
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			})
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", "extra")))
+			}).Should(Succeed())
+		})
 	})
 
 	Context("Dashboard controller finalizer test", func() {
