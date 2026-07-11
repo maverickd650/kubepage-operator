@@ -436,7 +436,14 @@ templ Index(data indexData) {
 				}
 				document.getElementById("cards").addEventListener("htmx:beforeSwap", captureGroupState);
 
-				document.getElementById("cards").addEventListener("htmx:afterSwap", function () {
+				// Restored on htmx:afterSettle, not htmx:afterSwap: the tab buttons
+				// and panels carry ids (for the ARIA tab wiring), and htmx's settle
+				// step id-matches them across the swap — it briefly keeps the old
+				// element's attributes, then re-applies the incoming markup's
+				// attributes (which always mark tab 0 active) shortly AFTER
+				// afterSwap fires. A restore run at afterSwap gets silently
+				// clobbered by that; afterSettle runs once settling is done.
+				document.getElementById("cards").addEventListener("htmx:afterSettle", function () {
 					const panels = document.querySelectorAll(".tab-panel").length;
 					showTab(panels > 0 && currentTab < panels ? currentTab : 0);
 					restoreGroupState();
