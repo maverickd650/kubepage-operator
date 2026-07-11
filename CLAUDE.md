@@ -166,11 +166,23 @@ Wired together by `Run()` in `dashboard.go`:
   blocks a page load. Each cycle it lists `ServiceCard`/`InfoWidget`,
   resolves secrets, and polls every bound widget concurrently (bounded by
   `maxConcurrentPolls = 8`), writing results into `Store` (`store.go`) and
-  pruning anything no longer bound.
-- `Server` (`server.go`) serves three routes via htmx polling: `GET /` (page
-  shell), `GET /fragment` (card grid, polled), `GET /header` (header-strip
-  widgets, polled) — splitting page load from data refresh means the browser
-  tab never reloads on refresh.
+  pruning anything no longer bound, then publishes to a `Broadcaster`
+  (`sse.go`) so any open `GET /events` connection wakes up and checks
+  whether the cycle actually changed anything.
+- `Server` (`server.go`) serves `GET /` (page shell), `GET /fragment` (card
+  grid) and `GET /header` (header-strip widgets) — splitting page load from
+  data refresh means the browser tab never reloads on refresh. `GET /events`
+  is a Server-Sent Events stream (`handleEvents`) that emits a
+  `fragmentChanged`/`headerChanged` event the moment a poll cycle changes
+  what one of those two routes would render (compared by the same
+  content-hash `writeCachedHTML` uses for its ETag); the page shell's own
+  script reacts by re-fetching that route via `htmx.ajax(...)` with
+  `hx-swap="morph:innerHTML"` (idiomorph, vendored under
+  `assets/idiomorph-ext-*.min.js`) so the DOM is patched in place — scroll
+  position and open `<details>` groups survive — instead of replaced
+  wholesale. htmx's own `hx-trigger="every Ns"` interval poll on `#cards`/
+  `#header` stays wired up as a fallback for a browser without
+  `EventSource` and to recover from a dropped SSE connection.
 - Widget implementations (`grafana.go`, `plex.go`, `prometheus.go`,
   `kubemetrics.go`, etc.) implement the `Widget` interface (`widget.go`,
   `Poll(ctx, httpClient, cfg) ([]Field, error)`) and self-register via

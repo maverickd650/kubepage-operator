@@ -121,6 +121,7 @@ func Run(ctx context.Context, opts Options) error {
 // kubeReader by this point, and RunPreview (preview.go) never sets them.
 func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader client.Reader) error {
 	store := NewStore()
+	broadcast := NewBroadcaster()
 	poller := &Poller{
 		Reader:            reader,
 		SecretReader:      secretReader,
@@ -132,6 +133,7 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		Store:             store,
 		GatewayAPIEnabled: opts.GatewayAPIEnabled,
 		SampleData:        opts.SampleData,
+		Broadcast:         broadcast,
 	}
 	go poller.Run(ctx)
 
@@ -145,6 +147,7 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		Version:        opts.Version,
 		Commit:         opts.Commit,
 		SampleData:     opts.SampleData,
+		Broadcast:      broadcast,
 	}
 
 	ln, err := net.Listen("tcp", opts.Addr)

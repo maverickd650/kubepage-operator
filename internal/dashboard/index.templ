@@ -292,7 +292,7 @@ templ Index(data indexData) {
 				if data.Site.Description != "" {
 					<p class="page-desc">{ data.Site.Description }</p>
 				}
-				<div class="header-strip" id="header" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']" } hx-swap="innerHTML"></div>
+				<div class="header-strip" id="header" hx-ext="morph" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']" } hx-swap="morph:innerHTML"></div>
 				if !data.Site.ThemeFixed || !data.Site.ColorFixed {
 					<div class="switcher">
 						if !data.Site.ColorFixed {
@@ -309,7 +309,7 @@ templ Index(data indexData) {
 				<div class="search-bar">
 					<input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off"/>
 				</div>
-				<div id="cards" hx-get="/fragment" hx-trigger={ "every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']" } hx-swap="innerHTML">
+				<div id="cards" hx-ext="morph" hx-get="/fragment" hx-trigger={ "every " + intToStr(data.RefreshSeconds) + "s[document.visibilityState === 'visible']" } hx-swap="morph:innerHTML">
 					@Cards(data.Fragment)
 				</div>
 			</div>
@@ -324,6 +324,7 @@ templ Index(data indexData) {
 			</div>
 			@templ.JSONScript("search-config", data.Site.Search)
 			<script src="/assets/htmx-2.0.10.min.js"></script>
+			<script src="/assets/idiomorph-ext-0.7.3.min.js"></script>
 			<script nonce={ templ.GetNonce(ctx) }>
 				const searchConfig = JSON.parse(document.getElementById("search-config").textContent);
 
@@ -351,6 +352,28 @@ templ Index(data indexData) {
 							const haystack = (card.dataset.name + " " + (card.dataset.description || "")).toLowerCase();
 							card.style.display = haystack.includes(q) ? "" : "none";
 						});
+					});
+				}
+
+				// Push-based refresh: GET /events is a Server-Sent Events stream that
+				// emits a "fragmentChanged"/"headerChanged" event the moment a poll
+				// cycle actually changes what /fragment or /header would render (see
+				// Server.handleEvents), so the two htmx-polled divs above can be
+				// re-fetched immediately instead of waiting for their own interval
+				// trigger. That interval trigger stays wired up regardless — as a
+				// fallback for a browser without EventSource, and to recover once the
+				// SSE connection itself drops (the browser retries it automatically,
+				// per the EventSource spec, but a poll in the meantime keeps the page
+				// from going stale for however long that takes). htmx.ajax's own
+				// hx-swap="morph:innerHTML" keeps the push and interval paths
+				// rendering identically.
+				if (window.EventSource) {
+					const events = new EventSource("/events");
+					events.addEventListener("fragmentChanged", function () {
+						htmx.ajax("GET", "/fragment", { target: "#cards", swap: "morph:innerHTML" });
+					});
+					events.addEventListener("headerChanged", function () {
+						htmx.ajax("GET", "/header", { target: "#header", swap: "morph:innerHTML" });
 					});
 				}
 
