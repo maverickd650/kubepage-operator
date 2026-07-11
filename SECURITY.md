@@ -7,7 +7,29 @@ self-service. Two trust boundaries fall out of that and are load-bearing for
 every decision below — read them before exposing a dashboard beyond a
 trusted network:
 
-1. **CRD authors are fully trusted within their namespace.** Anyone who can
+1. **A Dashboard's blast radius is its own namespace, unless a Dashboard
+   author explicitly widens it.** Every config CRD (`DashboardStyle`/
+   `ServiceCard`/`Bookmark`/`InfoWidget`) must live in the same namespace as
+   the `Dashboard` it binds to — no cross-namespace `dashboardRef`. Ingress/
+   HTTPRoute annotation discovery (`spec.discovery`) follows the same rule
+   by default: it only scans the Dashboard's own namespace. The one opt-in
+   exception is `spec.discovery.namespaces`, a static list of additional
+   namespaces to scan for the same discovery annotations — aimed at the
+   common homelab shape of one dashboard namespace and apps spread across
+   several others. Setting it grants the dashboard pod's ServiceAccount
+   get/list/watch on Ingresses (and, if `discovery.sources` includes
+   `HTTPRoute`, HTTPRoutes) in exactly the namespaces listed, via a
+   RoleBinding created *in each of those namespaces* against a shared
+   read-only ClusterRole — never a `ClusterRoleBinding`, so access never
+   extends beyond what's explicitly named
+   (`internal/controller/dashboard_rbac.go`'s `reconcileDiscoveryRBAC`).
+   Whoever can set this field on a Dashboard can make its dashboard pod read
+   every Ingress/HTTPRoute's hostnames and paths (not their annotations'
+   secret-free contents beyond what an author already opted into publishing
+   via the discovery annotations) in the named namespaces — treat editing a
+   Dashboard's `spec.discovery.namespaces` with the same trust level as
+   editing RBAC directly, since that's what it does.
+2. **CRD authors are fully trusted within their namespace.** Anyone who can
    create a `ServiceCard`/`InfoWidget` in a namespace can name *any* Secret
    in that namespace via `secretKeyRef` and point the widget's own URL at a
    server they control — an effective read of that Secret's plaintext
@@ -27,7 +49,7 @@ trusted network:
    Prefer `secretKeyRef` for anything credential-shaped; `value` remains
    useful for genuinely non-secret config (e.g. city coordinates for a
    weather widget).
-2. **Dashboard viewers are trusted by network reachability.** The dashboard
+3. **Dashboard viewers are trusted by network reachability.** The dashboard
    HTTP server (`internal/dashboard/server.go`) has no authentication,
    authorization, or session concept of its own. It serves service names,
    internal URLs, and live widget data (Plex sessions, TrueNAS pools, node

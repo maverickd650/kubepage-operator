@@ -33,6 +33,60 @@ func networkTestScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
+// TestDashboardURL verifies status.url's documented precedence: Ingress >
+// Gateway > cluster-internal Service DNS.
+func TestDashboardURL(t *testing.T) {
+	base := func() *pagev1alpha1.Dashboard {
+		return &pagev1alpha1.Dashboard{
+			ObjectMeta: metav1.ObjectMeta{Name: "d", Namespace: "ns"},
+			Spec:       pagev1alpha1.DashboardSpec{ContainerPort: 8080},
+		}
+	}
+
+	t.Run("no exposure falls back to cluster Service DNS", func(t *testing.T) {
+		got := dashboardURL(base())
+		want := "http://d.ns.svc.cluster.local:8080/"
+		if got != want {
+			t.Errorf("dashboardURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Ingress without TLS uses http", func(t *testing.T) {
+		instance := base()
+		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
+		got := dashboardURL(instance)
+		want := "http://" + testDashboardHost + "/"
+		if got != want {
+			t.Errorf("dashboardURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Ingress with TLS uses https and takes priority over Gateway", func(t *testing.T) {
+		instance := base()
+		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{
+			Enabled: pagev1alpha1.Enabled, Host: testDashboardHost,
+			TLS: &pagev1alpha1.IngressTLSSpec{SecretName: "dash-tls"},
+		}
+		instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{Enabled: pagev1alpha1.Enabled, Hostnames: []string{"gw.example.com"}}
+		got := dashboardURL(instance)
+		want := "https://" + testDashboardHost + "/"
+		if got != want {
+			t.Errorf("dashboardURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("disabled Ingress falls through to Gateway", func(t *testing.T) {
+		instance := base()
+		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Disabled, Host: testDashboardHost}
+		instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{Enabled: pagev1alpha1.Enabled, Hostnames: []string{"gw.example.com", "other.example.com"}}
+		got := dashboardURL(instance)
+		want := "https://gw.example.com/"
+		if got != want {
+			t.Errorf("dashboardURL() = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestServiceForDashboardAppliesServiceSpec(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := &pagev1alpha1.Dashboard{
@@ -58,6 +112,35 @@ func TestServiceForDashboardAppliesServiceSpec(t *testing.T) {
 	}
 }
 
+// TestServiceForDashboardAddsMetricsPortWhenEnabled verifies spec.metrics.enabled
+// adds the dashboard's metrics port to the Service, opt-in since the
+// dashboard's /metrics has no authn/authz of its own (see MetricsSpec's doc
+// comment).
+func TestServiceForDashboardAddsMetricsPortWhenEnabled(t *testing.T) {
+	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardObjName, Namespace: "metricssvc"},
+		Spec: pagev1alpha1.DashboardSpec{
+			ContainerPort: 8080,
+			Metrics:       &pagev1alpha1.MetricsSpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+
+	svc, err := r.serviceForDashboard(instance)
+	if err != nil {
+		t.Fatalf("serviceForDashboard() error = %v", err)
+	}
+	found := false
+	for _, p := range svc.Spec.Ports {
+		if p.Name == dashboardMetricsPortName && p.Port == dashboardMetricsPort {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Service.Spec.Ports = %+v, want a %q port %d", svc.Spec.Ports, dashboardMetricsPortName, dashboardMetricsPort)
+	}
+}
+
 func TestServiceForDashboardDefaultsToClusterIP(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := newNetworkErrorTestDashboard()
@@ -80,7 +163,7 @@ func TestHTTPRouteForDashboard(t *testing.T) {
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
 				Enabled:   pagev1alpha1.Enabled,
-				Hostnames: []string{testDashboardHost, "dash.example.com"},
+				Hostnames: []string{testDashboardHost, testDashboardHost},
 				ParentRef: pagev1alpha1.GatewayParentRef{
 					Name:        "eg",
 					Namespace:   new("gateway-system"),
@@ -103,7 +186,7 @@ func TestHTTPRouteForDashboard(t *testing.T) {
 		t.Errorf("route annotations = %+v, want example.com/note=hi", route.Annotations)
 	}
 
-	wantHostnames := []gatewayv1.Hostname{testDashboardHost, "dash.example.com"}
+	wantHostnames := []gatewayv1.Hostname{testDashboardHost, testDashboardHost}
 	if !slices.Equal(route.Spec.Hostnames, wantHostnames) {
 		t.Errorf("route.Spec.Hostnames = %v, want %v", route.Spec.Hostnames, wantHostnames)
 	}

@@ -153,6 +153,23 @@ func (r *DashboardReconciler) reconcileService(ctx context.Context, instance *pa
 	return nil
 }
 
+// dashboardURL derives where instance is reachable, for
+// status.url — see DashboardStatus.URL's doc comment for the precedence
+// order and its LoadBalancer-external-IP non-goal.
+func dashboardURL(instance *pagev1alpha1.Dashboard) string {
+	if ing := instance.Spec.Ingress; ing != nil && ing.Enabled == pagev1alpha1.Enabled {
+		scheme := "http"
+		if ing.TLS != nil {
+			scheme = "https"
+		}
+		return scheme + "://" + ing.Host + "/"
+	}
+	if gw := instance.Spec.Gateway; gw != nil && gw.Enabled == pagev1alpha1.Enabled && len(gw.Hostnames) > 0 {
+		return "https://" + gw.Hostnames[0] + "/"
+	}
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/", instance.Name, instance.Namespace, instance.Spec.ContainerPort)
+}
+
 // ingressForDashboard returns the Ingress exposing instance's Service at
 // spec.ingress.host, owned by instance. Only called when spec.ingress is set
 // and enabled.

@@ -75,8 +75,9 @@ the dashboard pod's memory for the duration of the poll. See
 
 Every `ServiceWidget`/`InfoWidget` also accepts an optional `caCert`
 (`SecretValueSource`) to trust a self-hosted upstream's private CA instead of
-a widget-specific `insecureTLS` escape hatch. "(header only)" types are valid
-on `InfoWidget` but not `ServiceCard`; all others work on both.
+a widget-specific `insecureTLS` escape hatch. The two widget types are
+disjoint sets: "(header only)" types are valid on `InfoWidget` and not
+`ServiceCard`; every other type in the table is `ServiceCard`-only.
 
 ## CRDs
 
@@ -141,7 +142,7 @@ beyond the cluster via a hostname instead, set one of:
   `Gateway` you manage separately. Only takes effect if the cluster actually
   has Gateway API CRDs installed; the manager checks once at startup
   (`kubectl logs` shows `Gateway API support enabled=...`), and a `Dashboard`
-  with `spec.gateway.enabled: true` on a cluster without them reports a clear
+  with `spec.gateway.enabled: Enabled` on a cluster without them reports a clear
   `Available=False` condition rather than the manager crashing.
 
 Both can be set at once (e.g. Ingress for one hostname, Gateway API for
@@ -179,6 +180,17 @@ required.
   on any resource that doesn't carry the native prefix's own enable
   annotation, so a cluster migrating from homepage doesn't need to relabel
   everything first.
+- `spec.discovery.namespaces` additionally scans a static list of namespaces
+  beyond the `Dashboard`'s own — the common homelab shape of one dashboard
+  namespace and apps spread across `media`/`monitoring`/`network`/etc. Off
+  by default (a `Dashboard`'s discovery scans only its own namespace, the
+  same blast radius as every other config CRD). Setting it widens the
+  dashboard pod's RBAC: the controller creates a RoleBinding *in each named
+  namespace*, granting the dashboard's ServiceAccount read-only access to
+  Ingresses/HTTPRoutes there — never a `ClusterRoleBinding`, so access never
+  extends beyond the namespaces actually listed. See
+  [SECURITY.md](SECURITY.md)'s trust model before using this on a shared
+  cluster.
 
 When no `href` annotation is set, the card links to the resource's own first
 hostname (`Ingress` rule host, or `HTTPRoute` hostname) — `https://` if an
@@ -227,15 +239,30 @@ rules and dashboard-pod RBAC as a widget's own `secretKeyRef` — see
 ### Scheduling
 
 `spec.nodeSelector`, `spec.tolerations`, `spec.affinity`,
-`spec.topologySpreadConstraints`, `spec.imagePullSecrets`, and
-`spec.priorityClassName` all pass straight through to the dashboard pod
-template — useful for mixed-arch homelab nodes, tainted Raspberry Pis, or a
-single-node control plane. `spec.replicas` and `spec.containerPort` both
+`spec.topologySpreadConstraints`, `spec.imagePullSecrets`,
+`spec.priorityClassName`, and `spec.volumes`/`spec.volumeMounts` all pass
+straight through to the dashboard pod template — useful for mixed-arch
+homelab nodes, tainted Raspberry Pis, a single-node control plane, or
+mounting a cluster-wide CA bundle / custom background and logo assets into
+the dashboard container. `spec.replicas` and `spec.containerPort` both
 default (`1`, `8080`), so a minimal `Dashboard` needs neither set; see
 `spec.replicas`'s doc comment for why scaling past 1 replica isn't a
 supported operation given the per-replica polling behavior.
 
 ## Quickstart
+
+The fastest path: install the published Helm chart, which brings the CRDs
+and controller in one release, no image build required.
+
+```sh
+helm install kubepage-operator oci://ghcr.io/maverickd650/charts/kubepage-operator \
+  --namespace kubepage-operator-system --create-namespace
+
+# Apply the sample Dashboard plus one of every config CRD (no local checkout needed)
+kubectl apply -k 'github.com/maverickd650/kubepage-operator/config/samples?ref=main'
+```
+
+To build from source instead (e.g. for local development):
 
 ```sh
 # Install the CRDs
@@ -255,9 +282,12 @@ of every CRD: [`Dashboard`](config/samples/page_v1alpha1_dashboard.yaml),
 [`Bookmark`](config/samples/page_v1alpha1_bookmark.yaml), and
 [`InfoWidget`](config/samples/page_v1alpha1_infowidget.yaml). Once applied,
 `kubectl get pdash,pstyle,pcard,pbmk,piw` shows their `Ready` status and
-bound counts; the dashboard Service is reachable by port-forwarding it
-(`kubectl port-forward svc/dashboard-sample 8080:8080`) or by setting
-`spec.ingress.enabled: true` on the `Dashboard` to expose it via an Ingress.
+bound counts, plus a `URL` column on `pdash` itself (derived from
+`spec.ingress`/`spec.gateway`, falling back to the dashboard Service's
+cluster-internal DNS name — see `status.url`); the dashboard Service is
+reachable by port-forwarding it (`kubectl port-forward svc/dashboard-sample
+8080:8080`) or by setting `spec.ingress.enabled: Enabled` on the `Dashboard`
+to expose it via an Ingress.
 
 ### To Uninstall
 
@@ -373,8 +403,10 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/kubepage-operator/<tag 
 
 ### As a Helm chart
 
-A Helm chart packaging the CRDs and controller lives under
-[`dist/chart`](dist/chart). To install it:
+Every release publishes a signed OCI Helm chart to
+`oci://ghcr.io/maverickd650/charts/kubepage-operator` — see the Quickstart
+above. To install from a local checkout instead (e.g. an unreleased chart
+change), the same chart lives under [`dist/chart`](dist/chart):
 
 ```sh
 helm install kubepage-operator ./dist/chart --namespace kubepage-operator-system --create-namespace

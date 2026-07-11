@@ -117,6 +117,29 @@ type DashboardSpec struct {
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
+	// volumes are additional pod volumes, passed straight through to the pod
+	// template (e.g. a ConfigMap holding a CA bundle to mount cluster-wide,
+	// or an emptyDir shared with a sidecar). Only takes effect on a volume
+	// actually referenced by volumeMounts; the dashboard container's own
+	// working directory and TLS assets are unaffected either way.
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Volumes []corev1.Volume `json:"volumes,omitempty"`
+
+	// volumeMounts mounts entries from volumes into the dashboard container,
+	// passed straight through to the pod template (e.g. mounting a CA bundle
+	// volume at a path the dashboard process's HTTP client trusts, or custom
+	// background/logo assets served from internal/dashboard's static asset
+	// path). A mount naming a volume not present in volumes is rejected by
+	// the API server's own pod validation at admission time, same as any Pod.
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=map
+	// +listMapKey=mountPath
+	// +optional
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+
 	// priorityClassName names a PriorityClass for the pod, passed straight
 	// through to the pod template.
 	// +kubebuilder:validation:MinLength=1
@@ -171,9 +194,10 @@ type DashboardSpec struct {
 
 	// discovery opts this Dashboard into synthesizing service cards from
 	// annotated Ingresses in its own namespace, in addition to explicit
-	// ServiceCard cards (an explicit ServiceCard wins on a Group+Name
-	// collision). Off by default. See DiscoverySpec for the annotation
-	// contract.
+	// ServiceCard cards. There is no de-duplication: an explicit ServiceCard
+	// and a discovered Ingress/HTTPRoute that would render under the same
+	// Group+Name both show up as separate cards. Off by default. See
+	// DiscoverySpec for the annotation contract.
 	// +optional
 	Discovery *DiscoverySpec `json:"discovery,omitempty"`
 
@@ -334,6 +358,15 @@ type NetworkPolicySpec struct {
 // annotation — world-readable to anyone who can read the source resource —
 // can safely carry: no secrets, so no widget config, only href/icon/
 // description/group/ping.
+//
+// The scanned namespace is single (the Dashboard's own) by default: this
+// keeps a Dashboard's blast radius equal to its own RBAC, matching every
+// other config CRD in this project (DashboardStyle/ServiceCard/Bookmark/
+// InfoWidget all require dashboardRef's Dashboard to be in the same
+// namespace — see CLAUDE.md). Namespaces opts a specific Dashboard into
+// scanning additional namespaces beyond its own, for the common homelab
+// shape of one dashboard namespace and apps spread across several others;
+// see its own doc comment for the RBAC this widens.
 type DiscoverySpec struct {
 	// enabled turns on annotation discovery for this Dashboard.
 	// +kubebuilder:validation:Enum=Enabled;Disabled
@@ -368,6 +401,35 @@ type DiscoverySpec struct {
 	// +kubebuilder:validation:Enum=Enabled;Disabled
 	// +optional
 	HomepageCompat *string `json:"homepageCompat,omitempty"`
+
+	// namespaces additionally scans these namespaces (beyond the Dashboard's
+	// own, which is always scanned) for the same discovery annotations. A
+	// static, explicit list rather than a label selector — deliberately, to
+	// keep exactly which namespaces a Dashboard can read a reviewable,
+	// one-time grant rather than something that silently grows as
+	// unrelated namespaces pick up a matching label.
+	//
+	// Setting this widens the dashboard pod's RBAC beyond its own namespace:
+	// for each namespace listed here, the controller creates a RoleBinding
+	// *in that namespace* granting the dashboard pod's ServiceAccount
+	// get/list/watch on Ingresses (and, when Sources includes "HTTPRoute",
+	// HTTPRoutes) — never a ClusterRoleBinding, so access never extends
+	// beyond the namespaces actually listed here. This mirrors
+	// dashboardIngressRule/dashboardHTTPRouteRule's existing scope
+	// (internal/controller/dashboard_rbac.go), just bound in more than one
+	// namespace. Whoever can set this field on a Dashboard can therefore
+	// make its dashboard pod read every Ingress/HTTPRoute's hostnames/paths
+	// (not their annotations' hidden fields — annotation discovery only
+	// ever reads what an Ingress author already opted into via the
+	// discovery annotations) in the namespaces named here — see
+	// SECURITY.md's trust model.
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=63
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=set
+	// +optional
+	Namespaces []string `json:"namespaces,omitempty"`
 }
 
 // DiscoverySourceIngress and DiscoverySourceHTTPRoute are Sources' valid
@@ -540,6 +602,30 @@ type DashboardStatus struct {
 	// this Dashboard.
 	// +optional
 	BoundInfoWidgets int32 `json:"boundInfoWidgets,omitempty"`
+
+	// url is where this Dashboard is reachable, derived in priority order:
+	// spec.ingress's host (scheme "https" if spec.ingress.tls is set,
+	// otherwise "http"); else spec.gateway's first hostname (always
+	// "https", since TLS termination is the attaching Gateway's listener
+	// config, not visible to this controller); else the dashboard Service's
+	// cluster-internal DNS name. A Service of type LoadBalancer's external
+	// IP is deliberately not resolved here — that lives on the Service's
+	// own status and would need an additional watch for a field most
+	// clusters don't populate synchronously; use `kubectl get svc` for that
+	// case in the meantime.
+	// +optional
+	URL string `json:"url,omitempty"`
+
+	// discoveryNamespaces is the set of namespaces (beyond this Dashboard's
+	// own) discovery RBAC currently applies to, i.e. the last value of
+	// spec.discovery.namespaces the controller successfully reconciled a
+	// RoleBinding for in each named namespace. Tracked so the controller can
+	// clean up a RoleBinding in a namespace that's since been removed from
+	// spec.discovery.namespaces without needing cluster-wide list/watch on
+	// RoleBindings (which this operator deliberately never requests — see
+	// SECURITY.md).
+	// +optional
+	DiscoveryNamespaces []string `json:"discoveryNamespaces,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -550,6 +636,7 @@ type DashboardStatus struct {
 // +kubebuilder:printcolumn:name="Services",type=integer,JSONPath=".status.boundServiceCards"
 // +kubebuilder:printcolumn:name="Bookmarks",type=integer,JSONPath=".status.boundBookmarks"
 // +kubebuilder:printcolumn:name="Widgets",type=integer,JSONPath=".status.boundInfoWidgets"
+// +kubebuilder:printcolumn:name="URL",type=string,JSONPath=".status.url"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // Dashboard is the Schema for the dashboards API

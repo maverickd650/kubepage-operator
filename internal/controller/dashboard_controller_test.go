@@ -475,6 +475,128 @@ var _ = Describe("Dashboard controller", func() {
 				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, crName, crb))).To(BeTrue())
 			}).Should(Succeed())
 		})
+
+		It("creates a RoleBinding in each spec.discovery.namespaces target, bound to a shared ClusterRole, and removes it when the namespace is dropped", func() {
+			target := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-discovery-target-"}}
+			Expect(k8sClient.Create(ctx, target)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(ctx, target) }()
+
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.DashboardSpec{
+					Replicas: new(int32(1)), ContainerPort: 8080,
+					Discovery: &pagev1alpha1.DiscoverySpec{
+						Enabled:    pagev1alpha1.Enabled,
+						Namespaces: []string{target.Name},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			discName := discoveryRBACName(instance)
+
+			instanceReconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			// The first reconcile only creates the Deployment and requeues
+			// (reconcileDeployment's not-found branch returns before any
+			// Status().Update), so status.discoveryNamespaces isn't
+			// persisted yet — a second call, same as the real requeue,
+			// carries the reconcile through to the point that commits it.
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("a ClusterRole grants Ingress read access")
+			cr := &rbacv1.ClusterRole{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: discName}, cr)).To(Succeed())
+			}).Should(Succeed())
+			Expect(cr.Rules).To(ContainElement(HaveField("Resources", ContainElement("ingresses"))))
+
+			By("a RoleBinding in the target namespace binds it to the per-Dashboard ServiceAccount")
+			rb := &rbacv1.RoleBinding{}
+			rbName := types.NamespacedName{Name: discName, Namespace: target.Name}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, rbName, rb)).To(Succeed())
+			}).Should(Succeed())
+			Expect(rb.RoleRef.Name).To(Equal(discName))
+			Expect(rb.Subjects).To(ContainElement(SatisfyAll(
+				HaveField("Name", DashboardName),
+				HaveField("Namespace", namespace.Name),
+			)))
+
+			By("dropping the namespace from spec removes the RoleBinding and ClusterRole on the next reconcile")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Discovery.Namespaces = nil
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, rbName, rb))).To(BeTrue())
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: discName}, cr))).To(BeTrue())
+			}).Should(Succeed())
+		})
+
+		It("still tracks and later cleans up a discovery RoleBinding created before a later namespace in the list fails", func() {
+			good := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "aaa-discovery-good-"}}
+			Expect(k8sClient.Create(ctx, good)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(ctx, good) }()
+
+			// discoveryNamespaces sorts its output, and "zzz-..." sorts after
+			// "aaa-...", so the good namespace's RoleBinding is created
+			// before the nonexistent one is attempted and fails — the
+			// partial-failure case status.discoveryNamespaces has to survive
+			// for cleanup to ever find the good namespace's RoleBinding
+			// again (see reconcileDiscoveryRBAC's unionSortedDeduped call).
+			const nonexistentNamespace = "zzz-discovery-does-not-exist"
+
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.DashboardSpec{
+					Replicas: new(int32(1)), ContainerPort: 8080,
+					Discovery: &pagev1alpha1.DiscoverySpec{
+						Enabled:    pagev1alpha1.Enabled,
+						Namespaces: []string{good.Name, nonexistentNamespace},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			discName := discoveryRBACName(instance)
+			rbName := types.NamespacedName{Name: discName, Namespace: good.Name}
+
+			instanceReconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			// First reconcile creates the Deployment and requeues before
+			// reaching RBAC's Status().Update path in a happy case, but here
+			// reconcileDiscoveryRBAC itself fails and persists status via
+			// failAvailable *before* the Deployment step ever runs — so one
+			// call suffices to both attempt the RoleBindings and persist
+			// status.discoveryNamespaces.
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(HaveOccurred())
+
+			By("the good namespace's RoleBinding was created despite the later failure")
+			rb := &rbacv1.RoleBinding{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, rbName, rb)).To(Succeed())
+			}).Should(Succeed())
+
+			By("status.discoveryNamespaces tracks the good namespace even though reconciliation failed")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+				g.Expect(instance.Status.DiscoveryNamespaces).To(ContainElement(good.Name))
+			}).Should(Succeed())
+
+			By("fixing spec to drop the nonexistent namespace lets the good RoleBinding be cleaned up once removed entirely")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Discovery.Namespaces = nil
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(errors.IsNotFound(k8sClient.Get(ctx, rbName, rb))).To(BeTrue())
+			}).Should(Succeed())
+		})
 	})
 
 	Context("Dashboard controller exposure and status test", func() {
@@ -908,6 +1030,61 @@ var _ = Describe("Dashboard controller", func() {
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Env).To(ConsistOf(corev1.EnvVar{Name: "FOO", Value: "bar"}))
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]).To(Equal(resource.MustParse("500m")))
 				g.Expect(dep.Spec.Template.Labels).To(HaveKeyWithValue("custom-label", "yes"))
+			}).Should(Succeed())
+		})
+
+		It("does not perpetually re-reconcile a Deployment whose stored Volumes were server-defaulted, and still detects a real volume change", func() {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: namespace.Name},
+				Data:       map[string]string{testCACertKey: "dummy"},
+			}
+			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.DashboardSpec{
+					Replicas: new(int32(1)), ContainerPort: 8080,
+					// No defaultMode set — the API server fills one in on
+					// the stored object (ConfigMapVolumeSource defaults to
+					// 0644), which a naive reflect.DeepEqual against the
+					// raw desired spec would see as permanent drift.
+					Volumes: []corev1.Volume{{
+						Name:         "ca-bundle",
+						VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: cm.Name}}},
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			reconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", "ca-bundle")))
+			}).Should(Succeed())
+			resourceVersionAfterCreate := dep.ResourceVersion
+
+			By("reconciling again sees no drift from the server-defaulted Volumes and does not update the Deployment")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			Expect(dep.ResourceVersion).To(Equal(resourceVersionAfterCreate), "reconciling with an unchanged Volumes spec should not update the Deployment")
+
+			By("a real Volumes change is still detected as drift")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			instance.Spec.Volumes = append(instance.Spec.Volumes, corev1.Volume{
+				Name:         "extra",
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			})
+			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.Volumes).To(ContainElement(HaveField("Name", "extra")))
 			}).Should(Succeed())
 		})
 	})

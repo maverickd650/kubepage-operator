@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -15,6 +16,8 @@ import (
 )
 
 const networkPolicyTestNamespace = "np-ns"
+
+const testEgressCIDR = "10.0.0.0/8"
 
 func newNetworkPolicyTestDashboard() *pagev1alpha1.Dashboard {
 	return &pagev1alpha1.Dashboard{
@@ -86,7 +89,7 @@ func TestNetworkPolicyForDashboardIngressNamespaceSelectorScoped(t *testing.T) {
 func TestNetworkPolicyForDashboardEgressCIDRsAddEgressPolicyType(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := newNetworkPolicyTestDashboard()
-	instance.Spec.NetworkPolicy.EgressCIDRs = []string{"10.0.0.0/8", "192.168.1.0/24"}
+	instance.Spec.NetworkPolicy.EgressCIDRs = []string{testEgressCIDR, "192.168.1.0/24"}
 
 	np, err := r.networkPolicyForDashboard(instance)
 	if err != nil {
@@ -100,7 +103,7 @@ func TestNetworkPolicyForDashboardEgressCIDRsAddEgressPolicyType(t *testing.T) {
 		t.Fatalf("Egress rules = %+v, want 4 (DNS, API server, 2 CIDRs)", np.Spec.Egress)
 	}
 	lastTwoCIDRs := []string{np.Spec.Egress[2].To[0].IPBlock.CIDR, np.Spec.Egress[3].To[0].IPBlock.CIDR}
-	want := []string{"10.0.0.0/8", "192.168.1.0/24"}
+	want := []string{testEgressCIDR, "192.168.1.0/24"}
 	for i := range want {
 		if lastTwoCIDRs[i] != want[i] {
 			t.Errorf("Egress CIDR[%d] = %q, want %q", i, lastTwoCIDRs[i], want[i])
@@ -147,5 +150,97 @@ func TestReconcileNetworkPolicyDisabledSkipsClientEntirely(t *testing.T) {
 
 	if err := r.reconcileNetworkPolicy(t.Context(), instance); err != nil {
 		t.Fatalf("reconcileNetworkPolicy() error = %v", err)
+	}
+}
+
+func TestReconcileNetworkPolicySetControllerReferenceError(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newNetworkPolicyTestDashboard()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: schemeWithoutDashboard(t)}
+
+	if err := r.reconcileNetworkPolicy(t.Context(), instance); err == nil {
+		t.Error("reconcileNetworkPolicy() error = nil, want the SetControllerReference error")
+	}
+}
+
+func TestReconcileNetworkPolicyGetError(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newNetworkPolicyTestDashboard()
+	wantErr := errors.New("get NetworkPolicy boom")
+
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	cl := interceptor.NewClient(base, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
+			if _, ok := o.(*networkingv1.NetworkPolicy); ok {
+				return wantErr
+			}
+			return c.Get(ctx, key, o, opts...)
+		},
+	})
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+
+	if err := r.reconcileNetworkPolicy(t.Context(), instance); !errors.Is(err, wantErr) {
+		t.Errorf("reconcileNetworkPolicy() error = %v, want wrapping %v", err, wantErr)
+	}
+}
+
+// TestReconcileNetworkPolicyUpdatesOnDrift verifies an existing NetworkPolicy
+// whose Spec no longer matches spec.networkPolicy (e.g. egressCIDRs changed)
+// gets updated in place.
+func TestReconcileNetworkPolicyUpdatesOnDrift(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newNetworkPolicyTestDashboard()
+	instance.Spec.NetworkPolicy.EgressCIDRs = []string{testEgressCIDR}
+
+	stale := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard()},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, stale).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+
+	if err := r.reconcileNetworkPolicy(t.Context(), instance); err != nil {
+		t.Fatalf("reconcileNetworkPolicy() error = %v", err)
+	}
+
+	got := &networkingv1.NetworkPolicy{}
+	if err := cl.Get(t.Context(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, got); err != nil {
+		t.Fatalf("Get() after reconcile error = %v", err)
+	}
+	if len(got.Spec.Egress) == 0 {
+		t.Errorf("NetworkPolicy.Spec.Egress = %+v, want it updated to include the egressCIDRs rule", got.Spec.Egress)
+	}
+}
+
+func TestReconcileNetworkPolicyUpdateError(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newNetworkPolicyTestDashboard()
+	instance.Spec.NetworkPolicy.EgressCIDRs = []string{testEgressCIDR}
+	wantErr := errors.New("update NetworkPolicy boom")
+
+	stale := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard()},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+		},
+	}
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, stale).Build()
+	cl := interceptor.NewClient(base, interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.UpdateOption) error {
+			if _, ok := o.(*networkingv1.NetworkPolicy); ok {
+				return wantErr
+			}
+			return c.Update(ctx, o, opts...)
+		},
+	})
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+
+	if err := r.reconcileNetworkPolicy(t.Context(), instance); !errors.Is(err, wantErr) {
+		t.Errorf("reconcileNetworkPolicy() error = %v, want wrapping %v", err, wantErr)
 	}
 }
