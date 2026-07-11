@@ -196,6 +196,67 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 	}
 }
 
+// TestReferencedSecretNamesCollectsCACertKeyRefs verifies referencedSecretNames
+// collects a Secret named via caCert.secretKeyRef, not just via a widget's
+// secrets map — from a ServiceCard widget, an InfoWidget entry, and
+// Spec.WidgetDefaults, the three places CACert can be set.
+func TestReferencedSecretNamesCollectsCACertKeyRefs(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newRBACTestDashboard()
+	instance.Spec.WidgetDefaults = map[string]pagev1alpha1.WidgetDefaultsEntry{
+		testWidgetTypeGrafana: {
+			CACert: &pagev1alpha1.SecretValueSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "defaults-ca"},
+				Key:                  testCACertKey,
+			}},
+		},
+	}
+
+	serviceCard := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: "N",
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetTypeGrafana,
+					CACert: &pagev1alpha1.SecretValueSource{SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "servicecard-ca"},
+						Key:                  testCACertKey,
+					}},
+				}},
+			}},
+		},
+	}
+	infoWidget := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testWidgetTypeOpenMeteo,
+				CACert: &pagev1alpha1.SecretValueSource{SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "infowidget-ca"},
+					Key:                  testCACertKey,
+				}},
+			}},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, serviceCard, infoWidget).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+
+	got, err := r.referencedSecretNames(t.Context(), instance)
+	if err != nil {
+		t.Fatalf("referencedSecretNames() unexpected error: %v", err)
+	}
+	want := []string{"defaults-ca", "infowidget-ca", "servicecard-ca"}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("referencedSecretNames() = %v, want %v (caCert.secretKeyRef from all three sources)", got, want)
+	}
+}
+
 // --- reconcileServiceAccount ---
 
 func TestReconcileServiceAccountSetControllerReferenceError(t *testing.T) {
@@ -429,6 +490,35 @@ func TestReconcileClusterMetricsRBACClusterRoleError(t *testing.T) {
 	err := r.reconcileClusterMetricsRBAC(t.Context(), instance)
 	if !errors.Is(err, wantErr) {
 		t.Errorf("reconcileClusterMetricsRBAC() error = %v, want wrapping %v", err, wantErr)
+	}
+}
+
+// TestInstanceHasKubeMetricsWidgetIgnoresOtherDashboards verifies a
+// kubemetrics InfoWidget bound to a *different* Dashboard in the same
+// namespace doesn't cause reconcileClusterMetricsRBAC to grant this
+// instance the cluster-scoped nodes/metrics.k8s.io RBAC.
+func TestInstanceHasKubeMetricsWidgetIgnoresOtherDashboards(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newRBACTestDashboard()
+	otherWidget := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testInfoWidgetNameMetrics, Namespace: instance.Namespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: kubeMetricsWidgetType},
+			},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, otherWidget).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+
+	got, err := r.instanceHasKubeMetricsWidget(t.Context(), instance)
+	if err != nil {
+		t.Fatalf("instanceHasKubeMetricsWidget() error = %v", err)
+	}
+	if got {
+		t.Error("instanceHasKubeMetricsWidget() = true, want false: the kubemetrics widget is bound to a different Dashboard")
 	}
 }
 

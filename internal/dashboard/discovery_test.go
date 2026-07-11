@@ -242,6 +242,28 @@ func TestDiscoverServicesCustomAnnotationPrefix(t *testing.T) {
 	}
 }
 
+// TestDiscoverHTTPRoutesCustomAnnotationPrefix mirrors
+// TestDiscoverServicesCustomAnnotationPrefix for discoverHTTPRoutes.
+func TestDiscoverHTTPRoutesCustomAnnotationPrefix(t *testing.T) {
+	scheme := testScheme(t)
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "custom-route", Namespace: testNamespace,
+			Annotations: map[string]string{"acme.io/enabled": annotationValueTrue, "acme.io/name": testCustomName},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(route).Build()
+
+	prefix := "acme.io/"
+	services, err := discoverHTTPRoutes(t.Context(), cl, testNamespace, nil, nil, pagev1alpha1.DiscoverySpec{AnnotationPrefix: &prefix})
+	if err != nil {
+		t.Fatalf("discoverHTTPRoutes() error = %v", err)
+	}
+	if len(services) != 1 || services[0].Name != testCustomName {
+		t.Fatalf("discoverHTTPRoutes() with custom prefix = %+v, want one Custom entry", services)
+	}
+}
+
 func TestIngressHrefNoRules(t *testing.T) {
 	ing := &networkingv1.Ingress{}
 	if got := ingressHref(ing); got != "" {

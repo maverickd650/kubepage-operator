@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -8,7 +10,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
@@ -284,5 +288,31 @@ func TestReconcileRoleIncludesAuthSecretRegardlessOfSecretPolicy(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("reconciled Role rules = %+v, want a secrets rule granting get on %q", role.Rules, testAuthSecretRefName)
+	}
+}
+
+// TestReferencedSecretNamesLabeledGetError verifies a Secret Get failure
+// that isn't IsNotFound (e.g. a transient API error) propagates as an error
+// from filterLabeledSecrets, rather than being treated the same as a
+// missing Secret.
+func TestReferencedSecretNamesLabeledGetError(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
+	entry := newSecretRefServiceCard(instance, "some-secret")
+	wantErr := errors.New("get Secret boom")
+
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry).Build()
+	directReader := interceptor.NewClient(base, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
+			if _, ok := o.(*corev1.Secret); ok {
+				return wantErr
+			}
+			return c.Get(ctx, key, o, opts...)
+		},
+	})
+	r := &DashboardReconciler{Client: base, Scheme: scheme, DirectReader: directReader}
+
+	if _, err := r.referencedSecretNames(t.Context(), instance); !errors.Is(err, wantErr) {
+		t.Errorf("referencedSecretNames() error = %v, want wrapping %v", err, wantErr)
 	}
 }

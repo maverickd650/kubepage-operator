@@ -112,6 +112,35 @@ func TestServiceForDashboardAppliesServiceSpec(t *testing.T) {
 	}
 }
 
+// TestServiceForDashboardAddsMetricsPortWhenEnabled verifies spec.metrics.enabled
+// adds the dashboard's metrics port to the Service, opt-in since the
+// dashboard's /metrics has no authn/authz of its own (see MetricsSpec's doc
+// comment).
+func TestServiceForDashboardAddsMetricsPortWhenEnabled(t *testing.T) {
+	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardObjName, Namespace: "metricssvc"},
+		Spec: pagev1alpha1.DashboardSpec{
+			ContainerPort: 8080,
+			Metrics:       &pagev1alpha1.MetricsSpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+
+	svc, err := r.serviceForDashboard(instance)
+	if err != nil {
+		t.Fatalf("serviceForDashboard() error = %v", err)
+	}
+	found := false
+	for _, p := range svc.Spec.Ports {
+		if p.Name == dashboardMetricsPortName && p.Port == dashboardMetricsPort {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Service.Spec.Ports = %+v, want a %q port %d", svc.Spec.Ports, dashboardMetricsPortName, dashboardMetricsPort)
+	}
+}
+
 func TestServiceForDashboardDefaultsToClusterIP(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := newNetworkErrorTestDashboard()

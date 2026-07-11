@@ -1036,7 +1036,7 @@ var _ = Describe("Dashboard controller", func() {
 		It("does not perpetually re-reconcile a Deployment whose stored Volumes were server-defaulted, and still detects a real volume change", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: namespace.Name},
-				Data:       map[string]string{"ca.crt": "dummy"},
+				Data:       map[string]string{testCACertKey: "dummy"},
 			}
 			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 
