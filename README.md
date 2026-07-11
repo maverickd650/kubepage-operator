@@ -75,8 +75,9 @@ the dashboard pod's memory for the duration of the poll. See
 
 Every `ServiceWidget`/`InfoWidget` also accepts an optional `caCert`
 (`SecretValueSource`) to trust a self-hosted upstream's private CA instead of
-a widget-specific `insecureTLS` escape hatch. "(header only)" types are valid
-on `InfoWidget` but not `ServiceCard`; all others work on both.
+a widget-specific `insecureTLS` escape hatch. The two widget types are
+disjoint sets: "(header only)" types are valid on `InfoWidget` and not
+`ServiceCard`; every other type in the table is `ServiceCard`-only.
 
 ## CRDs
 
@@ -141,7 +142,7 @@ beyond the cluster via a hostname instead, set one of:
   `Gateway` you manage separately. Only takes effect if the cluster actually
   has Gateway API CRDs installed; the manager checks once at startup
   (`kubectl logs` shows `Gateway API support enabled=...`), and a `Dashboard`
-  with `spec.gateway.enabled: true` on a cluster without them reports a clear
+  with `spec.gateway.enabled: Enabled` on a cluster without them reports a clear
   `Available=False` condition rather than the manager crashing.
 
 Both can be set at once (e.g. Ingress for one hostname, Gateway API for
@@ -237,6 +238,19 @@ supported operation given the per-replica polling behavior.
 
 ## Quickstart
 
+The fastest path: install the published Helm chart, which brings the CRDs
+and controller in one release, no image build required.
+
+```sh
+helm install kubepage-operator oci://ghcr.io/maverickd650/charts/kubepage-operator \
+  --namespace kubepage-operator-system --create-namespace
+
+# Apply the sample Dashboard plus one of every config CRD (no local checkout needed)
+kubectl apply -k 'github.com/maverickd650/kubepage-operator/config/samples?ref=main'
+```
+
+To build from source instead (e.g. for local development):
+
 ```sh
 # Install the CRDs
 mise run install
@@ -257,7 +271,7 @@ of every CRD: [`Dashboard`](config/samples/page_v1alpha1_dashboard.yaml),
 `kubectl get pdash,pstyle,pcard,pbmk,piw` shows their `Ready` status and
 bound counts; the dashboard Service is reachable by port-forwarding it
 (`kubectl port-forward svc/dashboard-sample 8080:8080`) or by setting
-`spec.ingress.enabled: true` on the `Dashboard` to expose it via an Ingress.
+`spec.ingress.enabled: Enabled` on the `Dashboard` to expose it via an Ingress.
 
 ### To Uninstall
 
@@ -373,8 +387,10 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/kubepage-operator/<tag 
 
 ### As a Helm chart
 
-A Helm chart packaging the CRDs and controller lives under
-[`dist/chart`](dist/chart). To install it:
+Every release publishes a signed OCI Helm chart to
+`oci://ghcr.io/maverickd650/charts/kubepage-operator` — see the Quickstart
+above. To install from a local checkout instead (e.g. an unreleased chart
+change), the same chart lives under [`dist/chart`](dist/chart):
 
 ```sh
 helm install kubepage-operator ./dist/chart --namespace kubepage-operator-system --create-namespace
