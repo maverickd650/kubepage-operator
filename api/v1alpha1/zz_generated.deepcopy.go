@@ -174,31 +174,6 @@ func (in *BookmarkList) DeepCopyObject() runtime.Object {
 func (in *BookmarkSpec) DeepCopyInto(out *BookmarkSpec) {
 	*out = *in
 	out.DashboardRef = in.DashboardRef
-	if in.Target != nil {
-		in, out := &in.Target, &out.Target
-		*out = new(string)
-		**out = **in
-	}
-	if in.Order != nil {
-		in, out := &in.Order, &out.Order
-		*out = new(int32)
-		**out = **in
-	}
-	if in.Abbr != nil {
-		in, out := &in.Abbr, &out.Abbr
-		*out = new(string)
-		**out = **in
-	}
-	if in.Icon != nil {
-		in, out := &in.Icon, &out.Icon
-		*out = new(string)
-		**out = **in
-	}
-	if in.Description != nil {
-		in, out := &in.Description, &out.Description
-		*out = new(string)
-		**out = **in
-	}
 	if in.Bookmarks != nil {
 		in, out := &in.Bookmarks, &out.Bookmarks
 		*out = make([]BookmarkEntry, len(*in))
@@ -970,48 +945,6 @@ func (in *InfoWidgetList) DeepCopyObject() runtime.Object {
 func (in *InfoWidgetSpec) DeepCopyInto(out *InfoWidgetSpec) {
 	*out = *in
 	out.DashboardRef = in.DashboardRef
-	if in.URL != nil {
-		in, out := &in.URL, &out.URL
-		*out = new(string)
-		**out = **in
-	}
-	if in.Order != nil {
-		in, out := &in.Order, &out.Order
-		*out = new(int32)
-		**out = **in
-	}
-	if in.Icon != nil {
-		in, out := &in.Icon, &out.Icon
-		*out = new(string)
-		**out = **in
-	}
-	if in.Align != nil {
-		in, out := &in.Align, &out.Align
-		*out = new(string)
-		**out = **in
-	}
-	if in.Secrets != nil {
-		in, out := &in.Secrets, &out.Secrets
-		*out = make(map[string]SecretValueSource, len(*in))
-		for key, val := range *in {
-			(*out)[key] = *val.DeepCopy()
-		}
-	}
-	if in.CACert != nil {
-		in, out := &in.CACert, &out.CACert
-		*out = new(SecretValueSource)
-		(*in).DeepCopyInto(*out)
-	}
-	if in.Options != nil {
-		in, out := &in.Options, &out.Options
-		*out = new(apiextensionsv1.JSON)
-		(*in).DeepCopyInto(*out)
-	}
-	if in.PollIntervalSeconds != nil {
-		in, out := &in.PollIntervalSeconds, &out.PollIntervalSeconds
-		*out = new(int32)
-		**out = **in
-	}
 	if in.Widgets != nil {
 		in, out := &in.Widgets, &out.Widgets
 		*out = make([]InfoWidgetEntry, len(*in))
@@ -1350,68 +1283,6 @@ func (in *ServiceCardList) DeepCopyObject() runtime.Object {
 func (in *ServiceCardSpec) DeepCopyInto(out *ServiceCardSpec) {
 	*out = *in
 	out.DashboardRef = in.DashboardRef
-	if in.Order != nil {
-		in, out := &in.Order, &out.Order
-		*out = new(int32)
-		**out = **in
-	}
-	if in.Href != nil {
-		in, out := &in.Href, &out.Href
-		*out = new(string)
-		**out = **in
-	}
-	if in.Target != nil {
-		in, out := &in.Target, &out.Target
-		*out = new(string)
-		**out = **in
-	}
-	if in.Icon != nil {
-		in, out := &in.Icon, &out.Icon
-		*out = new(string)
-		**out = **in
-	}
-	if in.Description != nil {
-		in, out := &in.Description, &out.Description
-		*out = new(string)
-		**out = **in
-	}
-	if in.ShowStats != nil {
-		in, out := &in.ShowStats, &out.ShowStats
-		*out = new(string)
-		**out = **in
-	}
-	if in.ErrorDisplay != nil {
-		in, out := &in.ErrorDisplay, &out.ErrorDisplay
-		*out = new(string)
-		**out = **in
-	}
-	if in.Ping != nil {
-		in, out := &in.Ping, &out.Ping
-		*out = new(string)
-		**out = **in
-	}
-	if in.SiteMonitor != nil {
-		in, out := &in.SiteMonitor, &out.SiteMonitor
-		*out = new(string)
-		**out = **in
-	}
-	if in.PodSelector != nil {
-		in, out := &in.PodSelector, &out.PodSelector
-		*out = new(v1.LabelSelector)
-		(*in).DeepCopyInto(*out)
-	}
-	if in.StatusStyle != nil {
-		in, out := &in.StatusStyle, &out.StatusStyle
-		*out = new(string)
-		**out = **in
-	}
-	if in.Widgets != nil {
-		in, out := &in.Widgets, &out.Widgets
-		*out = make([]ServiceWidget, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
-		}
-	}
 	if in.Services != nil {
 		in, out := &in.Services, &out.Services
 		*out = make([]ServiceEntry, len(*in))

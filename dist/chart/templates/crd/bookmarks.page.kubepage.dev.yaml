@@ -60,28 +60,18 @@ spec:
           spec:
             description: spec defines the desired state of Bookmark
             properties:
-              abbr:
-                description: |-
-                  abbr is a short abbreviation (up to 8 characters) shown when Icon is
-                  not set. If both are set, Icon takes precedence.
-                maxLength: 8
-                minLength: 1
-                type: string
               bookmarks:
                 description: |-
                   bookmarks defines one entry per bookmark, for a Bookmark object that
                   groups multiple bookmarks (a whole group, or a whole dashboard) into
                   one object instead of one Bookmark per bookmark. group is optional on
                   each entry: an entry without its own group falls back to spec.group as
-                  a shared default. Mutually exclusive with the inline single-bookmark
-                  fields above (name, href, target, order, abbr, icon, description).
+                  a shared default.
                 items:
                   description: |-
                     BookmarkEntry is one bookmark's configuration: display fields and link
-                    target. BookmarkSpec duplicates BookmarkEntry's fields inline for the
-                    single-bookmark form (one Bookmark object per bookmark, the original wire
-                    format), and holds a list of them in Bookmarks for the multi-bookmark form
-                    (one Bookmark object per group, or per whole dashboard).
+                    target. A BookmarkSpec holds a list of these in Bookmarks, one Bookmark
+                    object per group, or per whole dashboard.
 
                     Nested groups (a group inside another group) are not supported in this
                     version of the operator; Group always names a top-level group.
@@ -102,9 +92,9 @@ spec:
                     group:
                       description: |-
                         group is the name of the (top-level) group this entry belongs to.
-                        Entries sharing a Group are rendered together. In the multi-bookmark
-                        form (BookmarkSpec.Bookmarks), an entry that omits group falls back to
-                        BookmarkSpec.Group as a shared default (see BookmarkSpec.Entries).
+                        Entries sharing a Group are rendered together. An entry that omits
+                        group falls back to BookmarkSpec.Group as a shared default (see
+                        BookmarkSpec.Entries).
                       maxLength: 256
                       minLength: 1
                       type: string
@@ -142,6 +132,9 @@ spec:
                       - _blank
                       - _self
                       type: string
+                  required:
+                  - href
+                  - name
                   type: object
                 maxItems: 128
                 minItems: 1
@@ -159,78 +152,23 @@ spec:
                 required:
                 - name
                 type: object
-              description:
-                description: description overrides the default hostname-derived description.
-                maxLength: 1024
-                minLength: 1
-                type: string
               group:
                 description: |-
-                  group is the name of the (top-level) bookmarks.yaml group this entry
-                  belongs to (the single-bookmark form), or the default group for any
-                  Bookmarks entry that doesn't set its own group (the multi-bookmark
-                  form). Entries sharing a Group are rendered together.
+                  group is the name of the (top-level) bookmarks.yaml group this
+                  Bookmark belongs to, used as the default group for any Bookmarks
+                  entry that doesn't set its own group. Entries sharing a Group are
+                  rendered together.
                 maxLength: 256
                 minLength: 1
-                type: string
-              href:
-                description: href is the bookmark's link target.
-                maxLength: 2048
-                minLength: 1
-                pattern: ^https?://
-                type: string
-              icon:
-                description: |-
-                  icon overrides the group header's icon, resolved as a dashboard-icons
-                  slug (or passed through as-is if it's already a full URL).
-                maxLength: 256
-                minLength: 1
-                type: string
-              name:
-                description: |-
-                  name is the bookmark's display name. Set only for the single-bookmark
-                  form; mutually exclusive with Bookmarks.
-                maxLength: 256
-                minLength: 1
-                type: string
-              order:
-                description: |-
-                  order controls rendering position: groups and entries are sorted by
-                  Order (nil sorts last), ties broken by Name, since CRDs have no
-                  inherent ordering but bookmarks.yaml's groups/entries are an ordered
-                  list. Purely an operator-side rendering concern; not a homepage field.
-                format: int32
-                type: integer
-              target:
-                description: |-
-                  target overrides the DashboardStyle's default link target for this
-                  bookmark ("_blank" opens a new tab, "_self" the same tab).
-                enum:
-                - _blank
-                - _self
                 type: string
             required:
+            - bookmarks
             - dashboardRef
             type: object
             x-kubernetes-validations:
-            - message: exactly one of name (single-bookmark form) or bookmarks (multi-bookmark
-                form) must be set
-              rule: has(self.name) != has(self.bookmarks)
-            - message: the single-bookmark form requires name, href, and group
-              rule: has(self.bookmarks) || (has(self.name) && has(self.href) && has(self.group))
-            - message: every bookmarks entry must set name and href
-              rule: '!has(self.bookmarks) || self.bookmarks.all(b, has(b.name) &&
-                has(b.href))'
             - message: 'every bookmarks entry must resolve a group: set spec.group
                 as a default, or set group on every entry'
-              rule: '!has(self.bookmarks) || has(self.group) || self.bookmarks.all(b,
-                has(b.group))'
-            - message: when bookmarks is set, the single-bookmark inline fields (href,
-                target, abbr, icon, description, order) must be absent; group is still
-                allowed as the default group for entries
-              rule: '!has(self.bookmarks) || (!has(self.href) && !has(self.target)
-                && !has(self.abbr) && !has(self.icon) && !has(self.description) &&
-                !has(self.order))'
+              rule: has(self.group) || self.bookmarks.all(b, has(b.group))
           status:
             description: status defines the observed state of Bookmark
             minProperties: 1
@@ -297,9 +235,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               entries:
-                description: |-
-                  entries is the number of entries this object defines (1 for the
-                  single-bookmark form, len(spec.bookmarks) for the multi-bookmark form).
+                description: entries is the number of entries this object defines
+                  (len(spec.bookmarks)).
                 format: int32
                 type: integer
             type: object

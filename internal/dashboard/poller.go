@@ -85,8 +85,7 @@ type Poller struct {
 	SampleData bool
 
 	// monitorLabels is the set of monitorUp labels reported on the previous
-	// poll cycle — "namespace/name" for the single-card form, or
-	// "namespace/name/entryName" for a multi-card-form services entry (see
+	// poll cycle — "namespace/name/entryName" for a services entry (see
 	// monitor's doc comment). pollOnce diffs the
 	// current cycle's set against this to delete a label series for an
 	// entry that's since been deleted or had its monitor removed —
@@ -164,12 +163,6 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			continue
 		}
 
-		// multiForm is true for a ServiceCard using the multi-card
-		// (services) form; used only to pick monitorUp's label suffix (see
-		// monitor's doc comment) — Entries() itself already normalizes both
-		// forms into the same []ServiceEntry shape for everything else.
-		multiForm := len(entry.Spec.Services) > 0
-
 		for entryIdx, se := range entry.Spec.Entries() {
 			namespace, crName := entry.Namespace, entry.Name
 
@@ -181,7 +174,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			// unreachable monitor delayed every other card in the cycle by
 			// up to its full HTTP timeout.
 			run(func() {
-				status, statusStyle, latency := p.monitor(ctx, namespace, crName, se, multiForm, defaultStatusStyle, recordMonitorLabel)
+				status, statusStyle, latency := p.monitor(ctx, namespace, crName, se, defaultStatusStyle, recordMonitorLabel)
 
 				if len(se.Widgets) == 0 {
 					// A service with a monitor but no widget still gets one
@@ -331,12 +324,9 @@ func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
 // resolved status/style/latency, or empty strings when none is configured.
 // record is called with the monitorUp label this probe reported under, so
 // the caller can track which labels are still live this cycle (see
-// pruneMonitorMetrics). The label is "namespace/crName" for a ServiceCard
-// using the inline single-card form (unchanged from earlier versions of this
-// API), or "namespace/crName/entryName" for a services entry of the
-// multi-card form — multiForm distinguishes the two so two entries defined
-// in the same multi-card ServiceCard don't collide on one label series.
-func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, multiForm bool, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
+// pruneMonitorMetrics). The label is "namespace/crName/entryName", so two
+// entries defined in the same ServiceCard don't collide on one label series.
+func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
 	switch {
 	case se.PodSelector != nil:
 		status, latency = p.probePodSelector(ctx, namespace, se)
@@ -362,10 +352,7 @@ func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev
 	if status == "Up" {
 		up = 1
 	}
-	label := namespace + "/" + crName
-	if multiForm {
-		label += "/" + se.Name
-	}
+	label := namespace + "/" + crName + "/" + se.Name
 	monitorUp.WithLabelValues(label).Set(up)
 	record(label)
 	return status, style, latency
