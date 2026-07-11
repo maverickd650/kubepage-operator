@@ -219,7 +219,12 @@ mkdir -p "$outdir"
 
 # Matches the platforms golang.org/dl and most Go-based CLI releases cover;
 # add a target here (and to the dry-run matrix in test.yml) to extend it.
+# Each target builds in its own background subshell (own $workdir, so no
+# cross-target file collisions) — go build's own compile cache is what makes
+# running all 5 concurrently a net win rather than just contention.
+pids=()
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+  (
   os="${target%/*}"
   arch="${target#*/}"
   ext=""
@@ -239,7 +244,18 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
     tar -czf "${outdir}/${archive}.tar.gz" -C "$workdir" .
   fi
   rm -rf "$workdir"
+  ) &
+  pids+=("$!")
 done
+
+fail=0
+for pid in "${pids[@]}"; do
+  wait "$pid" || fail=1
+done
+if [ "$fail" -ne 0 ]; then
+  echo "One or more cross-compile targets failed" >&2
+  exit 1
+fi
 
 (cd "$outdir" && sha256sum -- * > checksums.txt)
 '''
