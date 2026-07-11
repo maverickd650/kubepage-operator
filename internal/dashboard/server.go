@@ -122,6 +122,18 @@ type indexData struct {
 	// SampleData mirrors Server.SampleData, rendered as a visible banner —
 	// see that field's doc comment.
 	SampleData bool
+
+	// AuthEnabled mirrors basicAuthMiddleware's own "is spec.auth.
+	// basicAuthSecretRef set" check. index.templ uses it to skip
+	// registering the offline-shell service worker (assets/sw.js) entirely
+	// on a password-protected Dashboard: the worker's Cache Storage entries
+	// aren't themselves gated by HTTP Basic Auth, so caching an
+	// authenticated page shell would let anyone with local access to the
+	// browser profile read its last-cached contents offline, with no
+	// credential check at all — see sw.js's own doc comment for the
+	// (unrelated, and fine) reasoning about why the *content* it does cache
+	// stays internally consistent.
+	AuthEnabled bool
 }
 
 // fragmentData is the polled fragment's template data: the live widget
@@ -194,6 +206,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /assets/{file}", handleAsset)
 	mux.HandleFunc("GET /manifest.json", s.handleManifest)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
+	mux.HandleFunc("GET /sw.js", handleServiceWorker)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	return securityHeaders(s.basicAuthMiddleware(mux))
 }
@@ -228,6 +241,14 @@ func (s *Server) Routes() http.Handler {
 // keeps the actual XSS-relevant surface — a rogue <script>/<style> tag —
 // covered, without silently breaking every inline style/onclick in the app.
 //
+// worker-src is scoped to 'self' explicitly (rather than relying on its
+// script-src fallback, per the CSP spec's worker-src -> child-src ->
+// script-src chain) so registering GET /sw.js (see handleServiceWorker,
+// index.templ's registration script) stays allowed even if script-src's own
+// value changes shape later — a same-origin service worker is a fixed,
+// deliberate part of this app, not a case that should ride on script-src's
+// coincidental coverage.
+//
 // frame-src mirrors img-src's "https: and nothing else" scope: without it,
 // an iframe ServiceWidget's <iframe src="..."> (cards.templ, iframe.go)
 // falls back to default-src 'self' and every browser refuses to load it —
@@ -244,6 +265,7 @@ func contentSecurityPolicy(nonce string) string {
 		"style-src-attr 'unsafe-inline'; " +
 		"script-src 'self' 'nonce-" + nonce + "'; " +
 		"script-src-attr 'unsafe-inline'; " +
+		"worker-src 'self'; " +
 		"connect-src 'self'; " +
 		"frame-ancestors 'none'; " +
 		"base-uri 'self'; " +
@@ -365,7 +387,16 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 // handleAsset serves an embedded static asset by its bare filename. {file} is
 // a single path segment (the mux disallows slashes), so it can't traverse out
 // of the assets directory. Assets are content-stable, so they're cached hard.
+// sw.js is excluded even though the go:embed glob picks it up alongside
+// every other asset: it's only ever meant to be reachable at GET /sw.js (see
+// handleServiceWorker's doc comment on why scope requires that exact path),
+// with its own no-cache header — serving it here too, immutably cached,
+// would be a confusing, pointless second route to the same script.
 func handleAsset(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("file") == "sw.js" {
+		http.NotFound(w, r)
+		return
+	}
 	b, err := assetFS.ReadFile("assets/" + r.PathValue("file"))
 	if err != nil {
 		http.NotFound(w, r)
@@ -383,6 +414,37 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(b)
 }
 
+// swJS is the offline-shell service worker's script, read once at package
+// init rather than per-request: "assets/sw.js" is a fixed path the
+// `//go:embed assets/*.js` directive above already guarantees exists at
+// compile time (unlike handleAsset's {file}, which comes from the request
+// URL and can legitimately name a missing asset), so there's no real
+// per-request failure mode to handle — see generateNonce's doc comment for
+// the same reasoning applied to a different "should never happen" read.
+var swJS = func() []byte {
+	b, err := assetFS.ReadFile("assets/sw.js")
+	if err != nil {
+		panic("dashboard: reading embedded assets/sw.js: " + err.Error())
+	}
+	return b
+}()
+
+// handleServiceWorker serves the offline app-shell service worker
+// (assets/sw.js) at the root path rather than under /assets/ — a service
+// worker's default registration scope is the directory of its own URL, and
+// this one needs to control every same-origin GET (the page shell, static
+// assets) to do its job, not just /assets/*. "Cache-Control: no-cache"
+// (rather than the long-lived immutable caching handleAsset gives every
+// other asset) makes the browser revalidate the script itself on every
+// registration check, so a deployed update to its caching logic takes
+// effect promptly instead of potentially being stuck behind a stale cached
+// copy of the worker script.
+func handleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(swJS)
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	refresh := s.RefreshSeconds
 	if refresh <= 0 {
@@ -395,12 +457,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Already computed once by basicAuthMiddleware for this same request
+	// (and cheap to compute again — see authCache) — see indexData.
+	// AuthEnabled's doc comment for why index.templ needs it.
+	_, authEnabled, err := loadBasicAuth(r.Context(), s.Reader, s.SecretReader, s.Namespace, s.DashboardName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := indexData{
 		Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh,
 		Fragment: s.buildFragmentData(site),
 		Version:  s.Version, Commit: s.Commit,
-		SampleData: s.SampleData,
+		SampleData:  s.SampleData,
+		AuthEnabled: authEnabled,
 	}
 	if err := Index(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

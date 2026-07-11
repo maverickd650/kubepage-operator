@@ -669,6 +669,81 @@ func TestServerAssetServesSVGIcon(t *testing.T) {
 	}
 }
 
+// TestServerServiceWorkerRoute verifies the offline app-shell service
+// worker is served at the root path (not under /assets/, whose default
+// registration scope wouldn't cover "/", "/manifest.json", etc. — see
+// handleServiceWorker's doc comment) with a content type browsers accept
+// for a service worker script, and that it doesn't get the long-lived
+// immutable caching handleAsset gives every other asset.
+func TestServerServiceWorkerRoute(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/javascript") {
+		t.Errorf("Content-Type = %q, want text/javascript", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc == "" || strings.Contains(cc, "immutable") {
+		t.Errorf("Cache-Control = %q, want revalidate-on-every-request (not immutable)", cc)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`addEventListener("fetch"`, "/fragment", "/header", "/events"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("sw.js body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestServerAssetRejectsServiceWorkerFilename guards against sw.js being
+// double-served under /assets/ (immutably cached, since handleAsset's
+// embedded filesystem glob picks it up like any other .js asset) alongside
+// its real GET /sw.js route (handleServiceWorker, no-cache) — see
+// handleAsset's doc comment for why only the latter is a valid way to reach
+// this script.
+func TestServerAssetRejectsServiceWorkerFilename(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/assets/sw.js", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// TestSecurityHeadersAllowsSelfWorkerSrc guards the service worker
+// registration (index.templ's navigator.serviceWorker.register("/sw.js"))
+// against a future CSP tightening silently blocking it.
+func TestSecurityHeadersAllowsSelfWorkerSrc(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "worker-src 'self'") {
+		t.Errorf("Content-Security-Policy = %q, want a worker-src 'self' directive", csp)
+	}
+}
+
+// TestIndexRegistersServiceWorker guards the page shell's registration
+// script itself, not just the route/CSP it depends on.
+func TestIndexRegistersServiceWorker(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `navigator.serviceWorker.register("/sw.js")`) {
+		t.Errorf("index body missing service worker registration:\n%s", body)
+	}
+}
+
 func TestServerRobotsRoute(t *testing.T) {
 	disable := pagev1alpha1.IndexingNoIndex
 	cfg := &pagev1alpha1.DashboardStyle{

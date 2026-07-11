@@ -1,0 +1,72 @@
+name: Visual Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "internal/dashboard/**"
+      - "go.mod"
+      - "go.sum"
+      - ".mise/**"
+      - ".github/workflows/visual.yml"
+      - ".github/actions/**"
+  pull_request:
+    paths:
+      - "internal/dashboard/**"
+      - "go.mod"
+      - "go.sum"
+      - ".mise/**"
+      - ".github/workflows/visual.yml"
+      - ".github/actions/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  visual:
+    permissions:
+      contents: read
+    name: Visual Regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go environment
+        uses: ./.github/actions/setup-go-env
+
+      # Pinned to a specific major version (not "stable") so the golden PNGs
+      # under internal/dashboard/testdata/visual/ are diffed against a
+      # reproducible renderer across runs — an auto-updating Chrome would
+      # eventually drift its anti-aliasing/font-hinting enough to make the
+      # goldens flaky through no code change at all. Bump this deliberately
+      # (and regenerate the goldens with UPDATE_GOLDEN=1) when it falls too
+      # far behind; Renovate doesn't manage this value.
+      # Not yet digest-pinned like this repo's other actions (see
+      # .renovaterc.json5's helpers:pinGitHubActionDigestsToSemver) — these
+      # two are newly introduced by this workflow; Renovate pins both to a
+      # commit digest on its next run.
+      - name: Install Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: "141"
+
+      - name: Run visual regression tests
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: mise run test-visual
+
+      - name: Upload mismatch diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs
+          path: internal/dashboard/testdata/visual/*.got.png
+          if-no-files-found: ignore
+          retention-days: 14

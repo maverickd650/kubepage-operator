@@ -624,6 +624,28 @@ templ Index(data indexData) {
 					});
 				}
 			</script>
+			if !data.AuthEnabled {
+				<script nonce={ templ.GetNonce(ctx) }>
+					// Offline app shell: registers the service worker (assets/sw.js,
+					// served from GET /sw.js) that caches static assets and the
+					// last-successful page shell for instant/offline loads. Registered
+					// after "load" so it never competes with this page's own initial
+					// resource fetches. Widget data (/fragment, /header, /events) is
+					// never cached by the worker — see sw.js's own doc comment — so
+					// this has no effect on how fresh the dashboard's live data is.
+					// Skipped entirely on a password-protected Dashboard (see
+					// indexData.AuthEnabled's doc comment): Cache Storage isn't
+					// itself gated by HTTP Basic Auth, so caching an authenticated
+					// page would let anyone with local access to the browser
+					// profile read its last-cached contents offline, with no
+					// credential check at all.
+					if ("serviceWorker" in navigator) {
+						window.addEventListener("load", function () {
+							navigator.serviceWorker.register("/sw.js");
+						});
+					}
+				</script>
+			}
 		</body>
 	</html>
 }
