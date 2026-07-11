@@ -22,6 +22,11 @@ profile.cov
 # test package on a rapid.Check failure; local debugging artifacts only)
 **/testdata/rapid/
 
+# visual_test.go's actual-capture artifact, written next to a golden PNG
+# only when a comparison fails (see compareVisualGolden) — local/CI-artifact
+# debugging output, never a golden file itself.
+internal/dashboard/testdata/visual/*.got.png
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

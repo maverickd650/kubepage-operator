@@ -194,6 +194,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /assets/{file}", handleAsset)
 	mux.HandleFunc("GET /manifest.json", s.handleManifest)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
+	mux.HandleFunc("GET /sw.js", handleServiceWorker)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	return securityHeaders(s.basicAuthMiddleware(mux))
 }
@@ -228,6 +229,14 @@ func (s *Server) Routes() http.Handler {
 // keeps the actual XSS-relevant surface — a rogue <script>/<style> tag —
 // covered, without silently breaking every inline style/onclick in the app.
 //
+// worker-src is scoped to 'self' explicitly (rather than relying on its
+// script-src fallback, per the CSP spec's worker-src -> child-src ->
+// script-src chain) so registering GET /sw.js (see handleServiceWorker,
+// index.templ's registration script) stays allowed even if script-src's own
+// value changes shape later — a same-origin service worker is a fixed,
+// deliberate part of this app, not a case that should ride on script-src's
+// coincidental coverage.
+//
 // frame-src mirrors img-src's "https: and nothing else" scope: without it,
 // an iframe ServiceWidget's <iframe src="..."> (cards.templ, iframe.go)
 // falls back to default-src 'self' and every browser refuses to load it —
@@ -244,6 +253,7 @@ func contentSecurityPolicy(nonce string) string {
 		"style-src-attr 'unsafe-inline'; " +
 		"script-src 'self' 'nonce-" + nonce + "'; " +
 		"script-src-attr 'unsafe-inline'; " +
+		"worker-src 'self'; " +
 		"connect-src 'self'; " +
 		"frame-ancestors 'none'; " +
 		"base-uri 'self'; " +
@@ -380,6 +390,27 @@ func handleAsset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/svg+xml")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	_, _ = w.Write(b)
+}
+
+// handleServiceWorker serves the offline app-shell service worker
+// (assets/sw.js) at the root path rather than under /assets/ — a service
+// worker's default registration scope is the directory of its own URL, and
+// this one needs to control every same-origin GET (the page shell, static
+// assets) to do its job, not just /assets/*. "Cache-Control: no-cache"
+// (rather than the long-lived immutable caching handleAsset gives every
+// other asset) makes the browser revalidate the script itself on every
+// registration check, so a deployed update to its caching logic takes
+// effect promptly instead of potentially being stuck behind a stale cached
+// copy of the worker script.
+func handleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	b, err := assetFS.ReadFile("assets/sw.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
 }
 
