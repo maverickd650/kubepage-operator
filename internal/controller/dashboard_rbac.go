@@ -291,6 +291,25 @@ func authSecretNames(instance *pagev1alpha1.Dashboard) []string {
 	return []string{instance.Spec.Auth.BasicAuthSecretRef.Name}
 }
 
+// reconcileAllDashboardRBAC ensures every RBAC object a Dashboard's dashboard
+// pod needs: the per-Dashboard ServiceAccount/Role/RoleBinding
+// (reconcileDashboardRBAC), the cluster-scoped kubemetrics RBAC — created
+// only while a kubemetrics InfoWidget is bound (reconcileClusterMetricsRBAC)
+// — and cross-namespace discovery RBAC — created only for namespaces
+// actually listed in spec.discovery.namespaces (reconcileDiscoveryRBAC).
+// Pulled out of Reconcile purely to keep its own cyclomatic complexity down;
+// see reconcileDeployment's doc comment for the project's general stance on
+// not collapsing these into one another beyond this.
+func (r *DashboardReconciler) reconcileAllDashboardRBAC(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	if err := r.reconcileDashboardRBAC(ctx, instance); err != nil {
+		return err
+	}
+	if err := r.reconcileClusterMetricsRBAC(ctx, instance); err != nil {
+		return err
+	}
+	return r.reconcileDiscoveryRBAC(ctx, instance)
+}
+
 // reconcileDashboardRBAC ensures the per-Dashboard ServiceAccount, Role, and
 // RoleBinding the dashboard pod runs as. All three are named after instance
 // and owned by it, so they're garbage-collected along with everything else
@@ -452,6 +471,23 @@ func clusterRBACName(instance *pagev1alpha1.Dashboard) string {
 	return full[:clusterRBACNameMaxLength-len(suffix)] + suffix
 }
 
+// discoveryRBACName is clusterRBACName's counterpart for the cross-namespace
+// discovery ClusterRole (and, reused, for the per-target-namespace
+// RoleBinding name — see reconcileDiscoveryRBAC) — a "disc-" prefix keeps it
+// from ever colliding with clusterRBACName's own "kubepage-..." names for
+// the same Dashboard, since a Dashboard can need both a kubemetrics
+// ClusterRole/ClusterRoleBinding and discovery RBAC at once.
+func discoveryRBACName(instance *pagev1alpha1.Dashboard) string {
+	full := fmt.Sprintf("kubepage-disc-%d-%s-%s", len(instance.Namespace), instance.Namespace, instance.Name)
+	if len(full) <= clusterRBACNameMaxLength {
+		return full
+	}
+
+	sum := sha256.Sum256([]byte("disc/" + instance.Namespace + "/" + instance.Name))
+	suffix := fmt.Sprintf("-%x", sum[:8])
+	return full[:clusterRBACNameMaxLength-len(suffix)] + suffix
+}
+
 // reconcileClusterMetricsRBAC ensures the cluster-scoped RBAC for a
 // kubemetrics InfoWidget exists only while one is bound to instance: it's
 // created on demand and removed again when the last kubemetrics widget goes
@@ -574,6 +610,207 @@ func (r *DashboardReconciler) deleteClusterMetricsRBAC(ctx context.Context, inst
 		return fmt.Errorf("deleting ClusterRole: %w", err)
 	}
 	return nil
+}
+
+// discoveryClusterRoleRules are the read-only permissions the cross-namespace
+// discovery ClusterRole grants (get/list/watch on Ingresses, and on
+// HTTPRoutes when the cluster has Gateway API installed) — the same rules
+// dashboardIngressRule/dashboardHTTPRouteRule grant in-namespace, just
+// packaged as a ClusterRole so a RoleBinding in each target namespace
+// (reconcileDiscoveryRoleBindings) can reference it without duplicating the
+// rule set per namespace.
+func discoveryClusterRoleRules(discovery *pagev1alpha1.DiscoverySpec, gatewayAPIEnabled bool) []rbacv1.PolicyRule {
+	rules := []rbacv1.PolicyRule{}
+	if discovery.HasSource(pagev1alpha1.DiscoverySourceIngress) {
+		rules = append(rules, dashboardIngressRule)
+	}
+	if discovery.HasSource(pagev1alpha1.DiscoverySourceHTTPRoute) && gatewayAPIEnabled {
+		rules = append(rules, dashboardHTTPRouteRule)
+	}
+	return rules
+}
+
+// discoveryNamespaces returns instance's desired cross-namespace discovery
+// target namespaces: spec.discovery.namespaces, sorted, de-duplicated, and
+// with instance's own namespace filtered out (it's already covered by the
+// per-Dashboard Role — see dashboardRoles — so a redundant RoleBinding there
+// would just be noise). Empty whenever discovery is off or spec.discovery.
+// namespaces is unset, which is intentionally also "no cross-namespace RBAC
+// at all" — see DiscoverySpec's doc comment on the single-namespace default.
+func discoveryNamespaces(instance *pagev1alpha1.Dashboard) []string {
+	discovery := instance.Spec.Discovery
+	if discovery == nil || discovery.Enabled != pagev1alpha1.Enabled {
+		return nil
+	}
+	out := make([]string, 0, len(discovery.Namespaces))
+	for _, ns := range discovery.Namespaces {
+		if ns != instance.Namespace {
+			out = append(out, ns)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// reconcileDiscoveryRBAC ensures the cross-namespace discovery RBAC —
+// ClusterRole plus a RoleBinding in each of instance's discoveryNamespaces —
+// matches instance's current spec, and cleans up any RoleBinding left over
+// in a namespace that's since been dropped from spec.discovery.namespaces.
+// See DiscoverySpec.Namespaces' doc comment for why this is a ClusterRole +
+// per-namespace RoleBinding rather than a ClusterRoleBinding: the latter
+// would grant access cluster-wide regardless of which namespaces are
+// actually listed.
+//
+// instance.Status.DiscoveryNamespaces is deliberately used (not a live List)
+// to find RoleBindings to remove: this operator never requests cluster-wide
+// list/watch on RoleBindings (see SECURITY.md), so "which namespaces did we
+// previously touch" has to be tracked rather than discovered.
+func (r *DashboardReconciler) reconcileDiscoveryRBAC(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	desired := discoveryNamespaces(instance)
+	previous := instance.Status.DiscoveryNamespaces
+
+	if len(desired) == 0 {
+		if err := r.deleteDiscoveryRoleBindings(ctx, instance, previous); err != nil {
+			return err
+		}
+		instance.Status.DiscoveryNamespaces = nil
+		return r.deleteDiscoveryClusterRole(ctx, instance)
+	}
+
+	if err := r.reconcileDiscoveryClusterRole(ctx, instance); err != nil {
+		return fmt.Errorf("reconciling discovery ClusterRole: %w", err)
+	}
+
+	// Record every namespace a RoleBinding might now exist in *before*
+	// creating any of them: if a Create below fails partway through desired
+	// (e.g. one bad/nonexistent namespace name among several good ones), the
+	// namespaces that already succeeded must still be tracked for cleanup —
+	// otherwise a RoleBinding that really was created would never be
+	// recorded in status, and neither this reconcile's own cleanup diff nor
+	// the finalizer would ever find it to delete, leaking a standing grant
+	// in exactly the namespace this field exists to scope tightly. Narrowed
+	// back down to desired only once every namespace below has succeeded.
+	instance.Status.DiscoveryNamespaces = unionSortedDeduped(previous, desired)
+
+	for _, ns := range desired {
+		if err := r.reconcileDiscoveryRoleBinding(ctx, instance, ns); err != nil {
+			return fmt.Errorf("reconciling discovery RoleBinding in namespace %s: %w", ns, err)
+		}
+	}
+
+	removed := make([]string, 0, len(previous))
+	for _, ns := range previous {
+		if !slices.Contains(desired, ns) {
+			removed = append(removed, ns)
+		}
+	}
+	if err := r.deleteDiscoveryRoleBindings(ctx, instance, removed); err != nil {
+		return err
+	}
+
+	instance.Status.DiscoveryNamespaces = desired
+	return nil
+}
+
+// deleteDiscoveryClusterRole removes the cross-namespace discovery
+// ClusterRole for instance, tolerating an already-absent object.
+func (r *DashboardReconciler) deleteDiscoveryClusterRole(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: discoveryRBACName(instance)}}
+	if err := r.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting discovery ClusterRole: %w", err)
+	}
+	return nil
+}
+
+func (r *DashboardReconciler) reconcileDiscoveryClusterRole(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	log := logf.FromContext(ctx)
+
+	desired := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: discoveryRBACName(instance)},
+		Rules:      discoveryClusterRoleRules(instance.Spec.Discovery, r.GatewayAPIEnabled),
+	}
+
+	found := &rbacv1.ClusterRole{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name}, found)
+	switch {
+	case apierrors.IsNotFound(err):
+		log.Info("Creating a new discovery ClusterRole", "ClusterRole.Name", desired.Name)
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	case !policyRulesEqual(found.Rules, desired.Rules):
+		found.Rules = desired.Rules
+		return r.Update(ctx, found)
+	}
+	return nil
+}
+
+// reconcileDiscoveryRoleBinding ensures the RoleBinding in namespace ns that
+// grants instance's dashboard ServiceAccount (which lives in instance's own
+// namespace — RoleBinding subjects may reference a ServiceAccount in a
+// different namespace than the RoleBinding itself) the discovery ClusterRole.
+// Named via discoveryRBACName so it's stable and collision-free per
+// Dashboard identity even though, unlike every other RBAC object this
+// controller manages, it can't carry an owner reference (owner references
+// must be same-namespace, and ns is generally not instance's own).
+func (r *DashboardReconciler) reconcileDiscoveryRoleBinding(ctx context.Context, instance *pagev1alpha1.Dashboard, ns string) error {
+	log := logf.FromContext(ctx)
+
+	name := discoveryRBACName(instance)
+	desired := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     name,
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		}},
+	}
+
+	found := &rbacv1.RoleBinding{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: ns}, found)
+	if apierrors.IsNotFound(err) {
+		log.Info("Creating a new discovery RoleBinding", "RoleBinding.Namespace", ns, "RoleBinding.Name", desired.Name)
+		return r.Create(ctx, desired)
+	}
+	// RoleRef is immutable and the Subject never changes for a given
+	// Dashboard name/namespace, so there's nothing to reconcile beyond creation.
+	return err
+}
+
+// deleteDiscoveryRoleBindings removes the discovery RoleBinding named for
+// instance's identity from every namespace in namespaces, tolerating
+// already-absent objects (and an already-absent target namespace itself,
+// e.g. one that was deleted out from under a Dashboard whose spec still
+// named it until this reconcile). namespaces is the caller's own record of
+// where a RoleBinding might exist (see reconcileDiscoveryRBAC), since this
+// operator has no cluster-wide RoleBinding list to discover them from.
+func (r *DashboardReconciler) deleteDiscoveryRoleBindings(ctx context.Context, instance *pagev1alpha1.Dashboard, namespaces []string) error {
+	name := discoveryRBACName(instance)
+	for _, ns := range namespaces {
+		rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}}
+		if err := r.Delete(ctx, rb); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting discovery RoleBinding in namespace %s: %w", ns, err)
+		}
+	}
+	return nil
+}
+
+// unionSortedDeduped returns the sorted, de-duplicated union of a and b —
+// used by reconcileDiscoveryRBAC to compute the "might have a RoleBinding"
+// superset it must record in status before attempting to create any of
+// them; see its call site's comment for why the superset, not just desired,
+// has to be persisted first.
+func unionSortedDeduped(a, b []string) []string {
+	out := make([]string, 0, len(a)+len(b))
+	out = append(out, a...)
+	out = append(out, b...)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 func stringSlicesEqualSorted(a, b []string) bool {

@@ -56,6 +56,66 @@ func TestClusterRBACNameStaysWithinKubernetesLimit(t *testing.T) {
 	}
 }
 
+// TestDiscoveryRBACNameNoCollision mirrors TestClusterRBACNameNoCollision for
+// discoveryRBACName, and additionally guards against it colliding with
+// clusterRBACName for the same Dashboard — a Dashboard using both kubemetrics
+// and cross-namespace discovery needs two distinct cluster-scoped RBAC names.
+func TestDiscoveryRBACNameNoCollision(t *testing.T) {
+	a := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "a", Name: "b-c"}}
+	b := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "a-b", Name: "c"}}
+
+	if discoveryRBACName(a) == discoveryRBACName(b) {
+		t.Fatalf("discoveryRBACName collided for distinct Dashboards: %q", discoveryRBACName(a))
+	}
+	if discoveryRBACName(a) == clusterRBACName(a) {
+		t.Fatalf("discoveryRBACName collided with clusterRBACName for the same Dashboard: %q", discoveryRBACName(a))
+	}
+}
+
+// TestDiscoveryRBACNameStaysWithinKubernetesLimit mirrors
+// TestClusterRBACNameStaysWithinKubernetesLimit for discoveryRBACName.
+func TestDiscoveryRBACNameStaysWithinKubernetesLimit(t *testing.T) {
+	longNamespace := strings.Repeat("a", 63)
+	longName := strings.Repeat("b", 253)
+	instance := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: longNamespace, Name: longName}}
+
+	name := discoveryRBACName(instance)
+	if len(name) > clusterRBACNameMaxLength {
+		t.Fatalf("discoveryRBACName(%q/%q) = %q (%d chars), want <= %d", longNamespace, longName, name, len(name), clusterRBACNameMaxLength)
+	}
+	if discoveryRBACName(instance) != name {
+		t.Fatalf("discoveryRBACName is not deterministic: got %q and %q for the same Dashboard", name, discoveryRBACName(instance))
+	}
+}
+
+// TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled verifies
+// discoveryNamespaces returns nil when discovery is off/unset, and filters
+// the Dashboard's own namespace out of spec.discovery.namespaces (it's
+// already covered by the per-Dashboard Role — see dashboardRoles — so a
+// redundant cross-namespace RoleBinding there would just be noise).
+func TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled(t *testing.T) {
+	const testDiscoveryTargetNamespace = "cross-ns-target"
+
+	base := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "dash-ns", Name: "d"}}
+
+	if got := discoveryNamespaces(base); got != nil {
+		t.Fatalf("discoveryNamespaces() with no Discovery = %v, want nil", got)
+	}
+
+	base.Spec.Discovery = &pagev1alpha1.DiscoverySpec{Namespaces: []string{testDiscoveryTargetNamespace}}
+	if got := discoveryNamespaces(base); got != nil {
+		t.Fatalf("discoveryNamespaces() with Discovery not Enabled = %v, want nil", got)
+	}
+
+	base.Spec.Discovery.Enabled = pagev1alpha1.Enabled
+	base.Spec.Discovery.Namespaces = []string{testDiscoveryTargetNamespace, "dash-ns", "monitoring", testDiscoveryTargetNamespace}
+	got := discoveryNamespaces(base)
+	want := []string{testDiscoveryTargetNamespace, "monitoring"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("discoveryNamespaces() = %v, want %v (own namespace filtered, de-duplicated, sorted)", got, want)
+	}
+}
+
 // TestDashboardRolesGrantsPods guards against the per-Dashboard Role losing
 // its pods access, which would silently break PodSelector-based status for
 // every Dashboard: internal/dashboard/poller.go's monitor lists Pods through

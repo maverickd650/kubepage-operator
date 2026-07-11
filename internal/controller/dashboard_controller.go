@@ -317,15 +317,11 @@ func (r *DashboardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	// Ensure the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard
-	// pod authenticates as, before the Deployment that references it.
-	if err := r.reconcileDashboardRBAC(ctx, instance); err != nil {
-		return r.failAvailable(ctx, instance, "RBAC", reasonRBACFailed, err)
-	}
-
-	// Cluster-scoped RBAC for the kubemetrics InfoWidget, created only while
-	// one is bound and removed otherwise (see reconcileClusterMetricsRBAC).
-	if err := r.reconcileClusterMetricsRBAC(ctx, instance); err != nil {
+	// Ensure every RBAC object the dashboard pod needs — the per-Dashboard
+	// ServiceAccount/Role/RoleBinding, the cluster-scoped kubemetrics RBAC,
+	// and cross-namespace discovery RBAC — before the Deployment that
+	// references the ServiceAccount.
+	if err := r.reconcileAllDashboardRBAC(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "RBAC", reasonRBACFailed, err)
 	}
 
@@ -379,6 +375,7 @@ func (r *DashboardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	instance.Status.BoundServiceCards = counts.serviceEntries
 	instance.Status.BoundBookmarks = counts.bookmarks
 	instance.Status.BoundInfoWidgets = counts.infoWidgets
+	instance.Status.URL = dashboardURL(instance)
 
 	ready, notReadyMessage, err := r.deploymentReady(ctx, instance, desiredReplicas)
 	if err != nil {
@@ -450,7 +447,11 @@ func (r *DashboardReconciler) failAvailable(ctx context.Context, instance *pagev
 // garbage collection can't: the cluster-scoped RBAC for the kubemetrics
 // InfoWidget (reconcileClusterMetricsRBAC) carries no owner reference, since a
 // namespaced Dashboard can't own cluster-scoped objects, so it must be deleted
-// explicitly here. Everything else the Dashboard creates is namespace-scoped
+// explicitly here — likewise the cross-namespace discovery ClusterRole and
+// its per-target-namespace RoleBindings (reconcileDiscoveryRBAC), which can't
+// be owned either (a RoleBinding in another namespace can't be owned by this
+// namespaced Dashboard, and the ClusterRole is cluster-scoped like the
+// kubemetrics one). Everything else the Dashboard creates is namespace-scoped
 // and owned via ctrl.SetControllerReference, so the API server cascades it.
 func (r *DashboardReconciler) doFinalizerOperationsForDashboard(ctx context.Context, cr *pagev1alpha1.Dashboard) error {
 	// The following implementation will raise an event
@@ -459,6 +460,12 @@ func (r *DashboardReconciler) doFinalizerOperationsForDashboard(ctx context.Cont
 		cr.Name,
 		cr.Namespace)
 
+	if err := r.deleteDiscoveryRoleBindings(ctx, cr, cr.Status.DiscoveryNamespaces); err != nil {
+		return err
+	}
+	if err := r.deleteDiscoveryClusterRole(ctx, cr); err != nil {
+		return err
+	}
 	return r.deleteClusterMetricsRBAC(ctx, cr)
 }
 
@@ -544,6 +551,7 @@ func deploymentTemplateChanged(found, desired *appsv1.Deployment) bool {
 		!reflect.DeepEqual(foundContainer.LivenessProbe, desiredContainer.LivenessProbe) ||
 		!reflect.DeepEqual(foundContainer.Resources, desiredContainer.Resources) ||
 		!reflect.DeepEqual(foundContainer.SecurityContext, desiredContainer.SecurityContext) ||
+		!reflect.DeepEqual(foundContainer.VolumeMounts, desiredContainer.VolumeMounts) ||
 		!reflect.DeepEqual(found.Spec.Template.Labels, desired.Spec.Template.Labels) ||
 		!reflect.DeepEqual(found.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
 		!reflect.DeepEqual(foundSpec.HostUsers, desiredSpec.HostUsers) ||
@@ -553,6 +561,7 @@ func deploymentTemplateChanged(found, desired *appsv1.Deployment) bool {
 		!reflect.DeepEqual(foundSpec.Affinity, desiredSpec.Affinity) ||
 		!reflect.DeepEqual(foundSpec.TopologySpreadConstraints, desiredSpec.TopologySpreadConstraints) ||
 		!reflect.DeepEqual(foundSpec.ImagePullSecrets, desiredSpec.ImagePullSecrets) ||
+		!reflect.DeepEqual(foundSpec.Volumes, desiredSpec.Volumes) ||
 		foundSpec.PriorityClassName != desiredSpec.PriorityClassName
 }
 
@@ -716,6 +725,7 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 					Affinity:                  instance.Spec.Affinity,
 					TopologySpreadConstraints: instance.Spec.TopologySpreadConstraints,
 					ImagePullSecrets:          instance.Spec.ImagePullSecrets,
+					Volumes:                   instance.Spec.Volumes,
 					PriorityClassName:         ptr.Deref(instance.Spec.PriorityClassName, ""),
 					SecurityContext: mergeOverride(corev1.PodSecurityContext{
 						RunAsNonRoot: new(true),
@@ -765,6 +775,7 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 						ReadinessProbe: instance.Spec.ReadinessProbe,
 						LivenessProbe:  instance.Spec.LivenessProbe,
 						Resources:      instance.Spec.Resources,
+						VolumeMounts:   instance.Spec.VolumeMounts,
 					}},
 				},
 			},
