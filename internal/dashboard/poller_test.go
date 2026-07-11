@@ -157,6 +157,57 @@ func TestPollerPollOnce(t *testing.T) {
 	}
 }
 
+// TestPollerPollOnceBroadcastsCompletion verifies pollOnce publishes to
+// Broadcast (when set) after every cycle, win or lose — Server.handleEvents
+// relies on this to know when to recheck whether the rendered fragment/
+// header content actually changed, so the signal must fire unconditionally
+// rather than only on a cycle that touched the Store.
+func TestPollerPollOnceBroadcastsCompletion(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	broadcast := NewBroadcaster()
+	ch := broadcast.Subscribe()
+	p := &Poller{
+		Reader:        cl,
+		SecretReader:  cl,
+		Namespace:     testNamespace,
+		DashboardName: testDashboardName,
+		Interval:      time.Hour,
+		HTTPClient:    http.DefaultClient,
+		Store:         NewStore(),
+		Broadcast:     broadcast,
+	}
+
+	p.pollOnce(t.Context())
+
+	select {
+	case <-ch:
+	default:
+		t.Error("pollOnce did not publish to Broadcast")
+	}
+}
+
+// TestPollerPollOnceNilBroadcastIsFine verifies pollOnce tolerates a nil
+// Broadcast (the default for a Poller built without SSE support wired up,
+// e.g. most other tests in this file).
+func TestPollerPollOnceNilBroadcastIsFine(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	p := &Poller{
+		Reader:        cl,
+		SecretReader:  cl,
+		Namespace:     testNamespace,
+		DashboardName: testDashboardName,
+		Interval:      time.Hour,
+		HTTPClient:    http.DefaultClient,
+		Store:         NewStore(),
+	}
+
+	p.pollOnce(t.Context())
+}
+
 // TestPollerMultiCardFormProducesPerEntryCards exercises a multi-entry
 // ServiceCard: one ServiceCard object with three entries — one
 // with a widget and its own group, one with a widget that falls back to

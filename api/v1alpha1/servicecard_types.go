@@ -231,8 +231,13 @@ type ServiceEntry struct {
 	// +optional
 	Target *string `json:"target,omitempty"`
 
-	// icon resolves as a dashboard-icons slug, or passes through as-is if
-	// it's already a full URL.
+	// icon resolves as a dashboard-icons slug (e.g. "grafana"), passes
+	// through as-is if it's already a full URL, or accepts homepage's icon
+	// prefix syntax: "mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X" for a
+	// generic icon glyph (Material Design Icons/Simple Icons/Lucide/Weather
+	// Icons/Font Awesome 6 Solid, resolved via Iconify — X may end in
+	// "-#hexcolor" to recolor it), or "sh-X" for a selfh.st/icons glyph (X
+	// may end in .svg/.png/.webp, defaulting to .png).
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +optional

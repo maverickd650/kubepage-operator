@@ -1,13 +1,17 @@
 package dashboard
 
 import (
+	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -399,8 +403,8 @@ func TestIndexPollingStopsInBackgroundTab(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, want := range []string{
-		`id="cards" hx-get="/fragment" hx-trigger="every 10s[document.visibilityState === &#39;visible&#39;]"`,
-		`hx-get="/header" hx-trigger="load, every 10s[document.visibilityState === &#39;visible&#39;]"`,
+		`id="cards" hx-ext="morph" hx-get="/fragment" hx-trigger="every 10s[document.visibilityState === &#39;visible&#39;]"`,
+		`hx-ext="morph" hx-get="/header" hx-trigger="load, every 10s[document.visibilityState === &#39;visible&#39;]"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index body missing %q:\n%s", want, body)
@@ -1853,7 +1857,7 @@ func TestServerIndexServerRendersInitialFragment(t *testing.T) {
 	if !strings.Contains(body, testSvcAName) {
 		t.Errorf("index body missing %q, want the initial card grid server-rendered into the shell:\n%s", testSvcAName, body)
 	}
-	if !strings.Contains(body, `<div id="cards" hx-get="/fragment" hx-trigger="every`) {
+	if !strings.Contains(body, `<div id="cards" hx-ext="morph" hx-get="/fragment" hx-trigger="every`) {
 		t.Errorf("index body's #cards div should no longer have a \"load\" hx-trigger now that content is server-rendered:\n%s", body)
 	}
 }
@@ -1976,4 +1980,120 @@ func TestServerFragmentRendersBookmarkIconTakesPrecedenceOverAbbr(t *testing.T) 
 	if strings.Contains(body, `class="abbr"`) {
 		t.Errorf("fragment body has an abbr span, want Icon to take precedence over Abbr when both are set:\n%s", body)
 	}
+}
+
+// TestServerEventsWithoutBroadcastReturns501 verifies GET /events fails
+// clearly (rather than hanging or panicking) for a Server built without a
+// Broadcast wired up, e.g. by direct construction in another test.
+func TestServerEventsWithoutBroadcastReturns501(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/events", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501", rec.Code)
+	}
+}
+
+// waitUntil polls cond every 5ms until it reports true or timeout elapses,
+// failing the test in the latter case.
+func waitUntil(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("condition not met within %s", timeout)
+}
+
+// syncRecorder is httptest.ResponseRecorder's role for a handler under test
+// that writes from a background goroutine (handleEvents' SSE loop) while the
+// test goroutine concurrently reads its state — httptest.ResponseRecorder's
+// own Body/Code fields aren't safe for that.
+type syncRecorder struct {
+	mu     sync.Mutex
+	header http.Header
+	code   int
+	body   bytes.Buffer
+}
+
+func newSyncRecorder() *syncRecorder { return &syncRecorder{header: http.Header{}} }
+
+func (r *syncRecorder) Header() http.Header { return r.header }
+
+func (r *syncRecorder) WriteHeader(code int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.code = code
+}
+
+func (r *syncRecorder) Write(b []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.code == 0 {
+		r.code = http.StatusOK
+	}
+	return r.body.Write(b)
+}
+
+func (r *syncRecorder) Flush() {}
+
+func (r *syncRecorder) Code() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.code
+}
+
+func (r *syncRecorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body.String()
+}
+
+// TestServerEventsPushesFragmentChanged verifies handleEvents only emits a
+// fragmentChanged SSE event once the fragment's rendered content actually
+// differs from what it was when the connection opened — the same
+// content-hash rule writeCachedHTML's ETag uses — and that a Publish whose
+// underlying content didn't change stays silent.
+func TestServerEventsPushesFragmentChanged(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+	broadcast := NewBroadcaster()
+	srv.Broadcast = broadcast
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/events", nil).WithContext(ctx)
+	rec := newSyncRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.handleEvents(rec, req)
+	}()
+
+	waitUntil(t, time.Second, func() bool { return rec.Code() == http.StatusOK })
+	if got := rec.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", got)
+	}
+
+	// A cycle that doesn't change anything (no Store mutation) must not
+	// produce an event.
+	broadcast.Publish()
+	time.Sleep(20 * time.Millisecond)
+	if strings.Contains(rec.String(), "event:") {
+		t.Errorf("unchanged Publish produced an SSE event:\n%s", rec.String())
+	}
+
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
+	broadcast.Publish()
+	waitUntil(t, time.Second, func() bool { return strings.Contains(rec.String(), "event: fragmentChanged") })
+
+	cancel()
+	<-done
 }

@@ -144,7 +144,9 @@ spec:
                         icon shown to the left of this widget's value(s) in the header strip,
                         matching homepage's Resource component. Resolved the same way as
                         ServiceCard/Bookmark Icon: a full URL passes through unchanged,
-                        anything else is treated as a dashboard-icons slug. Ignored by the
+                        "mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X"/"sh-X" resolve via
+                        homepage's icon prefix syntax (see ServiceEntry.Icon), and anything
+                        else is treated as a dashboard-icons slug. Ignored by the
                         "greeting" and "datetime" widget types, which homepage renders without
                         an icon. Every other polled type (openmeteo/openweathermap,
                         kubemetrics, glances, longhorn) already renders a sensible built-in

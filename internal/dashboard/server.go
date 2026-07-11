@@ -3,6 +3,7 @@ package dashboard
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -74,6 +76,18 @@ type Server struct {
 	Namespace      string
 	DashboardName  string
 	RefreshSeconds int
+
+	// Broadcast, when set, backs GET /events (Server-Sent Events): the page
+	// shell subscribes to it and re-fetches /fragment or /header — via a
+	// morph swap, so unrelated DOM state (scroll position, open <details>)
+	// survives — the moment a poll cycle actually changes their rendered
+	// output, instead of waiting up to RefreshSeconds for htmx's own poll.
+	// Interval polling stays wired up in index.templ regardless, both as a
+	// fallback for a browser with SSE disabled/blocked and to recover from a
+	// dropped connection. nil (e.g. in tests that construct a Server
+	// directly) makes GET /events answer 501, leaving polling as the only
+	// refresh path — the same behavior as before this field existed.
+	Broadcast *Broadcaster
 
 	// SecretReader resolves the basic-auth Secret (spec.auth.basicAuthSecretRef),
 	// deliberately uncached — see basicAuthMiddleware/loadBasicAuth and
@@ -176,6 +190,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /fragment", s.handleFragment)
 	mux.HandleFunc("GET /header", s.handleHeader)
+	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /assets/{file}", handleAsset)
 	mux.HandleFunc("GET /manifest.json", s.handleManifest)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
@@ -483,6 +498,116 @@ func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
 	if err := writeCachedHTML(w, r, func(buf io.Writer) error { return Header(data).Render(r.Context(), buf) }); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// sseHeartbeatInterval is how often handleEvents writes a comment-only SSE
+// line on an otherwise idle connection — without it, an intermediary proxy
+// that times out idle connections (or a client library that treats silence
+// as a dead stream) could drop the connection long before the next poll
+// cycle actually changes anything.
+const sseHeartbeatInterval = 25 * time.Second
+
+// handleEvents serves GET /events as a Server-Sent Events stream: one
+// "fragmentChanged" or "headerChanged" event whenever a poll cycle actually
+// changes what /fragment or /header would render, computed the same
+// content-hash way writeCachedHTML's ETag is (so a cosmetic no-op cycle —
+// the common case once a dashboard's data has settled — sends nothing). The
+// event carries no payload; the page shell's own script re-fetches the
+// fragment via htmx on receiving it (see index.templ) rather than the
+// server pushing HTML down the SSE channel itself, keeping the same
+// request/response path — and its gzip/ETag handling — for the actual
+// content in both the push and interval-poll cases.
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if s.Broadcast == nil {
+		http.Error(w, "server-sent events not available", http.StatusNotImplemented)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// The http.Server this handler runs under sets a fixed WriteTimeout for
+	// every other route; an SSE connection is expected to sit open far
+	// longer than that, so its write deadline is cleared for this response
+	// specifically rather than raising the timeout server-wide.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Connection", "keep-alive")
+	// Tells a buffering reverse proxy (nginx) not to hold this response back
+	// waiting to fill its buffer — irrelevant for direct/ingress-controller
+	// access but harmless to always send.
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	ctx := r.Context()
+	lastFragment, lastHeader := s.currentHashes(ctx)
+
+	ch := s.Broadcast.Subscribe()
+	defer s.Broadcast.Unsubscribe(ch)
+
+	heartbeat := time.NewTicker(sseHeartbeatInterval)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeat.C:
+			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ch:
+			fragment, header := s.currentHashes(ctx)
+			var wrote bool
+			if fragment != "" && fragment != lastFragment {
+				lastFragment = fragment
+				if _, err := io.WriteString(w, "event: fragmentChanged\ndata: refresh\n\n"); err != nil {
+					return
+				}
+				wrote = true
+			}
+			if header != "" && header != lastHeader {
+				lastHeader = header
+				if _, err := io.WriteString(w, "event: headerChanged\ndata: refresh\n\n"); err != nil {
+					return
+				}
+				wrote = true
+			}
+			if wrote {
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+// currentHashes returns the content-hash (etagFor) of what /fragment and
+// /header would currently render, or "" for either on a LoadSite error (a
+// transient read failure shouldn't itself look like a content change, and ""
+// never matches a real hash so it's simply skipped by handleEvents).
+func (s *Server) currentHashes(ctx context.Context) (fragment, header string) {
+	site, err := LoadSite(ctx, s.Reader, s.Namespace, s.DashboardName)
+	if err != nil {
+		return "", ""
+	}
+
+	var fragBuf bytes.Buffer
+	if err := Cards(s.buildFragmentData(site)).Render(ctx, &fragBuf); err == nil {
+		fragment = etagFor(fragBuf.Bytes())
+	}
+
+	var headerBuf bytes.Buffer
+	hdrData := headerData{Widgets: buildHeader(site.HeaderWidgets, s.Store.Snapshot())}
+	if err := Header(hdrData).Render(ctx, &headerBuf); err == nil {
+		header = etagFor(headerBuf.Bytes())
+	}
+	return fragment, header
 }
 
 // serviceCards returns only the non-header cards (header InfoWidget cards are

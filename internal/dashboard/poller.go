@@ -61,6 +61,14 @@ type Poller struct {
 	HTTPClient    *http.Client
 	Store         *Store
 
+	// Broadcast, when set, is published to once at the end of every poll
+	// cycle so any open SSE connection (Server.handleEvents) wakes up and
+	// checks whether the fragment/header content it last sent has actually
+	// changed — see Broadcaster's doc comment. Optional: nil disables the
+	// push path entirely, leaving htmx's interval polling as the only
+	// refresh mechanism (e.g. in tests that construct a Poller directly).
+	Broadcast *Broadcaster
+
 	// GatewayAPIEnabled reports whether this cluster has Gateway API CRDs
 	// installed; see dashboard.Options.GatewayAPIEnabled's doc comment.
 	// Gates whether pollOnce ever attempts to List HTTPRoutes for HTTPRoute
@@ -267,6 +275,10 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	p.Store.Prune(keep)
 	p.pruneMonitorMetrics(monitorLabels)
 	p.pruneWidgetLastPolled(keep)
+
+	if p.Broadcast != nil {
+		p.Broadcast.Publish()
+	}
 }
 
 // duePoll reports whether the widget at key should be polled this cycle,

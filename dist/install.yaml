@@ -112,7 +112,9 @@ spec:
                     icon:
                       description: |-
                         icon overrides the group header's icon, resolved as a dashboard-icons
-                        slug (or passed through as-is if it's already a full URL).
+                        slug, passed through as-is if it's already a full URL, or accepts
+                        homepage's icon prefix syntax ("mdi-X"/"si-X"/"lucide-X"/"wi-X"/
+                        "fa6-solid-X"/"sh-X", see ServiceEntry.Icon).
                       maxLength: 256
                       minLength: 1
                       type: string
@@ -3424,8 +3426,10 @@ spec:
                           icon:
                             description: |-
                               icon overrides the group header's icon. Same resolution rules as
-                              ServiceCard/Bookmark Icon: a full URL passes through, anything else
-                              is resolved as a dashboard-icons slug.
+                              ServiceCard/Bookmark Icon: a full URL passes through, homepage's icon
+                              prefix syntax ("mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X"/"sh-X",
+                              see ServiceEntry.Icon) resolves to that icon set, and anything else is
+                              resolved as a dashboard-icons slug.
                             maxLength: 256
                             minLength: 1
                             type: string
@@ -3847,7 +3851,9 @@ spec:
                         icon shown to the left of this widget's value(s) in the header strip,
                         matching homepage's Resource component. Resolved the same way as
                         ServiceCard/Bookmark Icon: a full URL passes through unchanged,
-                        anything else is treated as a dashboard-icons slug. Ignored by the
+                        "mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X"/"sh-X" resolve via
+                        homepage's icon prefix syntax (see ServiceEntry.Icon), and anything
+                        else is treated as a dashboard-icons slug. Ignored by the
                         "greeting" and "datetime" widget types, which homepage renders without
                         an icon. Every other polled type (openmeteo/openweathermap,
                         kubemetrics, glances, longhorn) already renders a sensible built-in
@@ -4196,8 +4202,13 @@ spec:
                       type: string
                     icon:
                       description: |-
-                        icon resolves as a dashboard-icons slug, or passes through as-is if
-                        it's already a full URL.
+                        icon resolves as a dashboard-icons slug (e.g. "grafana"), passes
+                        through as-is if it's already a full URL, or accepts homepage's icon
+                        prefix syntax: "mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X" for a
+                        generic icon glyph (Material Design Icons/Simple Icons/Lucide/Weather
+                        Icons/Font Awesome 6 Solid, resolved via Iconify — X may end in
+                        "-#hexcolor" to recolor it), or "sh-X" for a selfh.st/icons glyph (X
+                        may end in .svg/.png/.webp, defaulting to .png).
                       maxLength: 256
                       minLength: 1
                       type: string

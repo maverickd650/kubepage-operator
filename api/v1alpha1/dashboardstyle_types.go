@@ -157,8 +157,10 @@ type LayoutGroupSpec struct {
 	Style *string `json:"style,omitempty"`
 
 	// icon overrides the group header's icon. Same resolution rules as
-	// ServiceCard/Bookmark Icon: a full URL passes through, anything else
-	// is resolved as a dashboard-icons slug.
+	// ServiceCard/Bookmark Icon: a full URL passes through, homepage's icon
+	// prefix syntax ("mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X"/"sh-X",
+	// see ServiceEntry.Icon) resolves to that icon set, and anything else is
+	// resolved as a dashboard-icons slug.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +optional
