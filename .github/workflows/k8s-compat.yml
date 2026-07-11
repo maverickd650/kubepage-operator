@@ -10,6 +10,12 @@ name: K8s Compatibility
 # (setup-envtest) does still offer 1.29 binaries, but both matrices are
 # pinned to the same floor here so "the floor this project tests" has one
 # unambiguous answer — see README.md/CLAUDE.md for the documented minimum.
+#
+# On push, only the floor version (1.33) runs here — the "1.36" entries
+# duplicate what Tests/E2E Tests already cover on the same push (mise run
+# test derives 1.36 from go.mod, and test-e2e uses kind's default node
+# image). The full matrix still runs on the weekly schedule and
+# workflow_dispatch, where the duplication is the point.
 on:
   schedule:
     - cron: "0 4 * * 1" # weekly Monday at 04:00 UTC
@@ -40,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        k8s-version: ["1.33", "1.36"]
+        k8s-version: ${{ github.event_name == 'push' && fromJSON('["1.33"]') || fromJSON('["1.33", "1.36"]') }}
     steps:
       - name: Clone the code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -62,14 +68,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Digest pinned from the kind v0.32.0 release notes (oldest node image
+      # that release ships) — see the file-level comment above.
       matrix:
-        include:
-          # Digest pinned from the kind v0.32.0 release notes (oldest node
-          # image that release ships) — see the file-level comment above.
-          - k8s-version: "1.33"
-            kind-image: "kindest/node:v1.33.12@sha256:3f5c8443c620245e4d355cfe09e96a91ead32ceaa569d3f1ca9edf0cb2fe2ff4"
-          - k8s-version: "1.36"
-            kind-image: ""
+        include: ${{ github.event_name == 'push' && fromJSON('[{"k8s-version":"1.33","kind-image":"kindest/node:v1.33.12@sha256:3f5c8443c620245e4d355cfe09e96a91ead32ceaa569d3f1ca9edf0cb2fe2ff4"}]') || fromJSON('[{"k8s-version":"1.33","kind-image":"kindest/node:v1.33.12@sha256:3f5c8443c620245e4d355cfe09e96a91ead32ceaa569d3f1ca9edf0cb2fe2ff4"},{"k8s-version":"1.36","kind-image":""}]') }}
     steps:
       - name: Clone the code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -78,6 +80,10 @@ jobs:
 
       - name: Setup Go environment
         uses: ./.github/actions/setup-go-env
+
+      - name: Read Go version from mise
+        id: go-version
+        run: echo "value=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -91,7 +97,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            GO_VERSION=1.26.4
+            GO_VERSION=${{ steps.go-version.outputs.value }}
 
       - name: Running E2E Tests (K8s ${{ matrix.k8s-version }})
         run: mise run test-e2e
