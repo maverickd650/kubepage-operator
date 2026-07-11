@@ -1904,7 +1904,10 @@ func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
 	instance := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
-			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+			Discovery: &pagev1alpha1.DiscoverySpec{
+				Enabled: pagev1alpha1.Enabled,
+				Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute},
+			},
 		},
 	}
 	route := &gatewayv1.HTTPRoute{
@@ -1933,15 +1936,19 @@ func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
 }
 
 // TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled verifies pollOnce
-// never attempts HTTPRoute discovery when GatewayAPIEnabled is false (the
-// default) — a List against a nonexistent Kind would fail outright, so this
-// must be a hard gate, not just missing RBAC.
+// never attempts HTTPRoute discovery when GatewayAPIEnabled is false, even
+// though the Dashboard opts into the HTTPRoute source — a List against a
+// nonexistent Kind would fail outright, so this must be a hard gate, not
+// just missing RBAC.
 func TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled(t *testing.T) {
 	scheme := testScheme(t)
 	instance := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
-			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+			Discovery: &pagev1alpha1.DiscoverySpec{
+				Enabled: pagev1alpha1.Enabled,
+				Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute},
+			},
 		},
 	}
 	route := &gatewayv1.HTTPRoute{
@@ -1961,6 +1968,40 @@ func TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled(t *testing.T) {
 	for _, c := range store.Snapshot() {
 		if c.ServiceName == testDiscoveredRouteCardName {
 			t.Fatalf("Snapshot() = %+v, want no HTTPRoute card when GatewayAPIEnabled is false", store.Snapshot())
+		}
+	}
+}
+
+// TestPollerPollOnceSkipsHTTPRoutesWhenSourcesUnset verifies the default
+// discovery.sources (unset, meaning ["Ingress"] only) never discovers
+// HTTPRoutes even when GatewayAPIEnabled is true — issue #108's requirement
+// that default behavior stays byte-identical to Ingress-only discovery
+// unless a Dashboard explicitly opts into the HTTPRoute source.
+func TestPollerPollOnceSkipsHTTPRoutesWhenSourcesUnset(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+		},
+	}
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testDiscoveredAppKey, Namespace: testNamespace,
+			Annotations: map[string]string{testDiscoveryEnabledAnnotation: annotationValueTrue, testKubepageNameAnnotation: testDiscoveredRouteCardName},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, route).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store, GatewayAPIEnabled: true,
+	}
+	p.pollOnce(t.Context())
+
+	for _, c := range store.Snapshot() {
+		if c.ServiceName == testDiscoveredRouteCardName {
+			t.Fatalf("Snapshot() = %+v, want no HTTPRoute card when discovery.sources is unset", store.Snapshot())
 		}
 	}
 }

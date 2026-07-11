@@ -1219,16 +1219,15 @@ spec:
                 properties:
                   annotationPrefix:
                     description: |-
-                      annotationPrefix is the annotation key prefix an Ingress must carry to
-                      be discovered, e.g. "<prefix>enabled", "<prefix>name", "<prefix>group".
-                      Defaults to "kubepage.io/".
+                      annotationPrefix is the annotation key prefix a source resource must
+                      carry to be discovered, e.g. "<prefix>enabled", "<prefix>name",
+                      "<prefix>group". Defaults to "kubepage.io/".
                     maxLength: 253
                     minLength: 1
                     type: string
                   enabled:
                     default: Disabled
-                    description: enabled turns on Ingress annotation discovery for
-                      this Dashboard.
+                    description: enabled turns on annotation discovery for this Dashboard.
                     enum:
                     - Enabled
                     - Disabled
@@ -1236,13 +1235,29 @@ spec:
                   homepageCompat:
                     description: |-
                       homepageCompat additionally honors "gethomepage.dev/*" annotations
-                      (homepage's own discovery convention) on any Ingress that doesn't carry
-                      AnnotationPrefix's own enable annotation, so a cluster migrating from
-                      homepage doesn't need to relabel every Ingress.
+                      (homepage's own discovery convention) on any source resource that
+                      doesn't carry AnnotationPrefix's own enable annotation, so a cluster
+                      migrating from homepage doesn't need to relabel every resource.
                     enum:
                     - Enabled
                     - Disabled
                     type: string
+                  sources:
+                    description: |-
+                      sources selects which resource kinds are scanned for the discovery
+                      annotations. Defaults to ["Ingress"] (the pre-existing behavior).
+                      "HTTPRoute" requires Gateway API CRDs on the cluster; without them a
+                      Dashboard requesting it gets a clear Available=False condition, the
+                      same behavior as spec.gateway.
+                    items:
+                      enum:
+                      - Ingress
+                      - HTTPRoute
+                      type: string
+                    maxItems: 2
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
                 type: object
               env:
                 description: |-

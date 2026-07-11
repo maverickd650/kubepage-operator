@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"slices"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -324,35 +326,68 @@ type NetworkPolicySpec struct {
 }
 
 // DiscoverySpec opts a Dashboard into Kubernetes-native service discovery:
-// the dashboard process lists Ingresses in its own namespace and renders one
-// card per Ingress carrying the enable annotation, without requiring an
-// explicit ServiceCard. Mirrors (a curated subset of) homepage's Ingress
-// annotation discovery (https://gethomepage.dev/configs/kubernetes/), scoped
-// to what an annotation — world-readable to anyone who can read the Ingress —
+// the dashboard process lists resources of each kind named in Sources in its
+// own namespace and renders one card per resource carrying the enable
+// annotation, without requiring an explicit ServiceCard. Mirrors (a curated
+// subset of) homepage's Kubernetes discovery
+// (https://gethomepage.dev/configs/kubernetes/), scoped to what an
+// annotation — world-readable to anyone who can read the source resource —
 // can safely carry: no secrets, so no widget config, only href/icon/
 // description/group/ping.
 type DiscoverySpec struct {
-	// enabled turns on Ingress annotation discovery for this Dashboard.
+	// enabled turns on annotation discovery for this Dashboard.
 	// +kubebuilder:validation:Enum=Enabled;Disabled
 	// +default="Disabled"
 	// +optional
 	Enabled string `json:"enabled,omitempty"`
 
-	// annotationPrefix is the annotation key prefix an Ingress must carry to
-	// be discovered, e.g. "<prefix>enabled", "<prefix>name", "<prefix>group".
-	// Defaults to "kubepage.io/".
+	// sources selects which resource kinds are scanned for the discovery
+	// annotations. Defaults to ["Ingress"] (the pre-existing behavior).
+	// "HTTPRoute" requires Gateway API CRDs on the cluster; without them a
+	// Dashboard requesting it gets a clear Available=False condition, the
+	// same behavior as spec.gateway.
+	// +kubebuilder:validation:items:Enum=Ingress;HTTPRoute
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=2
+	// +listType=set
+	// +optional
+	Sources []string `json:"sources,omitempty"`
+
+	// annotationPrefix is the annotation key prefix a source resource must
+	// carry to be discovered, e.g. "<prefix>enabled", "<prefix>name",
+	// "<prefix>group". Defaults to "kubepage.io/".
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	AnnotationPrefix *string `json:"annotationPrefix,omitempty"`
 
 	// homepageCompat additionally honors "gethomepage.dev/*" annotations
-	// (homepage's own discovery convention) on any Ingress that doesn't carry
-	// AnnotationPrefix's own enable annotation, so a cluster migrating from
-	// homepage doesn't need to relabel every Ingress.
+	// (homepage's own discovery convention) on any source resource that
+	// doesn't carry AnnotationPrefix's own enable annotation, so a cluster
+	// migrating from homepage doesn't need to relabel every resource.
 	// +kubebuilder:validation:Enum=Enabled;Disabled
 	// +optional
 	HomepageCompat *string `json:"homepageCompat,omitempty"`
+}
+
+// DiscoverySourceIngress and DiscoverySourceHTTPRoute are Sources' valid
+// values, shared between the CRD validation marker above and the code that
+// reads Sources (internal/dashboard/discovery.go's poller wiring,
+// internal/controller's RBAC/availability gating) so the two can't drift.
+const (
+	DiscoverySourceIngress   = "Ingress"
+	DiscoverySourceHTTPRoute = "HTTPRoute"
+)
+
+// HasSource reports whether source (one of DiscoverySourceIngress/
+// DiscoverySourceHTTPRoute) is among the resource kinds this DiscoverySpec
+// scans. An unset/empty Sources defaults to Ingress only, matching the
+// pre-existing (Sources-less) behavior byte-for-byte.
+func (d *DiscoverySpec) HasSource(source string) bool {
+	if len(d.Sources) == 0 {
+		return source == DiscoverySourceIngress
+	}
+	return slices.Contains(d.Sources, source)
 }
 
 // ServiceSpec customizes the dashboard Service beyond the default ClusterIP.

@@ -62,7 +62,7 @@ func TestClusterRBACNameStaysWithinKubernetesLimit(t *testing.T) {
 // this Role regardless of whether any bound ServiceCard uses PodSelector.
 func TestDashboardRolesGrantsPods(t *testing.T) {
 	for _, secretNames := range [][]string{nil, {"some-secret"}} {
-		rules := dashboardRoles(secretNames, false, false)
+		rules := dashboardRoles(secretNames, nil, false)
 		found := slices.ContainsFunc(rules, func(r rbacv1.PolicyRule) bool {
 			return slices.Contains(r.Resources, resourcePods) &&
 				slices.Contains(r.Verbs, verbGet) &&
@@ -70,15 +70,23 @@ func TestDashboardRolesGrantsPods(t *testing.T) {
 				slices.Contains(r.Verbs, "watch")
 		})
 		if !found {
-			t.Errorf("dashboardRoles(%v, false, false) has no pods get/list/watch rule", secretNames)
+			t.Errorf("dashboardRoles(%v, nil, false) has no pods get/list/watch rule", secretNames)
 		}
 	}
+}
+
+func discoverySpec(enabled bool, sources ...string) *pagev1alpha1.DiscoverySpec {
+	if !enabled {
+		return nil
+	}
+	return &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled, Sources: sources}
 }
 
 // TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled guards the
 // least-privilege intent of DiscoverySpec: the per-Dashboard Role should only
 // carry Ingress read access while Ingress annotation discovery is actually
-// turned on for that Dashboard.
+// turned on for that Dashboard, and Sources includes "Ingress" (the default
+// when Sources is unset).
 func TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled(t *testing.T) {
 	hasIngressRule := func(rules []rbacv1.PolicyRule) bool {
 		return slices.ContainsFunc(rules, func(r rbacv1.PolicyRule) bool {
@@ -86,18 +94,24 @@ func TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled(t *testing.T) {
 		})
 	}
 
-	if hasIngressRule(dashboardRoles(nil, false, false)) {
-		t.Error("dashboardRoles(nil, false, false) unexpectedly grants ingresses access")
+	if hasIngressRule(dashboardRoles(nil, discoverySpec(false), false)) {
+		t.Error("dashboardRoles with discovery disabled unexpectedly grants ingresses access")
 	}
-	if !hasIngressRule(dashboardRoles(nil, true, false)) {
-		t.Error("dashboardRoles(nil, true, false) has no ingresses get/list/watch rule")
+	if !hasIngressRule(dashboardRoles(nil, discoverySpec(true), false)) {
+		t.Error("dashboardRoles with discovery enabled (no sources) has no ingresses get/list/watch rule")
+	}
+	if !hasIngressRule(dashboardRoles(nil, discoverySpec(true, pagev1alpha1.DiscoverySourceIngress), false)) {
+		t.Error("dashboardRoles with sources=[Ingress] has no ingresses get/list/watch rule")
+	}
+	if hasIngressRule(dashboardRoles(nil, discoverySpec(true, pagev1alpha1.DiscoverySourceHTTPRoute), true)) {
+		t.Error("dashboardRoles with sources=[HTTPRoute] unexpectedly grants ingresses access")
 	}
 }
 
 // TestDashboardRolesGrantsHTTPRouteOnlyWhenDiscoveryAndGatewayAPIEnabled
 // mirrors TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled for the
-// HTTPRoute discovery fast-follow (gap-analysis §4.7): the Role should only
-// carry HTTPRoute read access when discovery is on *and* the cluster
+// HTTPRoute discovery source: the Role should only carry HTTPRoute read
+// access when discovery is on, Sources includes "HTTPRoute", and the cluster
 // actually has Gateway API installed — granting it otherwise would be a
 // permission the dashboard pod could never use.
 func TestDashboardRolesGrantsHTTPRouteOnlyWhenDiscoveryAndGatewayAPIEnabled(t *testing.T) {
@@ -107,14 +121,18 @@ func TestDashboardRolesGrantsHTTPRouteOnlyWhenDiscoveryAndGatewayAPIEnabled(t *t
 		})
 	}
 
-	if hasHTTPRouteRule(dashboardRoles(nil, true, false)) {
-		t.Error("dashboardRoles(nil, true, false) unexpectedly grants httproutes access without Gateway API")
+	withSources := discoverySpec(true, pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute)
+	if hasHTTPRouteRule(dashboardRoles(nil, withSources, false)) {
+		t.Error("dashboardRoles with sources=[Ingress,HTTPRoute] unexpectedly grants httproutes access without Gateway API")
 	}
-	if hasHTTPRouteRule(dashboardRoles(nil, false, true)) {
-		t.Error("dashboardRoles(nil, false, true) unexpectedly grants httproutes access without discovery enabled")
+	if hasHTTPRouteRule(dashboardRoles(nil, discoverySpec(false), true)) {
+		t.Error("dashboardRoles with discovery disabled unexpectedly grants httproutes access")
 	}
-	if !hasHTTPRouteRule(dashboardRoles(nil, true, true)) {
-		t.Error("dashboardRoles(nil, true, true) has no httproutes get/list/watch rule")
+	if hasHTTPRouteRule(dashboardRoles(nil, discoverySpec(true), true)) {
+		t.Error("dashboardRoles with discovery enabled (no sources, defaults to Ingress) unexpectedly grants httproutes access")
+	}
+	if !hasHTTPRouteRule(dashboardRoles(nil, withSources, true)) {
+		t.Error("dashboardRoles with sources=[Ingress,HTTPRoute] and Gateway API enabled has no httproutes get/list/watch rule")
 	}
 }
 

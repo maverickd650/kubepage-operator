@@ -149,6 +149,46 @@ offers a minimal built-in HTTP Basic gate; a real authenticating reverse
 proxy in front of `spec.ingress`/`spec.gateway` is the better answer for
 anything more than a homelab.
 
+### Discovering services automatically
+
+Instead of (or alongside) explicit `ServiceCard` objects, a `Dashboard` can opt
+into homepage-style annotation discovery: set `spec.discovery.enabled: Enabled`
+and the dashboard process scans its own namespace for annotated `Ingress`/
+`HTTPRoute` objects and renders one card per match, with no `ServiceCard`
+required.
+
+- `spec.discovery.sources` selects which resource kinds are scanned: `Ingress`,
+  `HTTPRoute`, or both. Defaults to `[Ingress]` (unset behaves exactly like
+  `[Ingress]`). `HTTPRoute` requires Gateway API CRDs on the cluster — same
+  as `spec.gateway` above, a `Dashboard` requesting it without them gets a
+  clear `Available=False` condition rather than the dashboard pod crashing or
+  silently dropping the source.
+- `spec.discovery.annotationPrefix` is the annotation key prefix a resource
+  must carry to be discovered (defaults to `kubepage.io/`), e.g.
+  `kubepage.io/enabled: "true"`, `kubepage.io/name`, `kubepage.io/group`,
+  `kubepage.io/icon`, `kubepage.io/description`, `kubepage.io/href`,
+  `kubepage.io/ping`.
+- `spec.discovery.homepageCompat: Enabled` additionally honors homepage's own
+  `gethomepage.dev/*` annotations (https://gethomepage.dev/configs/kubernetes/)
+  on any resource that doesn't carry the native prefix's own enable
+  annotation, so a cluster migrating from homepage doesn't need to relabel
+  everything first.
+
+When no `href` annotation is set, the card links to the resource's own first
+hostname (`Ingress` rule host, or `HTTPRoute` hostname) — `https://` if an
+`Ingress` has a matching TLS entry, `https://` unconditionally for
+`HTTPRoute` (TLS termination there is the attaching `Gateway`'s concern, not
+the route's).
+
+Discovery annotations are scoped to what's safe on a resource anyone with
+read access to it can also read: **no secrets and no widget config** — only
+`href`/`icon`/`description`/`group`/`ping`. For a card with a polled widget
+(API key, metrics, ...), use an explicit `ServiceCard` instead. Note there is
+currently no de-duplication between an explicit `ServiceCard` and a
+discovered `Ingress`/`HTTPRoute` that would render under the same
+group/name — both show up as separate cards, so avoid annotating a resource
+for discovery if you already have a `ServiceCard` for the same service.
+
 ### Hardening opt-ins
 
 Several `Dashboard` spec fields harden the default (single-admin homelab)
