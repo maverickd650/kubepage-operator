@@ -125,7 +125,13 @@ templ Index(data indexData) {
 					background: var(--panel); color: var(--text); border: 1px solid var(--border);
 					border-radius: 0.4rem; padding: 0.4rem 0.9rem; font-size: 0.9rem; cursor: pointer;
 				}
-				.tab-btn.active { border-color: var(--accent); color: var(--accent); }
+				/* Filled rather than accent-colored text: a neutral accent (e.g. the
+				   default slate palette) sits close to --text in luminance, so an
+				   outline-only active state can read dimmer than the inactive tabs
+				   around it — hue alone isn't a reliable emphasis cue. --bg always
+				   contrasts with a mid-tone accent (near-black on dark, near-white
+				   on light), and the added font-weight gives a non-color cue too. */
+				.tab-btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }
 				.tab-panel.hidden { display: none; }
 				.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
 				/* Row groups scroll within their own box rather than widening the page
