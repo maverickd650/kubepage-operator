@@ -12,6 +12,7 @@ templ Index(data indexData) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="theme-color" content={ themeColorHex(data.Site.Theme, data.Ramp) }/>
 			<title>{ data.Site.Title }</title>
 			if data.Site.Description != "" {
 				<meta name="description" content={ data.Site.Description }/>
@@ -32,8 +33,8 @@ templ Index(data indexData) {
 				   shades: the 400 shades read fine as text on the dark theme's
 				   near-black background but fail contrast badly on light's
 				   near-white one, so light gets darker 600/700 shades instead. */
-				[data-theme="dark"] { --bg: var(--c900); --panel: var(--c800); --text: var(--c50); --muted: var(--c400); --border: var(--c700); --good: #4ade80; --warn: #fbbf24; --danger: #f87171; }
-				[data-theme="light"] { --bg: var(--c50); --panel: #ffffff; --text: var(--c900); --muted: var(--c500); --border: var(--c200); --good: #16a34a; --warn: #b45309; --danger: #dc2626; }
+				[data-theme="dark"] { color-scheme: dark; --bg: var(--c900); --panel: var(--c800); --text: var(--c50); --muted: var(--c400); --border: var(--c700); --good: #4ade80; --warn: #fbbf24; --danger: #f87171; }
+				[data-theme="light"] { color-scheme: light; --bg: var(--c50); --panel: #ffffff; --text: var(--c900); --muted: var(--c500); --border: var(--c200); --good: #16a34a; --warn: #b45309; --danger: #dc2626; }
 				body {
 					margin: 0; padding: 2rem; background: var(--bg); color: var(--text);
 					font-family: Manrope, system-ui, sans-serif;

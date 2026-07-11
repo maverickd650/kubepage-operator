@@ -126,6 +126,19 @@ func rootVarsCSS(accentHex string, ramp Ramp, cardBlur string, background *Backg
 	return b.String()
 }
 
+// themeColorHex picks the color for the <meta name="theme-color"> tag,
+// which browsers/OSes use to tint native UI chrome (mobile address bar,
+// task switcher, etc.) around the page. It mirrors the page's own
+// [data-theme="dark"/"light"] --bg custom property (see index.templ) so the
+// native chrome matches the page background rather than a fixed color that
+// looks wrong on the theme currently in effect.
+func themeColorHex(theme string, ramp Ramp) string {
+	if theme == themeLight {
+		return ramp.C50
+	}
+	return ramp.C900
+}
+
 // cssStringEscape escapes a value for safe embedding both inside a
 // double-quoted CSS string literal (e.g. url("...")) and inside the raw,
 // unescaped <style> element backgroundStyle emits via @templ.Raw.
