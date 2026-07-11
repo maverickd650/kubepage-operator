@@ -684,11 +684,10 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	}
 }
 
-// TestGroupBookmarksMultiFormGroupDefaultingAndOverride verifies a single
-// Bookmark object using the multi-bookmark form (spec.bookmarks) flattens
-// into per-entry cards the same way the single-bookmark form does: an entry
-// without its own group inherits the object's spec.group, and an entry that
-// sets its own group renders in that group instead.
+// TestGroupBookmarksMultiFormGroupDefaultingAndOverride verifies a Bookmark
+// object with multiple entries (spec.bookmarks) flattens into per-entry
+// cards: an entry without its own group inherits the object's spec.group,
+// and an entry that sets its own group renders in that group instead.
 func TestGroupBookmarksMultiFormGroupDefaultingAndOverride(t *testing.T) {
 	abbr := "WK"
 	items := []pagev1alpha1.Bookmark{

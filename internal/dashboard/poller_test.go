@@ -157,8 +157,8 @@ func TestPollerPollOnce(t *testing.T) {
 	}
 }
 
-// TestPollerMultiCardFormProducesPerEntryCards exercises the multi-card form
-// (ServiceCardSpec.Services): one ServiceCard object with three entries — one
+// TestPollerMultiCardFormProducesPerEntryCards exercises a multi-entry
+// ServiceCard: one ServiceCard object with three entries — one
 // with a widget and its own group, one with a widget that falls back to
 // spec.group, and one monitor-only entry with no widget — must produce one
 // Card per entry (per widget, for the widget entries), each keyed by
@@ -248,9 +248,8 @@ func TestPollerMultiCardFormProducesPerEntryCards(t *testing.T) {
 	}
 
 	// A second poll cycle after removing the "Stash" entry must prune its
-	// card from Store, mirroring how a deleted single-card ServiceCard's
-	// card is pruned — Store.Prune has no special casing for the multi-card
-	// form.
+	// card from Store, the same way a deleted ServiceCard's cards are
+	// pruned — Store.Prune has no per-entry special casing.
 	entry.Spec.Services = []pagev1alpha1.ServiceEntry{entry.Spec.Services[0], entry.Spec.Services[2]}
 	if err := cl.Update(t.Context(), entry); err != nil {
 		t.Fatalf("updating ServiceCard: %v", err)
