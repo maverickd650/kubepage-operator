@@ -93,9 +93,9 @@ committed, like the CRD YAML).
 |------|-----------|---------|
 | `Dashboard` | `pdash` | Owns the dashboard Deployment, Service, optional Ingress/HTTPRoute, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. |
 | `DashboardStyle` | `pstyle` | Site-wide look (title, theme, color, background, header style, search box) and optional tab `layout`. Exactly one per Dashboard, enforced by naming the object after the Dashboard it styles (`metadata.name == spec.dashboardRef.name`). |
-| `ServiceCard` | `pcard` | One or many service cards (`spec.name` for a single card, or `spec.services` for a group's or a whole dashboard's worth in one object), each optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
-| `Bookmark` | `pbmk` | One or many static bookmark links (`spec.name`/`spec.href` for a single bookmark, or `spec.bookmarks` for a group's or a whole dashboard's worth in one object). |
-| `InfoWidget` | `piw` | One or many header-strip widgets (`spec.type` for a single widget, or `spec.widgets` for a whole dashboard's header strip in one object): `datetime`, `greeting`, or `openmeteo`, among others. |
+| `ServiceCard` | `pcard` | One or many service cards (`spec.services`, a group's or a whole dashboard's worth in one object), each optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
+| `Bookmark` | `pbmk` | One or many static bookmark links (`spec.bookmarks`, a group's or a whole dashboard's worth in one object). |
+| `InfoWidget` | `piw` | One or many header-strip widgets (`spec.widgets`, a whole dashboard's header strip in one object): `datetime`, `greeting`, or `openmeteo`, among others. |
 
 Every config CRD (`DashboardStyle`/`ServiceCard`/`Bookmark`/`InfoWidget`)
 carries `spec.dashboardRef.name` pointing at the `Dashboard` it belongs to, and

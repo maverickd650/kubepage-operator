@@ -9,9 +9,7 @@ spec:
   dashboardRef:
     name: dashboard-sample
   # group is the default group for any entry below that doesn't set its own
-  # (Grafana overrides it to "Observability"). The multi-card form (services)
-  # is the documented default — see ServiceCardSpec's doc comment — even for
-  # a ServiceCard defining just one card.
+  # (Grafana overrides it to "Observability").
   group: Media
   services:
     - name: Plex
