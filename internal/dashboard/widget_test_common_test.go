@@ -100,6 +100,17 @@ const (
 	// testAdminUser is the Basic-auth username shared by adguard/grafana
 	// Poll fixtures.
 	testAdminUser = "admin"
+
+	// Shared literals across glances/proxmox usage-percentage fixtures.
+	testPct50   = "50%"
+	testCount11 = "1 / 1"
+	testCount00 = "0 / 0"
+
+	// testOpnsenseAPIKey is the OPNsense API key used as the Basic-auth
+	// username across opnsense Poll fixtures (opnsense.go's own
+	// opnsenseSampleWANUpload constant covers the WAN-upload byte-count
+	// literal shared with formatBytesHumanized's table test).
+	testOpnsenseAPIKey = "apikey"
 )
 
 // assertSampleDeterministic calls sampler.Sample(WidgetConfig{}) twice and

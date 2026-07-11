@@ -58,6 +58,12 @@ the dashboard pod's memory for the duration of the poll. See
 | `argocd` | Argo CD application count by sync/health status | `Secrets["token"]` (Bearer token) |
 | `gitea` | Gitea version, best-effort total repository count | `Secrets["token"]` (`Authorization: token <token>`) |
 | `tautulli` | Tautulli current Plex stream count and bandwidth | `Secrets["apiKey"]` sent as the `apikey` query parameter, not a header |
+| `proxmox` | Proxmox VE cluster VM/LXC counts and aggregate CPU/memory usage | `Secrets["username"]` (`user!tokenid`) + `Secrets["password"]` (API token secret), sent as `Authorization: PVEAPIToken=user=secret`; `config: {node, insecureTLS}` |
+| `nextcloud` | Nextcloud CPU load, memory usage, free space, and active users | `Secrets["key"]` (`NC-Token` header, preferred) or `Secrets["username"]`+`Secrets["password"]` (Basic auth) |
+| `opnsense` | OPNsense firewall CPU/memory usage and WAN interface traffic | `Secrets["username"]`+`Secrets["password"]` (API key/secret as Basic auth); `config: {wan}` (interface name, defaults to `wan`) |
+| `netdata` | Netdata active alarm counts (warnings/criticals) | none (open API) |
+| `speedtest` | Speedtest Tracker latest download/upload/ping result | `Secrets["apiKey"]` (Bearer token, v2 API only); `config: {version}` (1 or 2, defaults to 1) |
+| `gatus` | Gatus endpoint up/down counts from the latest check | none (open API) |
 | `openweathermap` | Current weather via OpenWeatherMap (header only) | `Secrets["apiKey"]` required, `config: {latitude, longitude, units, label}` |
 | `kubemetrics` | Cluster-wide CPU/memory usage (header only) | `config: {cpuLabel, memoryLabel}`; reads the Kubernetes API, not HTTP |
 | `glances` | Host CPU/memory usage via Glances (header only) | `config: {url, apiVersion}` |

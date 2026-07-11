@@ -109,7 +109,7 @@ type ServiceWidget struct {
 	// registered in internal/dashboard (each widget's init() Register call);
 	// internal/controller/widget_type_policy_test.go asserts this enum stays
 	// in sync with the registry.
-	// +kubebuilder:validation:Enum=plex;stash;paperlessngx;grafana;prometheus;prometheusmetric;unifi;truenas;cloudflared;linkwarden;homeassistant;mealie;customapi;iframe;sonarr;radarr;jellyfin;jellyseerr;immich;adguard;pihole;uptime-kuma;portainer;argocd;gitea;tautulli
+	// +kubebuilder:validation:Enum=plex;stash;paperlessngx;grafana;prometheus;prometheusmetric;unifi;truenas;cloudflared;linkwarden;homeassistant;mealie;customapi;iframe;sonarr;radarr;jellyfin;jellyseerr;immich;adguard;pihole;uptime-kuma;portainer;argocd;gitea;tautulli;proxmox;nextcloud;opnsense;netdata;speedtest;gatus
 	// +required
 	Type string `json:"type"`
 
@@ -155,6 +155,9 @@ type ServiceWidget struct {
 	//   - unifi: site (defaults to "default"), insecureTLS (bool)
 	//   - iframe: height (a CSS length, e.g. "300px"; defaults to "300px")
 	//   - glances: apiVersion ("3" or "4"; defaults to "4")
+	//   - proxmox: node (restricts to one cluster node), insecureTLS (bool)
+	//   - opnsense: wan (interface name; defaults to "wan")
+	//   - speedtest: version (1 or 2; defaults to 1)
 	// Every other registered type takes no Config options.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional

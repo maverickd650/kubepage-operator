@@ -65,6 +65,9 @@ var ConfigSchemas = map[string]ConfigSchema{
 	"argocd":        {},
 	"gitea":         {},
 	"tautulli":      {},
+	"netdata":       {},
+	"gatus":         {},
+	"nextcloud":     {},
 
 	// Service widget types with known Config keys (internal/dashboard/*.go).
 	"cloudflared":      {Required: []string{keyAccountID, keyTunnelID}},
@@ -72,6 +75,9 @@ var ConfigSchemas = map[string]ConfigSchema{
 	"prometheusmetric": {Required: []string{keyQuery}, Optional: []string{keyLabel}},
 	"unifi":            {Optional: []string{"site", "insecureTLS"}},
 	"iframe":           {Optional: []string{"height"}},
+	"proxmox":          {Optional: []string{"node", "insecureTLS"}},
+	"opnsense":         {Optional: []string{"wan"}},
+	"speedtest":        {Optional: []string{"version"}},
 
 	// InfoWidget static types (rendered by internal/dashboard/server.go,
 	// never polled).

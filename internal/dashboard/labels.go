@@ -56,6 +56,12 @@ const (
 	// Basic auth uses alongside secretPassword.
 	secretUsername = "username"
 
+	// apiStatusRunning is the upstream "running" status/state literal
+	// shared by portainer.go's container state and proxmox.go's VM/LXC
+	// status, pulled out so goconst doesn't flag the repeated literal
+	// across those files.
+	apiStatusRunning = "running"
+
 	// unitsImperial is the "units" config value openmeteo.go and
 	// openweathermap.go both switch on for Fahrenheit output (their default
 	// is metric/Celsius).

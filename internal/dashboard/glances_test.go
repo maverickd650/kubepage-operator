@@ -20,7 +20,7 @@ func TestGlancesWidgetPoll(t *testing.T) {
 			response:   `{"cpu":49.6,"mem":70.1}`,
 			statusCode: http.StatusOK,
 			want: []Field{
-				{Label: labelCPU, Value: "50%", Percent: &fifty},
+				{Label: labelCPU, Value: testPct50, Percent: &fifty},
 				{Label: labelMemory, Value: "70%", Percent: &seventy},
 			},
 		},
@@ -29,7 +29,7 @@ func TestGlancesWidgetPoll(t *testing.T) {
 			response:   `{"cpu":49.6,"mem":70.1}`,
 			statusCode: http.StatusOK,
 			want: []Field{
-				{Label: labelCPU, Value: "50%", Percent: &fifty},
+				{Label: labelCPU, Value: testPct50, Percent: &fifty},
 				{Label: labelMemory, Value: "70%", Percent: &seventy},
 			},
 		},

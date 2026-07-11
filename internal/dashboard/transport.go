@@ -72,10 +72,14 @@ func guardedDialControl(_, address string, _ syscall.RawConn) error {
 
 // newGuardedTransport returns an http.Transport cloned from base (or
 // http.DefaultTransport if base is nil) with guardedDialControl wired in.
-// Used both for the poller's shared client and unifi.go's per-target
-// insecure-TLS client, so every outbound widget/monitor request goes through
-// the same link-local guard regardless of which transport handles it.
-func newGuardedTransport(base *http.Transport) *http.Transport {
+// Used both for the poller's shared client and unifi.go/proxmox.go's
+// per-target insecure-TLS clients, so every outbound widget/monitor request
+// goes through the same link-local guard regardless of which transport
+// handles it. Every current caller passes nil, but base stays a real
+// parameter (rather than being dropped) since it's the general-purpose
+// entry point newGuardedTransportWithCA and any future per-target transport
+// builder would clone from.
+func newGuardedTransport(base *http.Transport) *http.Transport { //nolint:unparam // base is a deliberate extension point; see doc comment
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // http.DefaultTransport is always *http.Transport
 	} else {
