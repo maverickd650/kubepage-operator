@@ -3,6 +3,7 @@ package dashboard
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -253,6 +254,47 @@ func TestInvalidateAuthCacheForcesRefetch(t *testing.T) {
 	}
 	if _, ok := freshEntries["alice"]; ok {
 		t.Errorf("InvalidateAuthCache: still serving the stale alice entry after invalidation")
+	}
+}
+
+// TestIndexOmitsServiceWorkerRegistrationWhenAuthEnabled guards
+// indexData.AuthEnabled: Cache Storage isn't itself gated by HTTP Basic
+// Auth, so the offline-shell service worker (which would cache this very
+// authenticated response) must never be registered on a password-protected
+// Dashboard — see index.templ's registration script and its doc comment.
+func TestIndexOmitsServiceWorkerRegistrationWhenAuthEnabled(t *testing.T) {
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.SetBasicAuth("alice", "hunter2")
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "serviceWorker") {
+		t.Error("index body registers the service worker even though basic auth is enabled")
+	}
+}
+
+// TestIndexRegistersServiceWorkerWhenAuthDisabled is the counterpart to
+// TestIndexOmitsServiceWorkerRegistrationWhenAuthEnabled: an unprotected
+// Dashboard should still get the offline shell (see also
+// TestIndexRegistersServiceWorker in server_test.go, which checks the same
+// thing for the default no-auth test server).
+func TestIndexRegistersServiceWorkerWhenAuthDisabled(t *testing.T) {
+	srv := newAuthTestServer(t, authTestDashboard(""), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `navigator.serviceWorker.register("/sw.js")`) {
+		t.Error("index body missing service worker registration when basic auth is disabled")
 	}
 }
 

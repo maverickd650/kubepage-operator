@@ -1,10 +1,23 @@
 // Minimal offline app shell: caches only genuinely static, content-stable
 // responses (fonts, vendored JS, the SVG icon, manifest.json) plus the last
 // successfully fetched page shell ("/"), so a repeat visit or a flaky
-// connection still gets an instant/offline-capable shell. Everything that
-// carries live poll data (/fragment, /header, /events) is left entirely to
-// the network — this worker never intercepts those requests — so the
-// dashboard never shows stale widget data while "offline-capable".
+// connection still gets an instant/offline-capable shell. Note the page
+// shell itself isn't purely static — GET / server-renders the initial card
+// grid and header strip straight into the response (see handleIndex's
+// Fragment field) — so a genuinely offline visit does show whatever widget
+// data was live at the last successful fetch, not a blank shell, until the
+// browser is back online (interval polling/SSE then refreshes it in place,
+// same as any other reconnect). That's expected/inherent to any offline
+// cache of a page carrying live data, not a bug: what this worker actually
+// guarantees is narrower and absolute — /fragment, /header, and /events
+// (every route a *loaded* page repolls after that first paint) are never
+// intercepted or served from a cache, only ever the network, so a page that
+// is online never shows anything but this poll cycle's real data. This
+// worker is also never registered at all on a password-protected Dashboard
+// (see index.templ's registration script) — Cache Storage isn't itself
+// gated by HTTP Basic Auth, so caching that authenticated response would
+// let anyone with local access to the browser profile read its last-cached
+// contents offline with no credential check.
 //
 // The page shell embeds a per-request CSP nonce (see server.go's
 // securityHeaders/generateNonce) in both the Content-Security-Policy

@@ -214,13 +214,22 @@ func visualChromeExecPath() (string, bool) {
 }
 
 // captureScreenshot navigates to baseURL at the given viewport and returns a
-// full-page PNG screenshot, after waiting for the card grid to render and
-// for web fonts to finish loading (so the very first frame's fallback-font
-// layout never sneaks into the capture).
+// full-page PNG screenshot, after waiting for the card grid to render, for
+// web fonts to finish loading (so the very first frame's fallback-font
+// layout never sneaks into the capture), and for consecutive captures to
+// stabilize (see the loop below).
 func captureScreenshot(t *testing.T, baseURL string, width, height int64) []byte {
 	t.Helper()
 
 	allocOpts := chromedp.DefaultExecAllocatorOptions[:]
+	// GitHub Actions runners (and many container-based CI/dev environments)
+	// don't have unprivileged user namespaces available, which Chrome's
+	// zygote/sandbox setup requires — without this flag Chrome refuses to
+	// start at all ("No usable sandbox!"). Safe here specifically because
+	// this test only ever navigates to a same-process httptest server
+	// serving this repo's own fixture data (startVisualServer) — never
+	// third-party or user-supplied content.
+	allocOpts = append(allocOpts, chromedp.NoSandbox)
 	if execPath, ok := visualChromeExecPath(); ok {
 		allocOpts = append(allocOpts, chromedp.ExecPath(execPath))
 	}
@@ -234,18 +243,38 @@ func captureScreenshot(t *testing.T, baseURL string, width, height int64) []byte
 	defer cancelTimeout()
 
 	var fontsReady bool
-	var buf []byte
-	err := chromedp.Run(ctx,
+	if err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(baseURL),
 		chromedp.WaitVisible(`#cards`, chromedp.ByID),
 		chromedp.Evaluate(`document.fonts.ready.then(() => true)`, &fontsReady,
 			func(p *runtime.EvaluateParams) *runtime.EvaluateParams { return p.WithAwaitPromise(true) }),
-		chromedp.FullScreenshot(&buf, 100),
-	)
-	if err != nil {
-		t.Fatalf("capturing screenshot: %v", err)
+	); err != nil {
+		t.Fatalf("loading page: %v", err)
 	}
+
+	// FullScreenshot resizes the viewport to the full document height and
+	// captures after that resize; a single capture right after
+	// fonts.ready intermittently races that resize's own reflow/repaint —
+	// below-the-fold content (groups/cards past the original viewport)
+	// captures as blank rectangles, observed directly by diffing
+	// consecutive local runs, not a theoretical concern. Rather than a
+	// blind fixed sleep (which only shrinks the failure window, and by an
+	// environment-dependent amount), take consecutive captures until two
+	// in a row come back byte-identical — that's the actual signal
+	// rendering has settled, on however many frames that takes locally.
+	const stableScreenshotAttempts = 10
+	var buf, prev []byte
+	for range stableScreenshotAttempts {
+		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 100)); err != nil {
+			t.Fatalf("capturing screenshot: %v", err)
+		}
+		if prev != nil && bytes.Equal(buf, prev) {
+			return buf
+		}
+		prev = buf
+	}
+	t.Logf("screenshot never stabilized across %d attempts; using the last capture", stableScreenshotAttempts)
 	return buf
 }
 

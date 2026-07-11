@@ -122,6 +122,18 @@ type indexData struct {
 	// SampleData mirrors Server.SampleData, rendered as a visible banner —
 	// see that field's doc comment.
 	SampleData bool
+
+	// AuthEnabled mirrors basicAuthMiddleware's own "is spec.auth.
+	// basicAuthSecretRef set" check. index.templ uses it to skip
+	// registering the offline-shell service worker (assets/sw.js) entirely
+	// on a password-protected Dashboard: the worker's Cache Storage entries
+	// aren't themselves gated by HTTP Basic Auth, so caching an
+	// authenticated page shell would let anyone with local access to the
+	// browser profile read its last-cached contents offline, with no
+	// credential check at all — see sw.js's own doc comment for the
+	// (unrelated, and fine) reasoning about why the *content* it does cache
+	// stays internally consistent.
+	AuthEnabled bool
 }
 
 // fragmentData is the polled fragment's template data: the live widget
@@ -375,7 +387,16 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 // handleAsset serves an embedded static asset by its bare filename. {file} is
 // a single path segment (the mux disallows slashes), so it can't traverse out
 // of the assets directory. Assets are content-stable, so they're cached hard.
+// sw.js is excluded even though the go:embed glob picks it up alongside
+// every other asset: it's only ever meant to be reachable at GET /sw.js (see
+// handleServiceWorker's doc comment on why scope requires that exact path),
+// with its own no-cache header — serving it here too, immutably cached,
+// would be a confusing, pointless second route to the same script.
 func handleAsset(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("file") == "sw.js" {
+		http.NotFound(w, r)
+		return
+	}
 	b, err := assetFS.ReadFile("assets/" + r.PathValue("file"))
 	if err != nil {
 		http.NotFound(w, r)
@@ -426,12 +447,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Already computed once by basicAuthMiddleware for this same request
+	// (and cheap to compute again — see authCache) — see indexData.
+	// AuthEnabled's doc comment for why index.templ needs it.
+	_, authEnabled, err := loadBasicAuth(r.Context(), s.Reader, s.SecretReader, s.Namespace, s.DashboardName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := indexData{
 		Site: site, AccentHex: AccentHex(site.Color), Ramp: PaletteRamp(site.Color), RefreshSeconds: refresh,
 		Fragment: s.buildFragmentData(site),
 		Version:  s.Version, Commit: s.Commit,
-		SampleData: s.SampleData,
+		SampleData:  s.SampleData,
+		AuthEnabled: authEnabled,
 	}
 	if err := Index(data).Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

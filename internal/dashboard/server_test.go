@@ -698,6 +698,22 @@ func TestServerServiceWorkerRoute(t *testing.T) {
 	}
 }
 
+// TestServerAssetRejectsServiceWorkerFilename guards against sw.js being
+// double-served under /assets/ (immutably cached, via handleAsset's
+// go:embed glob picking it up like any other .js asset) alongside its real
+// GET /sw.js route (handleServiceWorker, no-cache) — see handleAsset's doc
+// comment for why only the latter is a valid way to reach this script.
+func TestServerAssetRejectsServiceWorkerFilename(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/assets/sw.js", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
 // TestSecurityHeadersAllowsSelfWorkerSrc guards the service worker
 // registration (index.templ's navigator.serviceWorker.register("/sw.js"))
 // against a future CSP tightening silently blocking it.
