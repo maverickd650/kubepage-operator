@@ -1213,9 +1213,10 @@ spec:
                 description: |-
                   discovery opts this Dashboard into synthesizing service cards from
                   annotated Ingresses in its own namespace, in addition to explicit
-                  ServiceCard cards (an explicit ServiceCard wins on a Group+Name
-                  collision). Off by default. See DiscoverySpec for the annotation
-                  contract.
+                  ServiceCard cards. There is no de-duplication: an explicit ServiceCard
+                  and a discovered Ingress/HTTPRoute that would render under the same
+                  Group+Name both show up as separate cards. Off by default. See
+                  DiscoverySpec for the annotation contract.
                 properties:
                   annotationPrefix:
                     description: |-

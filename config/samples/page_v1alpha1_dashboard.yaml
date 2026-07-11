@@ -10,11 +10,11 @@ metadata:
 # Expose the dashboard outside the cluster via one of:
 # spec:
 #   ingress:
-#     enabled: true
+#     enabled: Enabled
 #     host: dashboard.example.com
 #     ingressClassName: nginx
 #   gateway:
-#     enabled: true
+#     enabled: Enabled
 #     hostnames: [dashboard.example.com]
 #     parentRef:
 #       name: my-gateway
