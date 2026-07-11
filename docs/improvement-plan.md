@@ -1,13 +1,13 @@
-# Repository improvement plan (2026-07-04)
+# Repository improvement plan (2026-07-11)
 
 A prioritized review of the repository's current state, written so each item
 can be picked up independently by a follow-on agent. The codebase itself is
 in strong shape — build and `go vet` are clean, coverage excluding generated
 code is ~97% (`internal/dashboard`) / ~90% (`internal/controller`), and prior
 review cycles (security hardening #64, CRD architecture #70, testing
-infrastructure #75, local preview #81) have all been implemented. What
-remains is mostly **automation gaps, documentation drift, and the leftover
-tail of issue #73** — not code-quality problems.
+infrastructure #75, local preview #81, doc drift, and `--sample-data`) have
+all been implemented. What remains is the leftover tail of issue #73 plus one
+optional feature decision — not code-quality problems.
 
 ## Ground rules for whoever picks an item up
 
@@ -26,51 +26,6 @@ tail of issue #73** — not code-quality problems.
   (e.g. Opus). This is guidance, not a gate.
 
 ---
-
-## P2 — Fix documentation drift (three small, independent fixes)
-
-**Type: `docs:` · Effort: small · Agent tier: standard**
-
-These are safe, high-value starter tasks. They can be one PR or three.
-
-### P2a. Remove broken `IMPLEMENTATION_PLAN.md` references
-
-`README.md:24` and `AGENTS.md:3` both link to `IMPLEMENTATION_PLAN.md`,
-which does not exist in the repository (it was deliberately kept
-local-only). A markdown link to a nonexistent file renders broken on
-GitHub, and AGENTS.md tells agents to "read it first", which is impossible.
-Rewrite both passages: README should point at `CLAUDE.md` (architecture)
-and `SECURITY.md` (secret-handling rationale) instead; AGENTS.md should
-point at `CLAUDE.md`.
-
-### P2b. Add the supported-widgets table README already claims to have
-
-`.claude/skills/add-widget/SKILL.md` step 6 says "Update the
-supported-services table in `README.md`" — **no such table exists**. The
-README prose (line 9–11) names only 11 services, but the widget registry
-has ~19 registered service widget types (`internal/dashboard/*.go`
-`Register(...)` calls: cloudflared, customapi, glances, grafana,
-homeassistant, iframe, kubemetrics, linkwarden, longhorn, mealie,
-openmeteo, openweathermap, paperlessngx, plex, prometheus,
-prometheusmetric, stash, truenas, unifi) plus the two static header types
-(`datetime`, `greeting`). Enumerate the authoritative list from
-`internal/controller/widget_type_policy_test.go`
-(`serviceEntryWidgetTypes` / `infoWidgetPollableTypes`) — that test
-guarantees it matches the registry — and add a table to README (type,
-what it shows, notable config fields e.g. `insecureTLS`, `caCert`).
-Keep the intro prose but make the table the canonical list. This also
-un-breaks the add-widget skill's step 6 for future widget additions.
-
-### P2c. Document the tested vs. functional Kubernetes floor
-
-`README.md:48,155` and `CLAUDE.md:116` say K8s 1.29+ (CEL) / 1.30+
-(ValidatingAdmissionPolicy). Issue #73 (item 2.1, see the 2026-07-04
-progress comment) moved the *tested* floor to **1.33** because Kind
-v0.32.0 ships no older node image — the k8s-compat matrix
-(`.github/workflows/k8s-compat.yml`) tests 1.33, nothing older. State
-both facts where the floor is mentioned: "requires 1.29+/1.30+ by API
-surface; CI-tested floor is 1.33; older versions are expected to work but
-are not exercised."
 
 ## P3 — Finish issue #73 item 3.1: coverage for `runManager`/`runDashboard`
 
@@ -117,19 +72,6 @@ prescribes. Strengthen genuinely weak assertions in a follow-up `test:` PR
 if the audit finds any. Do **not** wire mutation testing into CI — the
 issue explicitly rules that out as too slow.
 
-## P6 — Preview mode phase-4 stretch: `--sample-data`
-
-**Type: `docs:` then `feat(preview):` · Effort: large · Agent tier: advanced**
-
-`docs/design/local-preview.md` leaves phase 4 ("`--sample-data` placeholder
-`[]Field` values per widget type, so a preview shows populated cards
-without reachable upstreams") explicitly "not started" and says it "needs a
-separate design" — because it needs a per-widget notion of representative
-fields. Follow the repo's established pattern: write the design doc first
-(`docs:` PR, like #76 preceded #81), get it merged, then implement. Do not
-start the implementation without the design PR. Lowest priority — pure
-developer-experience polish.
-
 ## P7 — Optional feature decision: `volumes`/`volumeMounts` on `DashboardSpec`
 
 **Type: `feat:` (needs owner sign-off first) · Effort: large · Agent tier: advanced**
@@ -151,8 +93,10 @@ Checked and found healthy, so future reviewers don't re-litigate:
 generated-file drift (CI-guarded), lint/logcheck setup, secret-handling
 design (reviewed and hardened in #63/#64), CRD validation strategy (CEL,
 reviewed in #69/#70), e2e/envtest/fuzz/golden/property test infrastructure
-(#75), htmx dashboard performance (#68), and the release pipeline
-(release-please + signed artifacts + SBOM). The `helm-chart-refresh`
-backup/restore logic in `.mise/config.toml` looks fragile but is
-deliberate, documented in-place, and guarded by helm-unittest assertions —
-leave it alone.
+(#75), htmx dashboard performance (#68), the release pipeline
+(release-please + signed artifacts + SBOM), documentation drift (fixed:
+`IMPLEMENTATION_PLAN.md` references, supported-widgets table, K8s floor
+wording), and preview mode's `--sample-data` phase (shipped). The
+`helm-chart-refresh` backup/restore logic in `.mise/config.toml` looks
+fragile but is deliberate, documented in-place, and guarded by
+helm-unittest assertions — leave it alone.
