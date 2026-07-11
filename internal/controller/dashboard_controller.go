@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -98,7 +99,32 @@ const (
 	// would report True the instant the Deployment object exists/matches
 	// spec, even though no dashboard pod is actually serving traffic.
 	reasonDeploymentNotReady = "DeploymentNotReady"
+	// reasonDiscoveryHTTPRouteUnavailable marks Available=False when
+	// spec.discovery.sources includes "HTTPRoute" but the cluster has no
+	// Gateway API CRDs installed — mirrors reasonHTTPRouteFailed/
+	// errGatewayAPINotInstalled's treatment of spec.gateway.
+	reasonDiscoveryHTTPRouteUnavailable = "DiscoveryHTTPRouteUnavailable"
 )
+
+// errDiscoveryHTTPRouteUnavailable is returned when spec.discovery.sources
+// includes "HTTPRoute" but the cluster has no Gateway API CRDs installed —
+// the discovery-sources counterpart to errGatewayAPINotInstalled
+// (dashboard_network.go), surfaced the same way: a clear Available=False
+// condition instead of granting RBAC/watching a Kind the apiserver doesn't
+// recognize.
+var errDiscoveryHTTPRouteUnavailable = errors.New("spec.discovery.sources includes \"HTTPRoute\" but Gateway API CRDs are not installed in this cluster")
+
+// discoveryHTTPRouteAvailable reports false only when instance's discovery
+// is enabled, its sources include "HTTPRoute", and the cluster has no
+// Gateway API CRDs installed — every other combination is fine to proceed
+// with reconciling.
+func (r *DashboardReconciler) discoveryHTTPRouteAvailable(instance *pagev1alpha1.Dashboard) bool {
+	d := instance.Spec.Discovery
+	if d == nil || d.Enabled != pagev1alpha1.Enabled || !d.HasSource(pagev1alpha1.DiscoverySourceHTTPRoute) {
+		return true
+	}
+	return r.GatewayAPIEnabled
+}
 
 // deploymentNotReadyRequeueInterval is how soon Reconcile re-checks Deployment
 // readiness while it's not yet ready. Deployment status changes (pod
@@ -322,6 +348,16 @@ func (r *DashboardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "HTTPRoute", reasonHTTPRouteFailed, err)
+	}
+	// discovery.sources requesting "HTTPRoute" without Gateway API installed
+	// gets the same treatment as spec.gateway's errGatewayAPINotInstalled
+	// above: a clear Available=False condition, checked here (after the
+	// Deployment/Service/Ingress/HTTPRoute reconcile) so a dashboard pod
+	// still runs and degrades gracefully (the poller just skips the
+	// HTTPRoute source — see Poller.pollOnce) rather than the Dashboard
+	// never getting a pod at all.
+	if !r.discoveryHTTPRouteAvailable(instance) {
+		return r.failAvailable(ctx, instance, "Discovery", reasonDiscoveryHTTPRouteUnavailable, errDiscoveryHTTPRouteUnavailable)
 	}
 	if err := r.reconcileNetworkPolicy(ctx, instance); err != nil {
 		return r.failAvailable(ctx, instance, "NetworkPolicy", reasonNetworkPolicyFailed, err)

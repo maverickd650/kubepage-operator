@@ -112,7 +112,9 @@ var dashboardPodsRule = rbacv1.PolicyRule{
 
 // dashboardRoles builds the per-Dashboard Role's rules: always read access to
 // the config CRDs (dashboardConfigRule) and to Pods (dashboardPodsRule);
-// Ingresses (and, when gatewayAPIEnabled, HTTPRoutes) while discoveryEnabled;
+// Ingresses while discovery is enabled and discovery.Sources includes
+// "Ingress" (the default when Sources is unset); HTTPRoutes while discovery
+// is enabled, discovery.Sources includes "HTTPRoute", and gatewayAPIEnabled;
 // plus get access to exactly the Secrets referenced by the Dashboard's
 // widgets (secretNames, already sorted and de-duplicated). The Secret rule
 // is scoped with resourceNames and limited to get: the Poller only ever Gets
@@ -134,11 +136,14 @@ var dashboardPodsRule = rbacv1.PolicyRule{
 // Anyone who can create these CRDs in a namespace should therefore be
 // treated as trusted with every Secret in it, the same as anyone who can
 // create a Pod mounting arbitrary Secret volumes.
-func dashboardRoles(secretNames []string, discoveryEnabled, gatewayAPIEnabled bool) []rbacv1.PolicyRule {
+func dashboardRoles(secretNames []string, discovery *pagev1alpha1.DiscoverySpec, gatewayAPIEnabled bool) []rbacv1.PolicyRule {
 	rules := []rbacv1.PolicyRule{dashboardConfigRule, dashboardPodsRule}
+	discoveryEnabled := discovery != nil && discovery.Enabled == pagev1alpha1.Enabled
 	if discoveryEnabled {
-		rules = append(rules, dashboardIngressRule)
-		if gatewayAPIEnabled {
+		if discovery.HasSource(pagev1alpha1.DiscoverySourceIngress) {
+			rules = append(rules, dashboardIngressRule)
+		}
+		if discovery.HasSource(pagev1alpha1.DiscoverySourceHTTPRoute) && gatewayAPIEnabled {
 			rules = append(rules, dashboardHTTPRouteRule)
 		}
 	}
@@ -335,10 +340,9 @@ func (r *DashboardReconciler) reconcileRole(ctx context.Context, instance *pagev
 		secretNames = slices.Compact(secretNames)
 	}
 
-	discoveryEnabled := instance.Spec.Discovery != nil && instance.Spec.Discovery.Enabled == pagev1alpha1.Enabled
 	desired := &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
-		Rules:      dashboardRoles(secretNames, discoveryEnabled, r.GatewayAPIEnabled),
+		Rules:      dashboardRoles(secretNames, instance.Spec.Discovery, r.GatewayAPIEnabled),
 	}
 	if err := ctrl.SetControllerReference(instance, desired, r.Scheme); err != nil {
 		return err

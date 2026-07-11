@@ -67,6 +67,12 @@ type Poller struct {
 	// discovery.
 	GatewayAPIEnabled bool
 
+	// warnHTTPRouteUnavailableOnce logs the "Skipping HTTPRoute discovery"
+	// message at most once per process, instead of once per poll cycle, for
+	// a Dashboard whose spec.discovery.sources includes HTTPRoute on a
+	// cluster without Gateway API installed.
+	warnHTTPRouteUnavailableOnce sync.Once
+
 	// SampleData, when set, replaces every real upstream poll and monitor
 	// probe with a widget's Sampler.Sample output (or a canned "Up" status),
 	// so preview mode (internal/preview) can render fully populated cards
@@ -202,28 +208,41 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	}
 
 	if spec, ok := p.discoverySpec(ctx); ok {
-		services, err := discoverServices(ctx, p.Reader, p.Namespace, spec)
-		if err != nil {
-			pollerLog.Error(err, "discovering Ingresses")
-		} else {
-			for _, svc := range services {
-				markKeep(svc.Key)
-				run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+		if spec.HasSource(pagev1alpha1.DiscoverySourceIngress) {
+			services, err := discoverServices(ctx, p.Reader, p.Namespace, spec)
+			if err != nil {
+				pollerLog.Error(err, "discovering Ingresses")
+			} else {
+				for _, svc := range services {
+					markKeep(svc.Key)
+					run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+				}
 			}
 		}
 
 		// HTTPRoute discovery (gap-analysis §4.7 fast-follow to Ingress
-		// discovery) additionally requires the cluster to actually have
-		// Gateway API installed — attempting to List HTTPRoutes otherwise
-		// would fail on a nonexistent Kind, not just missing RBAC.
-		if p.GatewayAPIEnabled {
-			routes, err := discoverHTTPRoutes(ctx, p.Reader, p.Namespace, spec)
-			if err != nil {
-				pollerLog.Error(err, "discovering HTTPRoutes")
+		// discovery) is opt-in via spec.discovery.sources and additionally
+		// requires the cluster to actually have Gateway API installed —
+		// attempting to List HTTPRoutes otherwise would fail on a
+		// nonexistent Kind, not just missing RBAC. A Dashboard requesting it
+		// without Gateway API installed gets a clear Available=False
+		// condition from the controller (see reasonDiscoveryHTTPRouteUnavailable
+		// in internal/controller); here we just skip the source gracefully
+		// and log once per poll cycle rather than erroring repeatedly.
+		if spec.HasSource(pagev1alpha1.DiscoverySourceHTTPRoute) {
+			if !p.GatewayAPIEnabled {
+				p.warnHTTPRouteUnavailableOnce.Do(func() {
+					pollerLog.Info("Skipping HTTPRoute discovery: Gateway API CRDs are not installed in this cluster")
+				})
 			} else {
-				for _, svc := range routes {
-					markKeep(svc.Key)
-					run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+				routes, err := discoverHTTPRoutes(ctx, p.Reader, p.Namespace, spec)
+				if err != nil {
+					pollerLog.Error(err, "discovering HTTPRoutes")
+				} else {
+					for _, svc := range routes {
+						markKeep(svc.Key)
+						run(func() { p.pollDiscoveredService(ctx, svc, recordMonitorLabel) })
+					}
 				}
 			}
 		}

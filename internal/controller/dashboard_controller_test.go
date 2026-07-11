@@ -732,6 +732,86 @@ var _ = Describe("Dashboard controller", func() {
 		})
 	})
 
+	Context("Dashboard controller discovery HTTPRoute source test", func() {
+
+		const DashboardName = "test-instance-discovery-httproute"
+
+		ctx := context.Background()
+
+		var namespace *corev1.Namespace
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-instance-discovery-httproute-"},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			typeNamespacedName = types.NamespacedName{Name: DashboardName, Namespace: namespace.Name}
+		})
+
+		AfterEach(func() {
+			found := &pagev1alpha1.Dashboard{}
+			err := k8sClient.Get(ctx, typeNamespacedName, found)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, found)).To(Succeed())
+			}
+			_ = k8sClient.Delete(ctx, namespace)
+		})
+
+		It("reports a clear Available=False condition when discovery.sources includes HTTPRoute but Gateway API CRDs aren't installed", func() {
+			// envtest only installs this project's own CRDs (see suite_test.go),
+			// so GatewayAPIEnabled is always false here — mirrors the
+			// spec.gateway/errGatewayAPINotInstalled test above.
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec: pagev1alpha1.DashboardSpec{
+					Replicas:      ptr.To(int32(1)),
+					ContainerPort: 8080,
+					Discovery: &pagev1alpha1.DiscoverySpec{
+						Enabled: pagev1alpha1.Enabled,
+						Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			instanceReconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage, GatewayAPIEnabled: false}
+			// Mirrors the spec.gateway test above: the first Reconcile only
+			// creates the Deployment and returns early, so the Dashboard
+			// still gets a running pod even though discovery.sources can't
+			// be fully satisfied — see discoveryHTTPRouteAvailable's doc
+			// comment on why this check runs after the Deployment/Service/
+			// Ingress/HTTPRoute reconcile rather than short-circuiting it.
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			markDeploymentReady(ctx, typeNamespacedName, 1)
+			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).To(MatchError(errDiscoveryHTTPRouteUnavailable))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
+			var conditions []metav1.Condition
+			Expect(instance.Status.Conditions).To(ContainElement(
+				HaveField("Type", Equal(typeAvailableDashboard)), &conditions))
+			Expect(conditions[len(conditions)-1].Status).To(Equal(metav1.ConditionFalse))
+			Expect(conditions[len(conditions)-1].Reason).To(Equal(reasonDiscoveryHTTPRouteUnavailable))
+
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, deployment)).To(Succeed())
+		})
+
+		// The RBAC-granting and RBAC-omitting positive paths for
+		// discovery.sources are covered as pure unit tests against
+		// dashboardRoles directly (dashboard_rbac_test.go) rather than here:
+		// envtest only installs this project's own CRDs (see
+		// suite_test.go), and reconcileHTTPRoute (called on every Reconcile
+		// once GatewayAPIEnabled is true, regardless of spec.gateway) itself
+		// Gets the HTTPRoute Kind to decide whether to delete a stale one —
+		// which fails outright against envtest's scheme/apiserver when
+		// Gateway API CRDs aren't actually present, the same constraint
+		// that keeps the spec.gateway tests above from exercising a "Gateway
+		// API really is installed" envtest case either.
+	})
+
 	Context("Dashboard controller image drift test", func() {
 
 		const DashboardName = "test-instance-image-drift"
