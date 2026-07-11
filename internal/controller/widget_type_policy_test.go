@@ -107,30 +107,34 @@ var _ = Describe("Widget-type CRD schema validation", func() {
 	})
 })
 
-// serviceEntryWithWidgetType builds a minimally-valid ServiceCard with a
-// single widget of the given type; an empty widgetType means no widgets.
+// serviceEntryWithWidgetType builds a minimally-valid ServiceCard whose
+// single services entry has a single widget of the given type; an empty
+// widgetType means no widgets.
 func serviceEntryWithWidgetType(name, widgetType string) *pagev1alpha1.ServiceCard {
-	se := &pagev1alpha1.ServiceCard{
+	entry := pagev1alpha1.ServiceEntry{Name: name}
+	if widgetType != "" {
+		entry.Widgets = []pagev1alpha1.ServiceWidget{{Type: widgetType}}
+	}
+	return &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 			Group:        policyTestGroup,
-			Name:         name,
+			Services:     []pagev1alpha1.ServiceEntry{entry},
 		},
 	}
-	if widgetType != "" {
-		se.Spec.Widgets = []pagev1alpha1.ServiceWidget{{Type: widgetType}}
-	}
-	return se
 }
 
-// infoWidgetWithType builds a minimally-valid InfoWidget of the given type.
+// infoWidgetWithType builds a minimally-valid InfoWidget whose single entry
+// is of the given type.
 func infoWidgetWithType(name, widgetType string) *pagev1alpha1.InfoWidget {
 	return &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
-			Type:         widgetType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: widgetType},
+			},
 		},
 	}
 }

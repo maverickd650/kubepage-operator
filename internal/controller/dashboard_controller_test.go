@@ -378,16 +378,18 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
 					Group:        "Monitoring",
-					Name:         "Prometheus",
-					Widgets: []pagev1alpha1.ServiceWidget{{
-						Type: testWidgetTypePrometheus,
-						URL:  &url,
-						Secrets: map[string]pagev1alpha1.SecretValueSource{
-							secretField: {SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{Name: "prom-creds"},
-								Key:                  secretField,
-							}},
-						},
+					Services: []pagev1alpha1.ServiceEntry{{
+						Name: "Prometheus",
+						Widgets: []pagev1alpha1.ServiceWidget{{
+							Type: testWidgetTypePrometheus,
+							URL:  &url,
+							Secrets: map[string]pagev1alpha1.SecretValueSource{
+								secretField: {SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{Name: "prom-creds"},
+									Key:                  secretField,
+								}},
+							},
+						}},
 					}},
 				},
 			}
@@ -410,7 +412,7 @@ var _ = Describe("Dashboard controller", func() {
 
 			By("dropping the widget's secret ref removes the Secret rule on the next reconcile")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "prom", Namespace: namespace.Name}, entry)).To(Succeed())
-			entry.Spec.Widgets[0].Secrets = nil
+			entry.Spec.Services[0].Widgets[0].Secrets = nil
 			Expect(k8sClient.Update(ctx, entry)).To(Succeed())
 			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -431,7 +433,9 @@ var _ = Describe("Dashboard controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "metrics", Namespace: namespace.Name},
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
-					Type:         kubeMetricsWidgetType,
+					Widgets: []pagev1alpha1.InfoWidgetEntry{
+						{Type: kubeMetricsWidgetType},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, widget)).To(Succeed())
@@ -515,8 +519,9 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.BookmarkSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
 					Group:        "Developer",
-					Name:         "Github",
-					Href:         "https://github.com/",
+					Bookmarks: []pagev1alpha1.BookmarkEntry{
+						{Name: "Github", Href: "https://github.com/"},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, bm)).To(Succeed())
@@ -526,7 +531,9 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.ServiceCardSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
 					Group:        testMultiFormGroupMedia,
-					Name:         "Sonarr",
+					Services: []pagev1alpha1.ServiceEntry{
+						{Name: "Sonarr"},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, entry)).To(Succeed())
@@ -942,7 +949,9 @@ var _ = Describe("Dashboard controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "metrics", Namespace: namespace.Name},
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
-					Type:         kubeMetricsWidgetType,
+					Widgets: []pagev1alpha1.InfoWidgetEntry{
+						{Type: kubeMetricsWidgetType},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, widget)).To(Succeed())

@@ -41,7 +41,9 @@ var _ = Describe("ServiceCard Controller", func() {
 					Spec: pagev1alpha1.ServiceCardSpec{
 						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 						Group:        "Group",
-						Name:         "Name",
+						Services: []pagev1alpha1.ServiceEntry{
+							{Name: "Name"},
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

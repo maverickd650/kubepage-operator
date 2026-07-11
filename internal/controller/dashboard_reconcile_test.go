@@ -637,14 +637,18 @@ func TestBoundCountsForDashboardCounts(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
-			Type:         testWidgetTypeDatetime,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: testWidgetTypeDatetime},
+			},
 		},
 	}
 	otherWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
-			Type:         testWidgetTypeDatetime,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{
+				{Type: testWidgetTypeDatetime},
+			},
 		},
 	}
 

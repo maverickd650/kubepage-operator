@@ -454,8 +454,10 @@ func TestServerFragmentRendersBookmarks(t *testing.T) {
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
-			Name:         "Docs",
-			Href:         "https://example.invalid/docs",
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "Docs",
+				Href: "https://example.invalid/docs",
+			}},
 		},
 	}
 	srv := newTestServer(t, NewStore(), bookmark)
@@ -589,8 +591,10 @@ func TestServerFragmentBookmarksIconsOnly(t *testing.T) {
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
-			Name:         "Wiki",
-			Href:         "https://example.invalid/wiki",
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "Wiki",
+				Href: "https://example.invalid/wiki",
+			}},
 		},
 	}
 	cfg := &pagev1alpha1.DashboardStyle{
@@ -763,8 +767,10 @@ func TestServerFragmentNewTabLinksCarryNoopenerNoreferrer(t *testing.T) {
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
-			Name:         "Handbook",
-			Href:         "https://docs.invalid",
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "Handbook",
+				Href: "https://docs.invalid",
+			}},
 		},
 	}
 
@@ -818,15 +824,19 @@ func TestServerHeaderRendersWidgets(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testGreetName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeGreeting,
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"text":"Welcome"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    headerTypeGreeting,
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Welcome"}`)},
+			}},
 		},
 	}
 	weather := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testOpenMeteoType,
+			}},
 		},
 	}
 	srv := newTestServer(t, store, greeting, weather)
@@ -1372,9 +1382,11 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
-			Name:         "Wiki Two",
-			Href:         "https://example.invalid/wiki2",
-			Abbr:         &abbr,
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "Wiki Two",
+				Href: "https://example.invalid/wiki2",
+				Abbr: &abbr,
+			}},
 		},
 	}
 	disable := pagev1alpha1.Disabled
@@ -1412,8 +1424,10 @@ func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
-			Name:         "Wiki",
-			Href:         "https://example.invalid/wiki3",
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "Wiki",
+				Href: "https://example.invalid/wiki3",
+			}},
 		},
 	}
 	style := testStyleRow
@@ -1453,15 +1467,19 @@ func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeDatetime,
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    headerTypeDatetime,
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
+			}},
 		},
 	}
 	weather := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testOpenMeteoType,
+			}},
 		},
 	}
 	srv := newTestServer(t, store, clock, weather)
@@ -1665,7 +1683,9 @@ func TestServerHeaderRendersHighlightedFieldClasses(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testOpenMeteoType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testOpenMeteoType,
+			}},
 		},
 	}
 	srv := newTestServer(t, store, weather)
@@ -1696,7 +1716,9 @@ func TestServerHeaderRendersFieldIcon(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testKubeMetricsType, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         testKubeMetricsType,
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testKubeMetricsType,
+			}},
 		},
 	}
 	srv := newTestServer(t, store, kube)
@@ -1842,9 +1864,11 @@ func TestServerHeaderRendersLogoWidget(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeLogo,
-			Icon:         new("https://example.invalid/logo.png"),
-			Options:      &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:    headerTypeLogo,
+				Icon:    new("https://example.invalid/logo.png"),
+				Options: &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
+			}},
 		},
 	}
 	srv := newTestServer(t, NewStore(), logo)
@@ -1865,8 +1889,10 @@ func TestServerHeaderRendersLogoWidgetWithoutHref(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "logo", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Type:         headerTypeLogo,
-			Icon:         new("https://example.invalid/logo.png"),
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: headerTypeLogo,
+				Icon: new("https://example.invalid/logo.png"),
+			}},
 		},
 	}
 	srv := newTestServer(t, NewStore(), logo)
@@ -1927,11 +1953,13 @@ func TestServerFragmentRendersBookmarkIconTakesPrecedenceOverAbbr(t *testing.T) 
 		Spec: pagev1alpha1.BookmarkSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
-			Name:         "Wiki Three",
-			Href:         "https://example.invalid/wiki3",
-			Icon:         &icon,
-			Abbr:         &abbr,
-			Description:  &desc,
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name:        "Wiki Three",
+				Href:        "https://example.invalid/wiki3",
+				Icon:        &icon,
+				Abbr:        &abbr,
+				Description: &desc,
+			}},
 		},
 	}
 	srv := newTestServer(t, NewStore(), bookmark)

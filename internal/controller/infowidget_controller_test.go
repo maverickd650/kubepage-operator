@@ -40,7 +40,9 @@ var _ = Describe("InfoWidget Controller", func() {
 					},
 					Spec: pagev1alpha1.InfoWidgetSpec{
 						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
-						Type:         "datetime",
+						Widgets: []pagev1alpha1.InfoWidgetEntry{
+							{Type: "datetime"},
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
