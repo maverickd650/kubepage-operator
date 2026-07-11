@@ -67,13 +67,50 @@ type discoveredService struct {
 	Ping        bool
 }
 
-// discoverServices lists every Ingress in namespace and returns the ones
-// that opt into discovery via annotation, per spec's AnnotationPrefix/
-// HomepageCompat.
-func discoverServices(ctx context.Context, reader client.Reader, namespace string, spec pagev1alpha1.DiscoverySpec) ([]discoveredService, error) {
+// extraDiscoveryNamespaces returns spec.Namespaces with namespace (the
+// Dashboard's own) filtered out: it's already covered by reader/namespace in
+// discoverServices/discoverHTTPRoutes, so passing it through to extraReader
+// too would just list it twice (harmless — Store dedupes by
+// discoveredService.Key — but pointless work and an extra List call).
+func extraDiscoveryNamespaces(spec pagev1alpha1.DiscoverySpec, namespace string) []string {
+	out := make([]string, 0, len(spec.Namespaces))
+	for _, ns := range spec.Namespaces {
+		if ns != namespace {
+			out = append(out, ns)
+		}
+	}
+	return out
+}
+
+// discoverServices lists every Ingress in namespace, plus (via extraReader)
+// every Ingress in each of extraNamespaces — see DiscoverySpec.Namespaces'
+// doc comment — and returns the ones that opt into discovery via annotation,
+// per spec's AnnotationPrefix/HomepageCompat. extraReader is expected to be
+// an uncached client: unlike reader (the Dashboard's own namespace-scoped
+// informer cache), extraNamespaces is an arbitrary, spec-driven set that a
+// single namespace-scoped cache can't cover, and the cross-namespace RBAC
+// backing it (internal/controller's reconcileDiscoveryRBAC) is itself
+// reconciled on the same cadence as any other spec change, so there's no
+// long-lived cache to keep in sync.
+func discoverServices(ctx context.Context, reader client.Reader, namespace string, extraReader client.Reader, extraNamespaces []string, spec pagev1alpha1.DiscoverySpec) ([]discoveredService, error) {
 	var ingresses networkingv1.IngressList
 	if err := reader.List(ctx, &ingresses, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing Ingresses: %w", err)
+	}
+	// A failure listing one extra namespace (e.g. a namespace named in
+	// spec.discovery.namespaces that doesn't exist, or whose RoleBinding
+	// hasn't been (re)created yet) degrades that namespace only, rather than
+	// failing the whole discovery pass — the caller (Poller.pollOnce) would
+	// otherwise prune every previously-discovered card, including
+	// perfectly-healthy own-namespace ones, on every single poll cycle
+	// until the one bad namespace is fixed.
+	for _, ns := range extraNamespaces {
+		var extra networkingv1.IngressList
+		if err := extraReader.List(ctx, &extra, client.InNamespace(ns)); err != nil {
+			pollerLog.Error(err, "discovering Ingresses in extra namespace", "namespace", ns)
+			continue
+		}
+		ingresses.Items = append(ingresses.Items, extra.Items...)
 	}
 
 	prefix := defaultDiscoveryPrefix
@@ -167,10 +204,21 @@ func ingressHref(ing *networkingv1.Ingress) string {
 // this unless the cluster is known to have Gateway API installed (a List
 // against a nonexistent Kind fails outright, unlike an RBAC-denied one);
 // see Poller.GatewayAPIEnabled.
-func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace string, spec pagev1alpha1.DiscoverySpec) ([]discoveredService, error) {
+func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace string, extraReader client.Reader, extraNamespaces []string, spec pagev1alpha1.DiscoverySpec) ([]discoveredService, error) {
 	var routes gatewayv1.HTTPRouteList
 	if err := reader.List(ctx, &routes, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing HTTPRoutes: %w", err)
+	}
+	// See discoverServices' matching loop: a bad extra namespace degrades
+	// that namespace only, rather than failing (and pruning) discovery
+	// cluster-wide.
+	for _, ns := range extraNamespaces {
+		var extra gatewayv1.HTTPRouteList
+		if err := extraReader.List(ctx, &extra, client.InNamespace(ns)); err != nil {
+			pollerLog.Error(err, "discovering HTTPRoutes in extra namespace", "namespace", ns)
+			continue
+		}
+		routes.Items = append(routes.Items, extra.Items...)
 	}
 
 	prefix := defaultDiscoveryPrefix

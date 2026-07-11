@@ -34,6 +34,7 @@ const (
 	testWidgetTypeCloudflared     = "cloudflared"
 	testWidgetTypePlex            = "plex"
 	testWidgetDefaultsSecretName  = "widget-default-secret"
+	testCACertKey                 = "ca.crt"
 
 	// Shared table-test case names across the equal*Ptr nil-handling tests
 	// in instance_network_test.go.

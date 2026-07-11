@@ -30,8 +30,16 @@ type BookmarkEntry struct {
 	// +required
 	Name string `json:"name"`
 
-	// href is the bookmark's link target.
-	// +kubebuilder:validation:Pattern=`^https?://`
+	// href is the bookmark's link target. The scheme must be one of an
+	// explicit allowlist (http/https/ftp/sftp/ssh/rdp/vnc/smb as
+	// "scheme://...", or mailto/tel as "scheme:...") rather than an open
+	// pattern: this field is rendered as an anchor href
+	// (internal/dashboard's bookmark template) with no further scheme
+	// checking, so a "javascript:"/"data:"/"vbscript:" href would be a
+	// stored-XSS vector — the same reasoning that keeps SearchSpec.URL
+	// restricted to http(s). Widening the allowlist later is fine; this is
+	// the deliberate, one-time choice of which schemes are safe to accept.
+	// +kubebuilder:validation:Pattern=`^(https?|ftp|sftp|ssh|rdp|vnc|smb)://|^(mailto|tel):`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +required

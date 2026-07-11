@@ -480,6 +480,43 @@ func TestServerFragmentRendersBookmarks(t *testing.T) {
 	}
 }
 
+// TestServerFragmentRendersNonHTTPBookmarkHref guards against templ's own
+// URL sanitizer (which only allows http/https/mailto/tel/ftp/ftps, see
+// vendored github.com/a-h/templ's url.go) silently neutering a bookmark href
+// using one of the other CRD-allowlisted schemes (ssh/rdp/vnc/smb) into
+// "about:invalid#TemplFailedSanitizationURL" — cards.templ's
+// bookmarkCardView must cast Href to templ.SafeURL to bypass that second,
+// narrower gate and trust the CRD-level allowlist as the sole check (see
+// BookmarkEntry.Href's doc comment).
+func TestServerFragmentRendersNonHTTPBookmarkHref(t *testing.T) {
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "nas", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testBookmarkGroup,
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{
+				Name: "NAS Share",
+				Href: "smb://nas.example.invalid/share",
+			}},
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmark)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="smb://nas.example.invalid/share"`) {
+		t.Errorf("fragment body missing unsanitized smb:// href (got templ's sanitizer fallback instead?):\n%s", body)
+	}
+	if strings.Contains(body, "TemplFailedSanitizationURL") {
+		t.Errorf("fragment body was neutered by templ's own URL sanitizer:\n%s", body)
+	}
+}
+
 func TestServerIndexServesShell(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

@@ -210,7 +210,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 
 	if spec, ok := p.discoverySpec(ctx); ok {
 		if spec.HasSource(pagev1alpha1.DiscoverySourceIngress) {
-			services, err := discoverServices(ctx, p.Reader, p.Namespace, spec)
+			services, err := discoverServices(ctx, p.Reader, p.Namespace, p.KubeReader, extraDiscoveryNamespaces(spec, p.Namespace), spec)
 			if err != nil {
 				pollerLog.Error(err, "discovering Ingresses")
 			} else {
@@ -236,7 +236,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 					pollerLog.Info("Skipping HTTPRoute discovery: Gateway API CRDs are not installed in this cluster")
 				})
 			} else {
-				routes, err := discoverHTTPRoutes(ctx, p.Reader, p.Namespace, spec)
+				routes, err := discoverHTTPRoutes(ctx, p.Reader, p.Namespace, p.KubeReader, extraDiscoveryNamespaces(spec, p.Namespace), spec)
 				if err != nil {
 					pollerLog.Error(err, "discovering HTTPRoutes")
 				} else {

@@ -355,6 +355,20 @@ func (in *DashboardSpec) DeepCopyInto(out *DashboardSpec) {
 		*out = make([]corev1.LocalObjectReference, len(*in))
 		copy(*out, *in)
 	}
+	if in.Volumes != nil {
+		in, out := &in.Volumes, &out.Volumes
+		*out = make([]corev1.Volume, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.VolumeMounts != nil {
+		in, out := &in.VolumeMounts, &out.VolumeMounts
+		*out = make([]corev1.VolumeMount, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.PriorityClassName != nil {
 		in, out := &in.PriorityClassName, &out.PriorityClassName
 		*out = new(string)
@@ -453,6 +467,11 @@ func (in *DashboardStatus) DeepCopyInto(out *DashboardStatus) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.DiscoveryNamespaces != nil {
+		in, out := &in.DiscoveryNamespaces, &out.DiscoveryNamespaces
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 }
 
@@ -702,6 +721,11 @@ func (in *DiscoverySpec) DeepCopyInto(out *DiscoverySpec) {
 		in, out := &in.HomepageCompat, &out.HomepageCompat
 		*out = new(string)
 		**out = **in
+	}
+	if in.Namespaces != nil {
+		in, out := &in.Namespaces, &out.Namespaces
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 }
 
