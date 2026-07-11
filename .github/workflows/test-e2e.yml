@@ -55,6 +55,10 @@ jobs:
       - name: Setup Go environment
         uses: ./.github/actions/setup-go-env
 
+      - name: Read Go version from mise
+        id: go-version
+        run: echo "value=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
@@ -67,7 +71,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            GO_VERSION=1.26.4
+            GO_VERSION=${{ steps.go-version.outputs.value }}
 
       - name: Lint Helm chart
         run: helm lint dist/chart
