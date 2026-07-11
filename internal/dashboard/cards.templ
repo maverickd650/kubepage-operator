@@ -38,7 +38,12 @@ templ serviceCardView(c Card, siteTarget string) {
 			if c.Status != "" {
 				switch c.StatusStyle {
 					case "dot":
-						<span class={ "status-dot", "status-" + c.Status } title={ statusWithLatency(c.Status, c.Latency) }></span>
+						<span
+							class={ "status-dot", "status-" + c.Status }
+							role="img"
+							aria-label={ statusWithLatency(c.Status, c.Latency) }
+							title={ statusWithLatency(c.Status, c.Latency) }
+						></span>
 					case "basic":
 					default:
 						<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
@@ -189,12 +194,28 @@ templ Cards(data fragmentData) {
 	if len(data.Tabs) > 1 {
 		<div class="tabs" role="tablist">
 			for i, t := range data.Tabs {
-				<button type="button" class={ "tab-btn", templ.KV("active", i == 0) } onclick={ templ.JSFuncCall("showTab", i) }>{ t.Name }</button>
+				<button
+					type="button"
+					id={ tabID(i) }
+					class={ "tab-btn", templ.KV("active", i == 0) }
+					role="tab"
+					aria-controls={ panelID(i) }
+					aria-selected={ ariaSelectedAttr(i == 0) }
+					tabindex={ tabIndexAttr(i == 0) }
+					onclick={ templ.JSFuncCall("showTab", i) }
+				>{ t.Name }</button>
 			}
 		</div>
 	}
 	for i, t := range data.Tabs {
-		<div class={ "tab-panel", templ.KV("hidden", i != 0) }>
+		<div
+			class={ "tab-panel", templ.KV("hidden", i != 0) }
+			if len(data.Tabs) > 1 {
+				id={ panelID(i) }
+				role="tabpanel"
+				aria-labelledby={ tabID(i) }
+			}
+		>
 			for _, g := range t.Groups {
 				@serviceGroupBlock(g, data.SiteTarget, !data.DisableCollapse)
 			}

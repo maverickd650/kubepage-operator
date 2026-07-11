@@ -379,9 +379,37 @@ templ Index(data indexData) {
 				let currentTab = 0;
 				function showTab(i) {
 					currentTab = i;
-					document.querySelectorAll(".tab-btn").forEach(function (b, idx) { b.classList.toggle("active", idx === i); });
+					document.querySelectorAll(".tab-btn").forEach(function (b, idx) {
+						const selected = idx === i;
+						b.classList.toggle("active", selected);
+						b.setAttribute("aria-selected", selected ? "true" : "false");
+						b.tabIndex = selected ? 0 : -1;
+					});
 					document.querySelectorAll(".tab-panel").forEach(function (p, idx) { p.classList.toggle("hidden", idx !== i); });
 				}
+				// Keyboard navigation per the WAI-ARIA tabs pattern (automatic
+				// activation): ArrowLeft/ArrowRight move focus to and activate the
+				// adjacent tab (wrapping around both ends), Home/End jump to the
+				// first/last tab. Delegated to #cards (like captureGroupState/
+				// restoreGroupState below) rather than bound per-button, since the
+				// tab buttons themselves are replaced wholesale by every htmx swap
+				// of #cards's innerHTML — a delegated listener on the container
+				// keeps working without needing to be re-attached after each swap.
+				document.getElementById("cards").addEventListener("keydown", function (e) {
+					if (!e.target.classList.contains("tab-btn")) return;
+					const btns = document.querySelectorAll(".tab-btn");
+					let next;
+					switch (e.key) {
+						case "ArrowRight": next = (currentTab + 1) % btns.length; break;
+						case "ArrowLeft": next = (currentTab - 1 + btns.length) % btns.length; break;
+						case "Home": next = 0; break;
+						case "End": next = btns.length - 1; break;
+						default: return;
+					}
+					e.preventDefault();
+					showTab(next);
+					btns[next].focus();
+				});
 				// Collapsible group open/closed state likewise lives outside the
 				// polled fragment: captured from the old DOM just before htmx
 				// discards it, reapplied (by data-group-name) to the freshly

@@ -91,6 +91,36 @@ func statusPillText(c Card) string {
 	return c.Status
 }
 
+// tabID and panelID derive stable, index-based ids for a tab button and its
+// associated panel (e.g. "tab-0"/"panel-0"), linked by aria-controls/
+// aria-labelledby per the WAI-ARIA tabs pattern. Index-based rather than
+// name-based since a tab's Name isn't guaranteed unique or slug-safe.
+func tabID(i int) string {
+	return "tab-" + strconv.Itoa(i)
+}
+
+func panelID(i int) string {
+	return "panel-" + strconv.Itoa(i)
+}
+
+// ariaSelectedAttr and tabIndexAttr render a tab button's initial
+// aria-selected/tabindex state server-side (see cards.templ's Cards), so the
+// default-active tab is correct before any client-side JS runs. index.templ's
+// showTab() keeps both in sync with the client-selected tab afterward.
+func ariaSelectedAttr(selected bool) string {
+	if selected {
+		return "true"
+	}
+	return "false"
+}
+
+func tabIndexAttr(selected bool) string {
+	if selected {
+		return "0"
+	}
+	return "-1"
+}
+
 // intToStr is a small formatting helper for use inside .templ attribute
 // expressions, which can't call strconv.Itoa with a `+` concatenation
 // against string literals directly.
