@@ -7,45 +7,97 @@ import (
 	"testing"
 )
 
+// grafanaTestResponse is one canned upstream response for a single Grafana
+// API path in newGrafanaTestServer's routing table.
+type grafanaTestResponse struct {
+	statusCode int
+	body       string
+}
+
+const grafanaTestStatsBody = `{"dashboards":24,"datasources":6,"alerts":18}`
+
+func grafanaTestFields(triggered string) []Field {
+	return []Field{
+		{Label: labelDashboards, Value: "24"},
+		{Label: labelDatasources, Value: "6"},
+		{Label: labelTotalAlerts, Value: "18"},
+		{Label: labelAlertsTriggered, Value: triggered},
+	}
+}
+
+func newGrafanaTestServer(t *testing.T, responses map[string]grafanaTestResponse, gotAuth map[string]string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth[r.URL.Path] = r.Header.Get("Authorization")
+		resp, ok := responses[r.URL.Path]
+		if !ok {
+			t.Errorf("unexpected request path %q", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(resp.statusCode)
+		_, _ = w.Write([]byte(resp.body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 func TestGrafanaWidgetPoll(t *testing.T) {
 	tests := map[string]struct {
-		response   string
-		statusCode int
-		want       []Field
+		responses map[string]grafanaTestResponse
+		want      []Field
 	}{
-		"healthy": {
-			response:   `{"database":"ok","version":"` + testGrafanaVersion + `"}`,
-			statusCode: http.StatusOK,
-			want: []Field{
-				{Label: labelStatus, Value: statusHealthy},
-				{Label: labelVersion, Value: testGrafanaVersion},
+		"stats with legacy alerting alerts": {
+			responses: map[string]grafanaTestResponse{
+				grafanaStatsPath:        {http.StatusOK, grafanaTestStatsBody},
+				grafanaLegacyAlertsPath: {http.StatusOK, `[{"state":"alerting"},{"state":"ok"},{"state":"alerting"}]`},
 			},
+			want: grafanaTestFields("2"),
 		},
-		"database degraded": {
-			response:   `{"database":"failing","version":"` + testGrafanaVersion + `"}`,
-			statusCode: http.StatusOK,
-			want: []Field{
-				{Label: labelStatus, Value: statusDegraded},
-				{Label: labelVersion, Value: testGrafanaVersion},
+		"legacy alerts endpoint gone, alertmanager fallback": {
+			responses: map[string]grafanaTestResponse{
+				grafanaStatsPath:        {http.StatusOK, grafanaTestStatsBody},
+				grafanaLegacyAlertsPath: {http.StatusNotFound, `{}`},
+				grafanaAlertmanagerPath: {http.StatusOK, `[{"labels":{}},{"labels":{}},{"labels":{}}]`},
 			},
+			want: grafanaTestFields("3"),
+		},
+		"legacy alerts empty, alertmanager fallback": {
+			responses: map[string]grafanaTestResponse{
+				grafanaStatsPath:        {http.StatusOK, grafanaTestStatsBody},
+				grafanaLegacyAlertsPath: {http.StatusOK, `[]`},
+				grafanaAlertmanagerPath: {http.StatusOK, `[{"labels":{}}]`},
+			},
+			want: grafanaTestFields("1"),
+		},
+		"legacy alerts empty and alertmanager failing shows zero": {
+			responses: map[string]grafanaTestResponse{
+				grafanaStatsPath:        {http.StatusOK, grafanaTestStatsBody},
+				grafanaLegacyAlertsPath: {http.StatusOK, `[]`},
+				grafanaAlertmanagerPath: {http.StatusInternalServerError, ``},
+			},
+			want: grafanaTestFields("0"),
+		},
+		"both alert endpoints failing surfaces the failure": {
+			responses: map[string]grafanaTestResponse{
+				grafanaStatsPath:        {http.StatusOK, grafanaTestStatsBody},
+				grafanaLegacyAlertsPath: {http.StatusInternalServerError, ``},
+				grafanaAlertmanagerPath: {http.StatusInternalServerError, ``},
+			},
+			want: []Field{{Label: labelStatus, Value: testHTTP500}},
 		},
 		testCaseNon200: {
-			statusCode: http.StatusInternalServerError,
-			want: []Field{
-				{Label: labelStatus, Value: testHTTP500},
+			responses: map[string]grafanaTestResponse{
+				grafanaStatsPath: {http.StatusInternalServerError, ``},
 			},
+			want: []Field{{Label: labelStatus, Value: testHTTP500}},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			var gotAuth string
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				gotAuth = r.Header.Get("Authorization")
-				w.WriteHeader(tc.statusCode)
-				_, _ = w.Write([]byte(tc.response))
-			}))
-			defer srv.Close()
+			gotAuth := map[string]string{}
+			srv := newGrafanaTestServer(t, tc.responses, gotAuth)
 
 			got, err := (grafanaWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 				URL:     srv.URL,
@@ -57,10 +109,40 @@ func TestGrafanaWidgetPoll(t *testing.T) {
 			if !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("Poll() = %+v, want %+v", got, tc.want)
 			}
-			if gotAuth != "Bearer tok123" {
-				t.Errorf("Authorization header = %q, want %q", gotAuth, "Bearer tok123")
+			for path, auth := range gotAuth {
+				if auth != "Bearer tok123" {
+					t.Errorf("Authorization header on %s = %q, want %q", path, auth, "Bearer tok123")
+				}
 			}
 		})
+	}
+}
+
+func TestGrafanaWidgetPollBasicAuth(t *testing.T) {
+	gotAuth := map[string]string{}
+	srv := newGrafanaTestServer(t, map[string]grafanaTestResponse{
+		grafanaStatsPath:        {http.StatusOK, grafanaTestStatsBody},
+		grafanaLegacyAlertsPath: {http.StatusOK, `[{"state":"alerting"}]`},
+	}, gotAuth)
+
+	got, err := (grafanaWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{secretUsername: testAdminUser, secretPassword: "hunter2"},
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	if want := grafanaTestFields("1"); !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+
+	req := &http.Request{Header: http.Header{}}
+	req.SetBasicAuth(testAdminUser, "hunter2")
+	wantAuth := req.Header.Get("Authorization")
+	for path, auth := range gotAuth {
+		if auth != wantAuth {
+			t.Errorf("Authorization header on %s = %q, want %q", path, auth, wantAuth)
+		}
 	}
 }
 
@@ -83,8 +165,9 @@ func TestGrafanaWidgetPollUnreachable(t *testing.T) {
 
 func TestGrafanaWidgetSample(t *testing.T) {
 	got := (grafanaWidget{}).Sample(WidgetConfig{})
-	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelVersion {
-		t.Errorf("Sample() = %+v, want Status/Version fields", got)
+	want := grafanaTestFields("2")
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Sample() = %+v, want %+v", got, want)
 	}
 	assertSampleDeterministic(t, grafanaWidget{})
 }
