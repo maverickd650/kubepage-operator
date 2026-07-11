@@ -18,7 +18,7 @@ func TestAdguardWidgetPoll(t *testing.T) {
 
 	got, err := (adguardWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
-		Secrets: map[string]string{secretUsername: "admin", secretPassword: "pw"},
+		Secrets: map[string]string{secretUsername: testAdminUser, secretPassword: "pw"},
 	})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
@@ -30,8 +30,8 @@ func TestAdguardWidgetPoll(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}
-	if gotUser != "admin" || gotPass != "pw" {
-		t.Errorf("basic auth = (%q, %q), want (%q, %q)", gotUser, gotPass, "admin", "pw")
+	if gotUser != testAdminUser || gotPass != "pw" {
+		t.Errorf("basic auth = (%q, %q), want (%q, %q)", gotUser, gotPass, testAdminUser, "pw")
 	}
 }
 

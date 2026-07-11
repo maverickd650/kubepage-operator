@@ -96,6 +96,10 @@ const (
 	testBrokenServiceName = "Broken"
 	testUnreachableErr    = "unreachable"
 	testGrafanaVersion    = "10.0.0"
+
+	// testAdminUser is the Basic-auth username shared by adguard/grafana
+	// Poll fixtures.
+	testAdminUser = "admin"
 )
 
 // assertSampleDeterministic calls sampler.Sample(WidgetConfig{}) twice and

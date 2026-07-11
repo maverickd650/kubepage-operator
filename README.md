@@ -35,7 +35,7 @@ the dashboard pod's memory for the duration of the poll. See
 | `plex` | Current Plex stream count | `Secrets["token"]` (Plex `X-Plex-Token`) |
 | `stash` | Stash library stats (GraphQL) | `Secrets["token"]` (Stash API key) |
 | `paperlessngx` | Paperless-ngx document statistics | `Secrets["token"]` (Paperless API token) |
-| `grafana` | Grafana database/version health | `Secrets["token"]` optional Bearer token |
+| `grafana` | Grafana dashboard/datasource/alert counts (matches gethomepage/homepage's `admin/stats`) | `Secrets["username"]`+`Secrets["password"]` (Basic auth) or `Secrets["token"]` (Bearer); needs Grafana server-admin credentials |
 | `prometheus` | Prometheus target health summary | none (open API) |
 | `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
 | `unifi` | UniFi Network controller site health | `Secrets["apiKey"]` (Network Integration API key), `config: {site, insecureTLS}` |

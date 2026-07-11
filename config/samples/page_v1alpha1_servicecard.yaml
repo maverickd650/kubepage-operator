@@ -40,10 +40,16 @@ spec:
       siteMonitor: http://grafana.example.com
       statusStyle: dot
       widgets:
+        # admin/stats requires Grafana server-admin credentials; a scoped
+        # viewer/editor API key/token will not work here.
         - type: grafana
           url: http://grafana.example.com
           secrets:
-            token:
+            username:
               secretKeyRef:
                 name: grafana-credentials
-                key: token
+                key: username
+            password:
+              secretKeyRef:
+                name: grafana-credentials
+                key: password
