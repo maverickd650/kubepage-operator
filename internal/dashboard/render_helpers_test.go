@@ -219,7 +219,7 @@ func TestBackgroundStyle(t *testing.T) {
 
 	t.Run("plain image URL is embedded as-is", func(t *testing.T) {
 		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL})
-		want := `<style nonce="test-nonce">body { background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`
+		want := `<style nonce="test-nonce">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; }</style>`
 		if got != want {
 			t.Errorf("backgroundStyle() = %q, want %q", got, want)
 		}

@@ -145,11 +145,19 @@ func cssStringEscape(s string) string {
 	return s
 }
 
-// backgroundStyle returns a complete "<style>body { ... }</style>" element
-// setting the background image, for emission via @templ.Raw as ordinary
-// element content (a sibling node, not text typed inside a literal <style>
-// tag in the .templ source — templ treats a <style> tag's own text content
-// as raw/opaque and won't evaluate an @templ.Raw call written inside it).
+// backgroundStyle returns a complete "<style>body::before { ... }</style>"
+// element setting the background image on a viewport-fixed pseudo-element,
+// for emission via @templ.Raw as ordinary element content (a sibling node,
+// not text typed inside a literal <style> tag in the .templ source — templ
+// treats a <style> tag's own text content as raw/opaque and won't evaluate
+// an @templ.Raw call written inside it). The image is applied via
+// `position: fixed` on body::before rather than `background-attachment:
+// fixed` on body itself: iOS Safari doesn't support background-attachment:
+// fixed and instead sizes/positions the image against the whole scrollable
+// document, producing a hugely zoomed-in image. z-index: -1 keeps the
+// pseudo-element behind all page content (checked: the only other z-indexed
+// elements in this page are the quick-launch overlay at 50 and the color
+// menu at 40, both far above).
 // It's a full <style> tag rather than a style="" attribute value because
 // the quoted url("...") it needs would otherwise go through templ's
 // HTML-attribute escaping twice — once for the quotes templ.SafeCSS itself
@@ -170,7 +178,7 @@ func backgroundStyle(nonce string, bg *Background) string {
 	if bg == nil {
 		return ""
 	}
-	return fmt.Sprintf(`<style nonce="%s">body { background-image: url("%s"); background-size: cover; background-position: center; background-attachment: fixed; }</style>`,
+	return fmt.Sprintf(`<style nonce="%s">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("%s"); background-size: cover; background-position: center; }</style>`,
 		nonce, cssStringEscape(bg.Image))
 }
 
