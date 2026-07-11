@@ -11,6 +11,7 @@ templ Index(data indexData) {
 	>
 		<head>
 			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ data.Site.Title }</title>
 			if data.Site.Description != "" {
 				<meta name="description" content={ data.Site.Description }/>
@@ -36,6 +37,14 @@ templ Index(data indexData) {
 				}
 				.wrap { max-width: 1200px; margin: 0 auto; position: relative; }
 				[data-full-width] .wrap { max-width: none; }
+				/* Phone-width layout: the desktop 2rem gutter eats a third of a small
+				   screen, so tighten spacing and the title scale below 640px. */
+				@media (max-width: 640px) {
+					body { padding: 1rem; }
+					.page-title { font-size: 1.25rem; }
+					.header-strip { gap: 0.6rem; margin-bottom: 1rem; }
+					.search-bar { margin-bottom: 1rem; }
+				}
 				.sample-data-banner {
 					background: color-mix(in srgb, #fbbf24 22%, transparent); color: #fbbf24;
 					border: 1px solid color-mix(in srgb, #fbbf24 45%, transparent); border-radius: 0.4rem;
@@ -119,7 +128,9 @@ templ Index(data indexData) {
 				.tab-btn.active { border-color: var(--accent); color: var(--accent); }
 				.tab-panel.hidden { display: none; }
 				.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
-				.grid.grid-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(220px, 1fr); }
+				/* Row groups scroll within their own box rather than widening the page
+				   past the viewport once more cards are bound than fit. */
+				.grid.grid-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(220px, 1fr); overflow-x: auto; padding-bottom: 0.25rem; }
 				.card {
 					background: color-mix(in srgb, var(--panel) var(--card-opacity, 72%), transparent);
 					border: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
