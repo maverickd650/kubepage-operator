@@ -1012,6 +1012,9 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                 type: object
+                x-kubernetes-validations:
+                - message: basicAuthSecretRef is required when auth is set
+                  rule: has(self.basicAuthSecretRef)
               containerPort:
                 default: 8080
                 description: containerPort defines the port the dashboard HTTP server

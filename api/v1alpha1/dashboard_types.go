@@ -314,6 +314,13 @@ type MetricsSpec struct {
 // authentication. See SECURITY.md's "Optional built-in authentication"
 // section for the trade-offs versus fronting the dashboard with a real
 // authenticating reverse proxy (oauth2-proxy, Authelia, ...).
+//
+// basicAuthSecretRef is AuthSpec's only field, so without the CEL rule below
+// an empty `spec.auth: {}` would be schema-valid and silently serve the
+// dashboard UNAUTHENTICATED — internal/dashboard/auth.go treats a nil ref
+// the same as no auth configured at all. Requiring the field fails closed:
+// setting spec.auth at all now requires actually naming the htpasswd Secret.
+// +kubebuilder:validation:XValidation:rule="has(self.basicAuthSecretRef)",message="basicAuthSecretRef is required when auth is set"
 type AuthSpec struct {
 	// basicAuthSecretRef names a Secret, in the same namespace as this
 	// Dashboard, holding an htpasswd-format file (bcrypt-hashed entries,
