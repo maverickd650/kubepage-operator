@@ -558,12 +558,12 @@ func (r *DashboardReconciler) networkPolicyForDashboard(instance *pagev1alpha1.D
 	np := instance.Spec.NetworkPolicy
 
 	ingressRules := []networkingv1.NetworkPolicyIngressRule{{
-		Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromInt32(instance.Spec.ContainerPort))}},
+		Ports: []networkingv1.NetworkPolicyPort{{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(instance.Spec.ContainerPort))}},
 		From:  namespaceSelectorPeers(np.IngressNamespaceSelector),
 	}}
 	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
 		ingressRules = append(ingressRules, networkingv1.NetworkPolicyIngressRule{
-			Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromInt32(dashboardMetricsPort))}},
+			Ports: []networkingv1.NetworkPolicyPort{{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(dashboardMetricsPort))}},
 			From:  namespaceSelectorPeers(np.MetricsNamespaceSelector),
 		})
 	}
