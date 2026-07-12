@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 // TestRunGeneratesJSONSchemasForEveryCRDVersion runs the converter against
@@ -153,6 +156,49 @@ func TestRunFailsWhenSchemaFileCannotBeWritten(t *testing.T) {
 	}
 	if err := run(crdDir, outDir); err == nil {
 		t.Fatal("expected an error when the schema file cannot be written, got nil")
+	}
+}
+
+func TestRealMain(t *testing.T) {
+	crdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(crdDir, "widget.yaml"), []byte(minimalCRD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("success", func(t *testing.T) {
+		var stderr strings.Builder
+		if code := realMain([]string{"-crd-dir", crdDir, "-out", t.TempDir()}, &stderr); code != 0 {
+			t.Fatalf("exit code %d, want 0; stderr: %s", code, stderr.String())
+		}
+	})
+
+	t.Run("run error", func(t *testing.T) {
+		var stderr strings.Builder
+		if code := realMain([]string{"-crd-dir", filepath.Join(t.TempDir(), "missing")}, &stderr); code != 1 {
+			t.Fatalf("exit code %d, want 1", code)
+		}
+		if !strings.Contains(stderr.String(), "crd2jsonschema:") {
+			t.Errorf("stderr missing error prefix: %q", stderr.String())
+		}
+	})
+
+	t.Run("bad flag", func(t *testing.T) {
+		var stderr strings.Builder
+		if code := realMain([]string{"-no-such-flag"}, &stderr); code != 2 {
+			t.Fatalf("exit code %d, want 2", code)
+		}
+	})
+}
+
+func TestToJSONSchemaFailsOnUnmarshalableProps(t *testing.T) {
+	// apiextensionsv1.JSON marshals its Raw bytes verbatim, so invalid raw
+	// JSON in a default value makes json.Marshal fail — the only reachable
+	// error path in toJSONSchema.
+	props := &apiextensionsv1.JSONSchemaProps{
+		Default: &apiextensionsv1.JSON{Raw: []byte("{not json")},
+	}
+	if _, err := toJSONSchema(props); err == nil {
+		t.Fatal("expected an error for unmarshalable schema props, got nil")
 	}
 }
 

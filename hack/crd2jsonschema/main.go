@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,14 +25,25 @@ import (
 )
 
 func main() {
-	crdDir := flag.String("crd-dir", "config/crd/bases", "directory of CustomResourceDefinition YAML manifests to convert")
-	outDir := flag.String("out", "schemas", "output directory for the generated JSON Schema files")
-	flag.Parse()
+	os.Exit(realMain(os.Args[1:], os.Stderr))
+}
+
+// realMain is main minus os.Exit, so tests can drive the full entrypoint
+// (flag parsing included) in-process and assert on the exit code.
+func realMain(args []string, stderr io.Writer) int {
+	flags := flag.NewFlagSet("crd2jsonschema", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	crdDir := flags.String("crd-dir", "config/crd/bases", "directory of CustomResourceDefinition YAML manifests to convert")
+	outDir := flags.String("out", "schemas", "output directory for the generated JSON Schema files")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
 
 	if err := run(*crdDir, *outDir); err != nil {
-		fmt.Fprintln(os.Stderr, "crd2jsonschema:", err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, "crd2jsonschema:", err)
+		return 1
 	}
+	return 0
 }
 
 func run(crdDir, outDir string) error {
