@@ -103,19 +103,25 @@ jobs:
         # run it explicitly — otherwise a PR that edits *_types.go or a
         # .templ file without committing the regenerated output (including
         # dist/) would pass CI green and leave config/crd/bases/,
-        # zz_generated.*.go, *_templ.go, or dist/ stale on main.
+        # zz_generated.*.go, *_templ.go, or dist/ stale on main. build-dist's
+        # own `depends` already ran `mise run schemas` above, so schemas/ is
+        # covered by the same diff/untracked-file check below.
         # `git diff` only sees tracked files, so also fail on untracked ones
         # — a brand-new CRD kind generates a *new* file under
-        # config/crd/bases/ that a plain diff would silently pass.
+        # config/crd/bases/ (or schemas/) that a plain diff would silently
+        # pass.
         run: |
           mise run helm-chart-refresh
-          git diff --exit-code -- config/ api/ internal/ dist/
-          untracked="$(git ls-files --others --exclude-standard -- config/ api/ internal/ dist/)"
+          git diff --exit-code -- config/ api/ internal/ dist/ schemas/
+          untracked="$(git ls-files --others --exclude-standard -- config/ api/ internal/ dist/ schemas/)"
           if [ -n "$untracked" ]; then
             echo "::error::Untracked generated files (regenerate and commit them):"
             echo "$untracked"
             exit 1
           fi
+
+      - name: Validate samples against generated JSON Schemas
+        run: mise run schemas-validate
 
   test:
     name: Test

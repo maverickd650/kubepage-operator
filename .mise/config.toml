@@ -199,14 +199,42 @@ description = "Serve the dashboard locally from config/samples, no cluster requi
 depends = ["templ-generate"]
 run = "go run ./cmd preview -f config/samples"
 
+[tasks.schemas]
+description = "Generate JSON Schemas from the CRDs into schemas/ (kubeconform/CRDs-catalog layout)"
+depends = ["manifests"]
+# Delete every generated group directory first so a CRD/version removed from
+# config/crd/bases doesn't leave a stale file behind — the converter only
+# ever adds files, it never prunes ones it didn't just write. schemas/
+# itself (and its committed README.md, which explains the layout) is left
+# in place; only the generated <group>/ subdirectories are wiped.
+run = '''
+mkdir -p schemas
+find schemas -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
+go run ./hack/crd2jsonschema
+'''
+
+[tasks.schemas-validate]
+description = "Validate config/samples against the generated JSON Schemas with kubeconform"
+depends = ["schemas"]
+# mise renders `run` strings with tera templating, so the literal
+# {{.Group}}/{{.ResourceKind}}/{{.ResourceAPIVersion}} placeholders below
+# (kubeconform's own -schema-location template syntax, not mise's) must be
+# escaped with {% raw %}...{% endraw %} or mise's tera parser breaks on them.
+run = '''
+{% raw %}
+kubeconform -strict -summary -schema-location 'schemas/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' config/samples/page_*.yaml
+{% endraw %}
+'''
+
 [tasks.build-dist]
 description = "Cross-compile release binaries for every supported platform into dist-bin/, with sha256 checksums"
 # Same depends as tasks.build: build-dist ships a compiled binary too, so
 # stale zz_generated.*.go/*_templ.go would silently ship in the release
 # archives just as it would in `mise run build`'s output — see
 # tasks.build's own depends for why each of these matters to a build, not
-# just to tests.
-depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
+# just to tests. "schemas" is here too so the packed CRD-schemas tarball
+# below is built from a fresh schemas/, not whatever happened to be on disk.
+depends = ["manifests", "generate", "templ-generate", "fmt", "vet", "schemas"]
 # VERSION/REVISION mirror docker-build's own fallbacks below; release.yaml
 # sets both explicitly from the release-please tag. Needs a shebang: mise's
 # default task shell is /bin/sh (dash on Ubuntu, which doesn't support
@@ -260,6 +288,15 @@ if [ "$fail" -ne 0 ]; then
   echo "One or more cross-compile targets failed" >&2
   exit 1
 fi
+
+# Also ship the generated CRD JSON Schemas (schemas/) as their own release
+# tarball, so a separate schema-hosting repo can pull a single versioned
+# archive instead of vendoring config/crd/bases and running the converter
+# itself. Tarred from the repo root (not a copied workdir like the platform
+# archives above) so the archive contains "schemas/..." paths, matching the
+# CRDs-catalog layout schemas/ already uses on disk.
+echo "Packing CRD JSON Schemas..."
+tar -czf "${outdir}/kubepage-operator-crd-schemas_${version}.tar.gz" LICENSE schemas
 
 (cd "$outdir" && sha256sum -- * > checksums.txt)
 '''
