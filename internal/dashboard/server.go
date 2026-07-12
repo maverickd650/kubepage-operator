@@ -8,6 +8,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"hash/fnv"
 	"io"
 	"net/http"
@@ -586,6 +587,15 @@ func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
 // cycle actually changes anything.
 const sseHeartbeatInterval = 25 * time.Second
 
+// sseWriteTimeout bounds each individual write to an SSE connection. The
+// connection's overall write deadline is cleared on accept (see below) so
+// the stream can sit open indefinitely, but every write still needs its own
+// short deadline — otherwise a client that stops reading (a full TCP
+// receive window and no more) blocks the write goroutine forever, pinning
+// one of the maxSSESubscribers slots for good. A stalled write is treated
+// like any other write error: the handler returns and unsubscribes.
+const sseWriteTimeout = 10 * time.Second
+
 // handleEvents serves GET /events as a Server-Sent Events stream: one
 // "fragmentChanged" or "headerChanged" event whenever a poll cycle actually
 // changes what /fragment or /header would render. The content hashes
@@ -623,7 +633,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// every other route; an SSE connection is expected to sit open far
 	// longer than that, so its write deadline is cleared for this response
 	// specifically rather than raising the timeout server-wide.
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
 
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -647,7 +658,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-heartbeat.C:
-			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
+			if err := sseWrite(rc, w, ": heartbeat\n\n"); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -655,14 +666,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			var wrote bool
 			if h.fragment != "" && h.fragment != lastFragment {
 				lastFragment = h.fragment
-				if _, err := io.WriteString(w, "event: fragmentChanged\ndata: refresh\n\n"); err != nil {
+				if err := sseWrite(rc, w, "event: fragmentChanged\ndata: refresh\n\n"); err != nil {
 					return
 				}
 				wrote = true
 			}
 			if h.header != "" && h.header != lastHeader {
 				lastHeader = h.header
-				if _, err := io.WriteString(w, "event: headerChanged\ndata: refresh\n\n"); err != nil {
+				if err := sseWrite(rc, w, "event: headerChanged\ndata: refresh\n\n"); err != nil {
 					return
 				}
 				wrote = true
@@ -672,6 +683,22 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// sseWrite sets a short per-write deadline before writing s to an SSE
+// connection whose overall write deadline was cleared on accept, then writes
+// it. A deadline-exceeded or otherwise failed write is returned like any
+// other write error, so the caller's normal "return on error" handling also
+// covers a stalled/non-reading client — without this, the earlier
+// SetWriteDeadline(time.Time{}) leaves every subsequent write unbounded.
+// http.ErrNotSupported (e.g. a ResponseWriter under test that doesn't
+// implement deadlines) is not itself a write failure and is ignored.
+func sseWrite(rc *http.ResponseController, w io.Writer, s string) error {
+	if err := rc.SetWriteDeadline(time.Now().Add(sseWriteTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	_, err := io.WriteString(w, s)
+	return err
 }
 
 // currentHashes returns the content-hash (etagFor) of what /fragment and

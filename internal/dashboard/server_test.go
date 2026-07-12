@@ -2272,6 +2272,88 @@ func TestServerEventsPushesHeaderChanged(t *testing.T) {
 	<-done
 }
 
+// failingWriteRecorder is an http.ResponseWriter/http.Flusher whose Write
+// always fails after the response header, simulating a client that stopped
+// reading (or a connection reset) so a heartbeat/event write to it errors
+// out immediately — standing in for the real failure mode sseWriteTimeout
+// guards against (a stalled write blocking forever instead of erroring).
+type failingWriteRecorder struct {
+	header http.Header
+
+	mu   sync.Mutex
+	code int
+}
+
+func newFailingWriteRecorder() *failingWriteRecorder { return &failingWriteRecorder{header: http.Header{}} }
+
+func (r *failingWriteRecorder) Header() http.Header { return r.header }
+
+func (r *failingWriteRecorder) WriteHeader(code int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.code = code
+}
+
+func (r *failingWriteRecorder) Code() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.code
+}
+
+func (r *failingWriteRecorder) Write([]byte) (int, error) {
+	return 0, errors.New("simulated write failure: peer not reading")
+}
+
+func (r *failingWriteRecorder) Flush() {}
+
+// TestServerEventsWriteErrorReleasesSubscriberSlot verifies that a write
+// failure on the SSE connection (e.g. sseWriteTimeout firing because a
+// client stopped reading) makes handleEvents return promptly and release its
+// Broadcaster subscriber slot, rather than blocking forever and permanently
+// pinning one of the maxSSESubscribers slots.
+func TestServerEventsWriteErrorReleasesSubscriberSlot(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+	broadcast := NewBroadcaster()
+	srv.Broadcast = broadcast
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/events", nil).WithContext(ctx)
+	rec := newFailingWriteRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.handleEvents(rec, req)
+	}()
+
+	waitUntil(t, func() bool { return rec.Code() == http.StatusOK })
+
+	// Mutate the store so the published hashes differ from the connection's
+	// baseline (computed at connect time from the same store) — otherwise
+	// handleEvents would see no change and never attempt the write that's
+	// meant to fail here. The initial header write (w.WriteHeader +
+	// flusher.Flush) doesn't go through sseWrite, but this event write does.
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
+	fragment, header := currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
+	broadcast.Publish(fragment, header)
+
+	select {
+	case <-done:
+	case <-time.After(waitUntilTimeout):
+		t.Fatal("handleEvents did not return after a failed write")
+	}
+
+	broadcast.mu.Lock()
+	remaining := len(broadcast.subs)
+	broadcast.mu.Unlock()
+	if remaining != 0 {
+		t.Errorf("subscribers = %d after handleEvents returned, want 0 (slot leaked)", remaining)
+	}
+}
+
 // TestServerEventsRejectsPastMaxSubscribers verifies handleEvents responds
 // 503 (rather than opening a goroutine and channel) once Broadcast is
 // already at maxSSESubscribers — bounding the resource an unauthenticated
