@@ -290,6 +290,7 @@ type WidgetDefaultsEntry struct {
 	// A widget of this type that doesn't set a given key in its own secrets
 	// inherits the default here, per key; a widget's own secrets always win.
 	// +kubebuilder:validation:MinProperties=1
+	// +kubebuilder:validation:MaxProperties=32
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 

@@ -5062,6 +5062,7 @@ spec:
                         ServiceWidget.Secrets/InfoWidgetEntry.Secrets (e.g. "token", "apiKey").
                         A widget of this type that doesn't set a given key in its own secrets
                         inherits the default here, per key; a widget's own secrets always win.
+                      maxProperties: 32
                       minProperties: 1
                       type: object
                   type: object
@@ -6044,6 +6045,7 @@ spec:
                         an InfoWidget in this namespace can read any Secret in it by
                         referencing it via secretKeyRef and pointing this widget's options at
                         a server they control.
+                      maxProperties: 32
                       minProperties: 1
                       type: object
                     type:
@@ -6679,6 +6681,7 @@ spec:
                               needing "get secrets" themselves. Only grant ServiceCard create
                               access to principals you'd also trust with every Secret in the
                               namespace.
+                            maxProperties: 32
                             minProperties: 1
                             type: object
                           type:

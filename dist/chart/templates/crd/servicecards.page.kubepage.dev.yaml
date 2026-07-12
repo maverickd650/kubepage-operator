@@ -519,6 +519,7 @@ spec:
                               needing "get secrets" themselves. Only grant ServiceCard create
                               access to principals you'd also trust with every Secret in the
                               namespace.
+                            maxProperties: 32
                             minProperties: 1
                             type: object
                           type:

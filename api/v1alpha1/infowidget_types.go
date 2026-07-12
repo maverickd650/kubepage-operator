@@ -84,6 +84,7 @@ type InfoWidgetEntry struct {
 	// referencing it via secretKeyRef and pointing this widget's options at
 	// a server they control.
 	// +kubebuilder:validation:MinProperties=1
+	// +kubebuilder:validation:MaxProperties=32
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 

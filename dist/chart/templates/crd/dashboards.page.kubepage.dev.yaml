@@ -4800,6 +4800,7 @@ spec:
                         ServiceWidget.Secrets/InfoWidgetEntry.Secrets (e.g. "token", "apiKey").
                         A widget of this type that doesn't set a given key in its own secrets
                         inherits the default here, per key; a widget's own secrets always win.
+                      maxProperties: 32
                       minProperties: 1
                       type: object
                   type: object
