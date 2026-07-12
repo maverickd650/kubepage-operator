@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/maverickd650/kubepage-operator/compare/v0.3.0...v0.3.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **chart:** default manager image to the published ghcr.io repository ([#150](https://github.com/maverickd650/kubepage-operator/issues/150)) ([41778f7](https://github.com/maverickd650/kubepage-operator/commit/41778f7a88d9ff196af0994b9df758627b408416))
+
 ## [0.3.0](https://github.com/maverickd650/kubepage-operator/compare/v0.2.0...v0.3.0) (2026-07-12)
 
 
