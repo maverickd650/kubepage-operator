@@ -114,8 +114,17 @@ dashboard route except `/healthz` requires HTTP Basic credentials matching an
 entry in that file, checked with a constant-time comparison. This is a
 minimal gate for a homelab reachable from a semi-trusted network — it has no
 session/logout/lockout concept and sends credentials on every request
-(mitigated by requiring TLS, see above). For anything beyond that, front the
-dashboard with a real authenticating proxy instead.
+(mitigated by requiring TLS, see above). Concurrent bcrypt comparisons are
+capped at a small fixed limit (`maxConcurrentAuthChecks` in
+`internal/dashboard/auth.go`); once that many are in flight, further
+credentialed requests get `429 Too Many Requests` immediately instead of
+paying bcrypt's ~50-100ms CPU cost, bounding both online credential-guessing
+throughput and CPU exhaustion from a single client looping bad credentials.
+This is a global cap, not a per-client one — behind an Ingress the peer IP
+seen by the dashboard is the ingress controller's unless X-Forwarded-For is
+explicitly trusted, so a per-IP limiter would either trust that header or do
+nothing. For anything beyond this, front the dashboard with a real
+authenticating proxy instead.
 
 ### Explicit non-goals
 
