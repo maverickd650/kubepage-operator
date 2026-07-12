@@ -133,6 +133,7 @@ type ServiceWidget struct {
 	// access to principals you'd also trust with every Secret in the
 	// namespace.
 	// +kubebuilder:validation:MinProperties=1
+	// +kubebuilder:validation:MaxProperties=32
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 

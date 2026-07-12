@@ -1277,6 +1277,9 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                 type: object
+                x-kubernetes-validations:
+                - message: basicAuthSecretRef is required when auth is set
+                  rule: has(self.basicAuthSecretRef)
               containerPort:
                 default: 8080
                 description: containerPort defines the port the dashboard HTTP server
@@ -2080,6 +2083,15 @@ spec:
                       even with networkPolicy enabled for ingress — widget URLs are
                       CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
                       is an opt-in positive scope, not a default deny.
+
+                      Each entry must be a valid CIDR block (IPv4 or IPv6, with a mask), so
+                      a malformed entry is rejected at admission instead of passing schema
+                      validation and only surfacing as an opaque reconcile error once it's
+                      placed into a NetworkPolicy IPBlock. Validated with CEL's isCIDR()
+                      extension function, which requires Kubernetes 1.31+ (see
+                      https://kubernetes.io/docs/reference/using-api/cel/) — a step above
+                      the 1.29/1.30 floor the rest of the API surface needs (see CLAUDE.md),
+                      but still below the CI-tested floor of 1.33.
                     items:
                       maxLength: 43
                       minLength: 1
@@ -2087,6 +2099,10 @@ spec:
                     maxItems: 64
                     type: array
                     x-kubernetes-list-type: set
+                    x-kubernetes-validations:
+                    - message: each egressCIDRs entry must be a valid CIDR block (e.g.
+                        10.0.0.0/8 or 2001:db8::/32)
+                      rule: self.all(c, isCIDR(c))
                   enabled:
                     default: Disabled
                     description: |-
@@ -5046,6 +5062,7 @@ spec:
                         ServiceWidget.Secrets/InfoWidgetEntry.Secrets (e.g. "token", "apiKey").
                         A widget of this type that doesn't set a given key in its own secrets
                         inherits the default here, per key; a widget's own secrets always win.
+                      maxProperties: 32
                       minProperties: 1
                       type: object
                   type: object
@@ -6028,6 +6045,7 @@ spec:
                         an InfoWidget in this namespace can read any Secret in it by
                         referencing it via secretKeyRef and pointing this widget's options at
                         a server they control.
+                      maxProperties: 32
                       minProperties: 1
                       type: object
                     type:
@@ -6663,6 +6681,7 @@ spec:
                               needing "get secrets" themselves. Only grant ServiceCard create
                               access to principals you'd also trust with every Secret in the
                               namespace.
+                            maxProperties: 32
                             minProperties: 1
                             type: object
                           type:

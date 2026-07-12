@@ -290,6 +290,7 @@ type WidgetDefaultsEntry struct {
 	// A widget of this type that doesn't set a given key in its own secrets
 	// inherits the default here, per key; a widget's own secrets always win.
 	// +kubebuilder:validation:MinProperties=1
+	// +kubebuilder:validation:MaxProperties=32
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
@@ -314,6 +315,13 @@ type MetricsSpec struct {
 // authentication. See SECURITY.md's "Optional built-in authentication"
 // section for the trade-offs versus fronting the dashboard with a real
 // authenticating reverse proxy (oauth2-proxy, Authelia, ...).
+//
+// basicAuthSecretRef is AuthSpec's only field, so without the CEL rule below
+// an empty `spec.auth: {}` would be schema-valid and silently serve the
+// dashboard UNAUTHENTICATED — internal/dashboard/auth.go treats a nil ref
+// the same as no auth configured at all. Requiring the field fails closed:
+// setting spec.auth at all now requires actually naming the htpasswd Secret.
+// +kubebuilder:validation:XValidation:rule="has(self.basicAuthSecretRef)",message="basicAuthSecretRef is required when auth is set"
 type AuthSpec struct {
 	// basicAuthSecretRef names a Secret, in the same namespace as this
 	// Dashboard, holding an htpasswd-format file (bcrypt-hashed entries,
@@ -354,9 +362,19 @@ type NetworkPolicySpec struct {
 	// even with networkPolicy enabled for ingress — widget URLs are
 	// CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
 	// is an opt-in positive scope, not a default deny.
+	//
+	// Each entry must be a valid CIDR block (IPv4 or IPv6, with a mask), so
+	// a malformed entry is rejected at admission instead of passing schema
+	// validation and only surfacing as an opaque reconcile error once it's
+	// placed into a NetworkPolicy IPBlock. Validated with CEL's isCIDR()
+	// extension function, which requires Kubernetes 1.31+ (see
+	// https://kubernetes.io/docs/reference/using-api/cel/) — a step above
+	// the 1.29/1.30 floor the rest of the API surface needs (see CLAUDE.md),
+	// but still below the CI-tested floor of 1.33.
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:items:MinLength=1
 	// +kubebuilder:validation:items:MaxLength=43
+	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="each egressCIDRs entry must be a valid CIDR block (e.g. 10.0.0.0/8 or 2001:db8::/32)"
 	// +listType=set
 	// +optional
 	EgressCIDRs []string `json:"egressCIDRs,omitempty"`

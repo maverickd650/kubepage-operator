@@ -254,6 +254,7 @@ spec:
                         an InfoWidget in this namespace can read any Secret in it by
                         referencing it via secretKeyRef and pointing this widget's options at
                         a server they control.
+                      maxProperties: 32
                       minProperties: 1
                       type: object
                     type:
