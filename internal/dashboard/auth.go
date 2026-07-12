@@ -159,6 +159,21 @@ func InvalidateAuthCache(namespace, dashboardName string) {
 // own probes (instance_controller.go) never carry auth headers.
 const healthzPath = "/healthz"
 
+// maxConcurrentAuthChecks bounds how many bcrypt comparisons
+// (~50-100ms CPU each) basicAuthMiddleware runs at once. Behind an Ingress
+// the peer IP seen here is the ingress controller's, not the real client's,
+// unless X-Forwarded-For is explicitly trusted — rather than take on that
+// trust question for a per-client limiter, this caps total bcrypt CPU
+// regardless of source, which is enough to kill both the CPU-exhaustion and
+// unthrottled-guessing angles from a single client looping bad credentials.
+// Requests that never reach the comparison (missing/garbled Authorization
+// header) are unaffected, as are already-authenticated requests — this only
+// guards the comparison itself.
+const maxConcurrentAuthChecks = 4
+
+// authCheckSem is the semaphore maxConcurrentAuthChecks describes.
+var authCheckSem = make(chan struct{}, maxConcurrentAuthChecks)
+
 // basicAuthMiddleware wraps next with HTTP Basic authentication when the
 // Dashboard's spec.auth.basicAuthSecretRef is set, checked on every request
 // except /healthz. Credential comparison uses
@@ -187,9 +202,21 @@ func (s *Server) basicAuthMiddleware(next http.Handler) http.Handler {
 			if !known {
 				hash = dummyBcryptHash
 			}
-			match := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
-			if known && match {
-				next.ServeHTTP(w, r)
+
+			select {
+			case authCheckSem <- struct{}{}:
+				match := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
+				<-authCheckSem
+				if known && match {
+					next.ServeHTTP(w, r)
+					return
+				}
+			default:
+				// maxConcurrentAuthChecks bcrypt comparisons already in
+				// flight: reject without spending any CPU on this one
+				// rather than queuing behind them.
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "too many concurrent authentication attempts", http.StatusTooManyRequests)
 				return
 			}
 		}

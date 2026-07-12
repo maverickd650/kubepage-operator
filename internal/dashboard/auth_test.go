@@ -317,6 +317,56 @@ func TestIndexRegistersServiceWorkerWhenAuthDisabled(t *testing.T) {
 	}
 }
 
+// TestBasicAuthMiddlewareThrottlesConcurrentBcryptChecks verifies the
+// maxConcurrentAuthChecks semaphore actually rejects requests once full,
+// rather than queuing behind them — the whole point of the limiter is to
+// bound bcrypt CPU rather than just delaying it.
+func TestBasicAuthMiddlewareThrottlesConcurrentBcryptChecks(t *testing.T) {
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
+
+	// Fill every semaphore slot ourselves so the next request through the
+	// middleware finds none available, without needing real concurrency.
+	for range maxConcurrentAuthChecks {
+		authCheckSem <- struct{}{}
+	}
+	t.Cleanup(func() {
+		for range maxConcurrentAuthChecks {
+			<-authCheckSem
+		}
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	req.SetBasicAuth("alice", "hunter2")
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 when maxConcurrentAuthChecks is exhausted", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("missing Retry-After header on 429 response")
+	}
+}
+
+// TestBasicAuthMiddlewareReleasesSemaphoreSlot verifies a single request
+// doesn't permanently consume a semaphore slot — otherwise
+// maxConcurrentAuthChecks legitimate logins in a row would permanently wedge
+// the dashboard.
+func TestBasicAuthMiddlewareReleasesSemaphoreSlot(t *testing.T) {
+	srv := newAuthTestServer(t, authTestDashboard("dashboard-auth"), htpasswdSecret())
+
+	for i := range maxConcurrentAuthChecks + 2 {
+		req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+		req.SetBasicAuth("alice", "hunter2")
+		rec := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: status = %d, want 200 (semaphore slot should be released after each request)", i, rec.Code)
+		}
+	}
+}
+
 func TestBcryptCompareSanityCheck(t *testing.T) {
 	hash := mustBcryptHash("correct-password")
 	if bcrypt.CompareHashAndPassword(hash, []byte("correct-password")) != nil {
