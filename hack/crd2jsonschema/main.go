@@ -24,20 +24,20 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	crdDir := flag.String("crd-dir", "config/crd/bases", "directory of CustomResourceDefinition YAML manifests to convert")
+	outDir := flag.String("out", "schemas", "output directory for the generated JSON Schema files")
+	flag.Parse()
+
+	if err := run(*crdDir, *outDir); err != nil {
 		fmt.Fprintln(os.Stderr, "crd2jsonschema:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	crdDir := flag.String("crd-dir", "config/crd/bases", "directory of CustomResourceDefinition YAML manifests to convert")
-	outDir := flag.String("out", "schemas", "output directory for the generated JSON Schema files")
-	flag.Parse()
-
-	entries, err := os.ReadDir(*crdDir)
+func run(crdDir, outDir string) error {
+	entries, err := os.ReadDir(crdDir)
 	if err != nil {
-		return fmt.Errorf("reading CRD directory %q: %w", *crdDir, err)
+		return fmt.Errorf("reading CRD directory %q: %w", crdDir, err)
 	}
 
 	for _, entry := range entries {
@@ -45,7 +45,7 @@ func run() error {
 			continue
 		}
 
-		path := filepath.Join(*crdDir, entry.Name())
+		path := filepath.Join(crdDir, entry.Name())
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("reading %q: %w", path, err)
@@ -60,7 +60,7 @@ func run() error {
 			return fmt.Errorf("%q: missing spec.group or spec.names.kind, not a CustomResourceDefinition?", path)
 		}
 
-		if err := os.MkdirAll(filepath.Join(*outDir, crd.Spec.Group), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(outDir, crd.Spec.Group), 0o755); err != nil {
 			return fmt.Errorf("creating output directory: %w", err)
 		}
 
@@ -74,7 +74,7 @@ func run() error {
 				return fmt.Errorf("%s/%s: %w", crd.Spec.Names.Kind, version.Name, err)
 			}
 
-			outPath := filepath.Join(*outDir, crd.Spec.Group,
+			outPath := filepath.Join(outDir, crd.Spec.Group,
 				fmt.Sprintf("%s_%s.json", strings.ToLower(crd.Spec.Names.Kind), version.Name))
 			if err := os.WriteFile(outPath, schema, 0o644); err != nil {
 				return fmt.Errorf("writing %q: %w", outPath, err)

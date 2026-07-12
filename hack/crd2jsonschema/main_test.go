@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -14,13 +13,7 @@ import (
 // (schemas/<group>/<lowercase-kind>_<version>.json), and carries a
 // "$schema" marker.
 func TestRunGeneratesJSONSchemasForEveryCRDVersion(t *testing.T) {
-	repoRoot, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	repoRoot = filepath.Join(repoRoot, "..", "..")
-
-	crdDir := filepath.Join(repoRoot, "config", "crd", "bases")
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
 	entries, err := os.ReadDir(crdDir)
 	if err != nil {
 		t.Fatalf("reading %q: %v", crdDir, err)
@@ -30,12 +23,8 @@ func TestRunGeneratesJSONSchemasForEveryCRDVersion(t *testing.T) {
 	}
 
 	outDir := t.TempDir()
-
-	cmd := exec.Command("go", "run", ".", "-crd-dir", crdDir, "-out", outDir)
-	cmd.Dir = filepath.Join(repoRoot, "hack", "crd2jsonschema")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("running converter: %v\n%s", err, out)
+	if err := run(crdDir, outDir); err != nil {
+		t.Fatalf("run: %v", err)
 	}
 
 	groupDir := filepath.Join(outDir, "page.kubepage.dev")
@@ -81,5 +70,117 @@ func TestRunGeneratesJSONSchemasForEveryCRDVersion(t *testing.T) {
 		if !found {
 			t.Errorf("expected generated schema %q not found in %q", name, groupDir)
 		}
+	}
+}
+
+// minimalCRD is a syntactically complete CRD with one schema-bearing version
+// (v1) and one version without a schema (v2legacy), for exercising the
+// skip-and-convert paths without depending on the real manifests.
+const minimalCRD = `apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.example.test
+spec:
+  group: example.test
+  names:
+    kind: Widget
+    plural: widgets
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+    - name: v2legacy
+      served: false
+      storage: false
+`
+
+func TestRunSkipsNonYAMLEntriesAndSchemalessVersions(t *testing.T) {
+	crdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(crdDir, "widget.yaml"), []byte(minimalCRD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Neither of these is a *.yaml file, so both must be skipped, not parsed.
+	if err := os.WriteFile(filepath.Join(crdDir, "notes.txt"), []byte("not yaml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(crdDir, "subdir.yaml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := t.TempDir()
+	if err := run(crdDir, outDir); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	files, err := os.ReadDir(filepath.Join(outDir, "example.test"))
+	if err != nil {
+		t.Fatalf("reading output: %v", err)
+	}
+	if len(files) != 1 || files[0].Name() != "widget_v1.json" {
+		t.Fatalf("expected exactly widget_v1.json (v2legacy has no schema), got %v", files)
+	}
+}
+
+func TestRunFailsWhenOutputDirectoryCannotBeCreated(t *testing.T) {
+	crdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(crdDir, "widget.yaml"), []byte(minimalCRD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A regular file where the output directory should go makes MkdirAll fail.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(crdDir, filepath.Join(blocker, "schemas")); err == nil {
+		t.Fatal("expected an error when the output directory cannot be created, got nil")
+	}
+}
+
+func TestRunFailsWhenSchemaFileCannotBeWritten(t *testing.T) {
+	crdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(crdDir, "widget.yaml"), []byte(minimalCRD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A directory squatting on the target file path makes WriteFile fail
+	// while MkdirAll on the group directory still succeeds.
+	outDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outDir, "example.test", "widget_v1.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(crdDir, outDir); err == nil {
+		t.Fatal("expected an error when the schema file cannot be written, got nil")
+	}
+}
+
+func TestRunFailsOnMissingCRDDirectory(t *testing.T) {
+	if err := run(filepath.Join(t.TempDir(), "does-not-exist"), t.TempDir()); err == nil {
+		t.Fatal("expected an error for a nonexistent CRD directory, got nil")
+	}
+}
+
+func TestRunFailsOnNonCRDYAML(t *testing.T) {
+	crdDir := t.TempDir()
+	// Valid YAML, but not a CustomResourceDefinition — spec.group and
+	// spec.names.kind are absent, which run treats as a hard error rather
+	// than silently emitting a bogus schema path.
+	if err := os.WriteFile(filepath.Join(crdDir, "not-a-crd.yaml"), []byte("kind: ConfigMap\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(crdDir, t.TempDir()); err == nil {
+		t.Fatal("expected an error for a non-CRD manifest, got nil")
+	}
+}
+
+func TestRunFailsOnMalformedYAML(t *testing.T) {
+	crdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(crdDir, "broken.yaml"), []byte("{not yaml: ["), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(crdDir, t.TempDir()); err == nil {
+		t.Fatal("expected an error for malformed YAML, got nil")
 	}
 }
