@@ -2354,7 +2354,10 @@ spec:
                   unless you've verified your upstreams tolerate the extra load. This
                   is deliberately a plain field, not the +kubebuilder:subresource:scale
                   marker (kubectl scale, HPA): scaling this workload isn't a supported
-                  operation given the per-replica polling behavior above.
+                  operation given the per-replica polling behavior above. If you run
+                  more than one replica for pod-availability reasons rather than
+                  throughput, pair it with your own PodDisruptionBudget targeting the
+                  dashboard pod's labels — the operator does not create one.
                 format: int32
                 minimum: 0
                 type: integer

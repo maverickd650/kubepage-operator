@@ -79,6 +79,13 @@ a widget-specific `insecureTLS` escape hatch. The two widget types are
 disjoint sets: "(header only)" types are valid on `InfoWidget` and not
 `ServiceCard`; every other type in the table is `ServiceCard`-only.
 
+Never put a credential in a widget's `url` as a query parameter (e.g.
+`?apikey=...`) — use the `Secrets`/`secretKeyRef` fields in the table above
+instead. A poll failure renders the raw upstream error text on the card, and
+Go's HTTP client errors include the full request URL, so a URL-embedded
+credential leaks to any dashboard viewer the moment that request fails. See
+[SECURITY.md](SECURITY.md#trust-model) for the full trust model.
+
 ## CRDs
 
 | Kind | Purpose |
@@ -247,7 +254,10 @@ mounting a cluster-wide CA bundle / custom background and logo assets into
 the dashboard container. `spec.replicas` and `spec.containerPort` both
 default (`1`, `8080`), so a minimal `Dashboard` needs neither set; see
 `spec.replicas`'s doc comment for why scaling past 1 replica isn't a
-supported operation given the per-replica polling behavior.
+supported operation given the per-replica polling behavior. If you do run
+more than one replica for availability rather than throughput, pair it with
+a `PodDisruptionBudget` targeting the dashboard pod's labels — the operator
+doesn't create one for you.
 
 ## Quickstart
 
