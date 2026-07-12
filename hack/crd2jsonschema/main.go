@@ -33,14 +33,15 @@ func main() {
 func realMain(args []string, stderr io.Writer) int {
 	flags := flag.NewFlagSet("crd2jsonschema", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	crdDir := flags.String("crd-dir", "config/crd/bases", "directory of CustomResourceDefinition YAML manifests to convert")
+	crdDir := flags.String("crd-dir", "config/crd/bases",
+		"directory of CustomResourceDefinition YAML manifests to convert")
 	outDir := flags.String("out", "schemas", "output directory for the generated JSON Schema files")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 
 	if err := run(*crdDir, *outDir); err != nil {
-		fmt.Fprintln(stderr, "crd2jsonschema:", err)
+		_, _ = fmt.Fprintln(stderr, "crd2jsonschema:", err)
 		return 1
 	}
 	return 0
