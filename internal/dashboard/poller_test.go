@@ -32,6 +32,7 @@ const (
 	testDashboardName           = "main"
 	testGroup                   = "Monitoring"
 	testServiceName             = "Prometheus"
+	testRenamedServiceName      = "Renamed"
 	testSvcAName                = "Svc A"
 	testCardKeyA                = "ns/a/0"
 	testWidgetType              = "prometheus"
