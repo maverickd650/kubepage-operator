@@ -585,31 +585,39 @@ func (r *DashboardReconciler) reconcileClusterRoleBinding(ctx context.Context, i
 
 // deleteClusterMetricsRBAC removes the cluster-scoped RBAC for instance,
 // tolerating already-absent objects. Used both when the last kubemetrics
-// widget is unbound and from the Dashboard finalizer on deletion. Most
-// reconciles of a Dashboard with no kubemetrics widget reach here with
-// nothing to clean up, so it Gets the ClusterRoleBinding first rather than
-// unconditionally issuing two Deletes every time: the ClusterRole/
-// ClusterRoleBinding pair is always created and deleted together by this
-// file, so a missing ClusterRoleBinding means there's nothing to delete.
+// widget is unbound and from the Dashboard finalizer on deletion. The
+// ClusterRoleBinding and ClusterRole are deleted unconditionally and
+// independently (rather than Getting the ClusterRoleBinding first and
+// bailing out on NotFound) so that a retry after a partial failure — e.g.
+// the ClusterRoleBinding delete succeeded but the ClusterRole delete failed
+// transiently — still attempts the remaining delete instead of leaving the
+// cluster-scoped ClusterRole (which has no owner reference) permanently
+// orphaned.
 func (r *DashboardReconciler) deleteClusterMetricsRBAC(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
 	name := clusterRBACName(instance)
 
-	crb := &rbacv1.ClusterRoleBinding{}
-	switch err := r.Get(ctx, types.NamespacedName{Name: name}, crb); {
-	case apierrors.IsNotFound(err):
-		return nil
-	case err != nil:
-		return fmt.Errorf("getting ClusterRoleBinding: %w", err)
+	crb := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	crbErr := r.Delete(ctx, crb)
+	if apierrors.IsNotFound(crbErr) {
+		crbErr = nil
+	}
+	if crbErr != nil {
+		crbErr = fmt.Errorf("deleting ClusterRoleBinding: %w", crbErr)
 	}
 
-	if err := r.Delete(ctx, crb); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("deleting ClusterRoleBinding: %w", err)
-	}
 	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: name}}
-	if err := r.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("deleting ClusterRole: %w", err)
+	crErr := r.Delete(ctx, cr)
+	if apierrors.IsNotFound(crErr) {
+		crErr = nil
 	}
-	return nil
+	if crErr != nil {
+		crErr = fmt.Errorf("deleting ClusterRole: %w", crErr)
+	}
+
+	if crbErr != nil {
+		return crbErr
+	}
+	return crErr
 }
 
 // discoveryClusterRoleRules are the read-only permissions the cross-namespace

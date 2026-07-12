@@ -487,16 +487,16 @@ func TestDashboardReconcileFinalizerOperationsError(t *testing.T) {
 	now := metav1.Now()
 	instance.DeletionTimestamp = &now
 	name := clusterRBACName(instance)
-	wantErr := errors.New("get ClusterRoleBinding boom")
+	wantErr := errors.New("delete ClusterRoleBinding boom")
 
 	crb := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, crb).WithStatusSubresource(instance).Build()
 	cl := interceptor.NewClient(base, interceptor.Funcs{
-		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
+		Delete: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.DeleteOption) error {
 			if _, ok := o.(*rbacv1.ClusterRoleBinding); ok {
 				return wantErr
 			}
-			return c.Get(ctx, key, o, opts...)
+			return c.Delete(ctx, o, opts...)
 		},
 	})
 	r := newDashboardReconciler(cl)

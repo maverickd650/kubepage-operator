@@ -41,6 +41,19 @@ jobs:
             exit 1
           fi
 
+      - name: Check GO_VERSION lockstep with [tools] go
+        # [env].GO_VERSION feeds the Dockerfile's GO_VERSION build-arg and
+        # must match [tools].go (the toolchain mise actually installs) — a
+        # Renovate bump of one without the other silently builds release
+        # images with a stale Go toolchain.
+        run: |
+          tools_version="$(mise config get tools.go)"
+          env_version="$(grep -E '^GO_VERSION = ' .mise/config.toml | sed -E 's/.*"([0-9.]+)".*/\1/')"
+          if [ "$tools_version" != "$env_version" ]; then
+            echo "::error::GO_VERSION mismatch: [tools].go is $tools_version, [env].GO_VERSION is $env_version"
+            exit 1
+          fi
+
       - name: Cache custom golangci-lint binary
         id: golangci-lint-custom-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

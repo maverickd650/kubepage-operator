@@ -36,7 +36,7 @@ mise run test           # unit tests: go test $(go list ./... | grep -v /e2e) -r
 mise run test-e2e       # e2e tests against an ephemeral Kind cluster (creates/deletes it automatically)
 
 mise run build          # go build -o bin/manager ./cmd
-mise run run            # go run ./cmd (manager mode, against your current kubeconfig context)
+mise run run            # go run ./cmd --dashboard-image=... (manager mode, against your current kubeconfig context)
 mise run preview        # go run ./cmd preview -f config/samples (no cluster required)
 ```
 
@@ -76,7 +76,9 @@ committed, like the CRD YAML).
   startup by reading the manager's own Pod spec via the `POD_NAME`/
   `POD_NAMESPACE` downward-API env vars — see `ownDashboardImage` in
   `cmd/main.go` — since there's no way for a pod to look up its own image
-  otherwise).
+  otherwise). Outside a Pod (e.g. `mise run run`) there's nothing for that
+  lookup to find, so the `--dashboard-image` flag bypasses it with an
+  explicit image reference — see `resolveDashboardImage` in `cmd/main.go`.
 - **Preview mode** (`<binary> preview -f <path>`, `mise run preview`): serves
   the same dashboard UI against CRD YAML loaded from local files instead of a
   live cluster, so a Dashboard's look can be checked without installing the
@@ -113,15 +115,19 @@ Cross-field schema invariants (e.g. `SecretValueSource` sets exactly one of
 `value`/`secretKeyRef`; a `ServiceCard` sets at most one of `ping`/
 `siteMonitor`/`podSelector`; widget `type` is one of the registered set) are
 enforced as CEL `+kubebuilder:validation:XValidation` markers directly on the
-`api/v1alpha1` types (K8s 1.29+, no webhook server/certs) rather than as
+`api/v1alpha1` types (K8s 1.29+ for most rules; the `egressCIDRs` rule uses
+the `isCIDR()` CEL function added in 1.31, making **1.31+** the effective CRD
+floor since an older apiserver rejects the CRD at CEL compile time; no
+webhook server/certs) rather than as
 separate `ValidatingAdmissionPolicy` objects — the rules travel with the CRD
 and show up in `kubectl explain`. The one thing that *is* still a
 `ValidatingAdmissionPolicy` (`config/admission/credential_shaped_value_policy.yaml`,
 K8s 1.30+) is a `Warn`-action heuristic — flagging a credential-shaped field
 name (`token`, `apiKey`, ...) that uses an inline `value` instead of
 `secretKeyRef` — that can't be expressed as a hard schema rule since it's a
-naming heuristic, not an invariant. 1.29+/1.30+ are the floors required by
-the API surface in use; the CI-tested floor is higher, **1.33** — the
+naming heuristic, not an invariant. 1.31+ (CRD CEL) / 1.30+ (the admission
+policy) are the floors required by the API surface in use; the CI-tested
+floor is higher, **1.33** — the
 `k8s-compat` workflow only exercises 1.33 since Kind v0.32.0 ships no older
 node image, so older versions are expected to work but aren't exercised.
 

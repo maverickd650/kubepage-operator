@@ -22,11 +22,12 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
-// managedAnnotationsKey records, on the Ingress/HTTPRoute this controller
-// owns, exactly which annotation keys it last set from spec.ingress.annotations
-// /spec.gateway.annotations. mergeManagedAnnotations uses it to prune a key
-// that's since been removed from the spec without touching any annotation a
-// different controller (an ingress controller, cert-manager, ...) wrote onto
+// managedAnnotationsKey records, on the Service/Ingress/HTTPRoute this
+// controller owns, exactly which annotation keys it last set from
+// spec.service.annotations/spec.ingress.annotations/spec.gateway.annotations.
+// mergeManagedAnnotations uses it to prune a key that's since been removed
+// from the spec without touching any annotation a different controller (a
+// cloud LB controller, an ingress controller, cert-manager, ...) wrote onto
 // the same object — a wholesale found.Annotations = desired.Annotations
 // would otherwise clobber those on every drift-triggering reconcile.
 const managedAnnotationsKey = "page.kubepage.dev/managed-annotations"
@@ -139,12 +140,13 @@ func (r *DashboardReconciler) reconcileService(ctx context.Context, instance *pa
 	}
 
 	clusterIP := found.Spec.ClusterIP
+	mergedAnnotations := mergeManagedAnnotations(found.Annotations, desired.Annotations)
 	if !portsEqual(found.Spec.Ports, desired.Spec.Ports) || !maps.Equal(found.Spec.Selector, desired.Spec.Selector) ||
-		found.Spec.Type != desired.Spec.Type || !maps.Equal(found.Annotations, desired.Annotations) {
+		found.Spec.Type != desired.Spec.Type || !maps.Equal(found.Annotations, mergedAnnotations) {
 		found.Spec.Ports = desired.Spec.Ports
 		found.Spec.Selector = desired.Spec.Selector
 		found.Spec.Type = desired.Spec.Type
-		found.Annotations = desired.Annotations
+		found.Annotations = mergedAnnotations
 		found.Spec.ClusterIP = clusterIP // immutable once set; preserve it
 		if err := r.Update(ctx, found); err != nil {
 			return fmt.Errorf("updating Service %s/%s: %w", found.Namespace, found.Name, err)
@@ -558,12 +560,12 @@ func (r *DashboardReconciler) networkPolicyForDashboard(instance *pagev1alpha1.D
 	np := instance.Spec.NetworkPolicy
 
 	ingressRules := []networkingv1.NetworkPolicyIngressRule{{
-		Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromInt32(instance.Spec.ContainerPort))}},
+		Ports: []networkingv1.NetworkPolicyPort{{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(instance.Spec.ContainerPort))}},
 		From:  namespaceSelectorPeers(np.IngressNamespaceSelector),
 	}}
 	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
 		ingressRules = append(ingressRules, networkingv1.NetworkPolicyIngressRule{
-			Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromInt32(dashboardMetricsPort))}},
+			Ports: []networkingv1.NetworkPolicyPort{{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(dashboardMetricsPort))}},
 			From:  namespaceSelectorPeers(np.MetricsNamespaceSelector),
 		})
 	}

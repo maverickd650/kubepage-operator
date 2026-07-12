@@ -107,7 +107,10 @@ Cross-field invariants — every secret-bearing field (`SecretValueSource`)
 sets exactly one of `value` or `secretKeyRef`, a `ServiceCard` sets at most
 one of `ping`/`siteMonitor`/`podSelector`, widget `type` is one of the
 supported set — are enforced by CEL rules baked directly into the CRD
-schemas (**Kubernetes v1.29+**), so a bad config is rejected as a `kubectl
+schemas (**Kubernetes v1.31+** — most rules only need v1.29, but the
+`egressCIDRs` rule uses the `isCIDR()` CEL function added in 1.31, and an
+older apiserver rejects the CRD at install time), so a bad config is
+rejected as a `kubectl
 apply` error rather than a broken widget card at poll time. Beyond the
 schemas, the operator additionally ships one
 [`ValidatingAdmissionPolicy`](config/admission/credential_shaped_value_policy.yaml)
@@ -313,13 +316,15 @@ Tooling is managed by [mise](https://mise.jdx.dev) — it pins every tool versio
 (Go, golangci-lint, controller-gen, kustomize, helm, kind, etc.) in
 [`.mise/config.toml`](.mise/config.toml), so local development matches CI
 exactly. Docker and access to a Kubernetes cluster are the only other
-prerequisites — v1.29+ for the CRDs' own CEL schema validation, v1.30+ to
-additionally get the `ValidatingAdmissionPolicy`-based credential-shaped-value
-warning (see [Admission validation](#admission-validation)); older clusters
-work too with `--set admissionPolicies.enabled=false` on the Helm chart.
+prerequisites — v1.31+ for the CRDs' own CEL schema validation (most rules
+only need v1.29, but the `egressCIDRs` rule uses `isCIDR()`, added in 1.31),
+v1.30+ to additionally get the `ValidatingAdmissionPolicy`-based
+credential-shaped-value warning (see
+[Admission validation](#admission-validation)), which can be turned off with
+`--set admissionPolicies.enabled=false` on the Helm chart.
 Those are the floors required by the API surface in use; the **CI-tested
 floor is 1.33** (the `k8s-compat` workflow only exercises 1.33, since Kind
-v0.32.0 ships no older node image) — versions between 1.29/1.30 and 1.33 are
+v0.32.0 ships no older node image) — versions between 1.31 and 1.33 are
 expected to work but aren't exercised in CI.
 
 ```sh
