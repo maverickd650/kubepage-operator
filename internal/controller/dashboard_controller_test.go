@@ -933,7 +933,7 @@ var _ = Describe("Dashboard controller", func() {
 			instance := &pagev1alpha1.Dashboard{
 				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.DashboardSpec{
-					Replicas:      ptr.To(int32(1)),
+					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Discovery: &pagev1alpha1.DiscoverySpec{
 						Enabled: pagev1alpha1.Enabled,
