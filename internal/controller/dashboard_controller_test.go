@@ -145,6 +145,45 @@ var _ = Describe("Dashboard controller", func() {
 			Expect(conditions[0].Status).To(Equal(metav1.ConditionTrue), "condition %s", typeAvailableDashboard)
 			Expect(conditions[0].Reason).To(Equal(reasonReconcileSucceeded), "condition %s", typeAvailableDashboard)
 		})
+
+		It("defaults probes, readOnlyRootFilesystem, and resources when the Dashboard leaves them unset", func() {
+			instanceReconciler := &DashboardReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				DashboardImage: testDashboardImage,
+			}
+			_, err := instanceReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+
+			container := dep.Spec.Template.Spec.Containers[0]
+
+			By("ReadinessProbe and LivenessProbe default to an httpGet /healthz probe on containerPort")
+			Expect(container.ReadinessProbe).NotTo(BeNil())
+			Expect(container.ReadinessProbe.HTTPGet).NotTo(BeNil())
+			Expect(container.ReadinessProbe.HTTPGet.Path).To(Equal("/healthz"))
+			Expect(container.ReadinessProbe.HTTPGet.Port).To(Equal(intstr.FromInt32(8080)))
+			Expect(container.LivenessProbe).NotTo(BeNil())
+			Expect(container.LivenessProbe.HTTPGet).NotTo(BeNil())
+			Expect(container.LivenessProbe.HTTPGet.Path).To(Equal("/healthz"))
+			Expect(container.LivenessProbe.HTTPGet.Port).To(Equal(intstr.FromInt32(8080)))
+
+			By("ContainerSecurityContext defaults readOnlyRootFilesystem to true")
+			Expect(container.SecurityContext).NotTo(BeNil())
+			Expect(container.SecurityContext.ReadOnlyRootFilesystem).To(HaveValue(BeTrue()))
+
+			By("Resources default to modest, non-empty limits and requests")
+			Expect(container.Resources.Limits).To(HaveKeyWithValue(corev1.ResourceCPU, resource.MustParse("500m")))
+			Expect(container.Resources.Limits).To(HaveKeyWithValue(corev1.ResourceMemory, resource.MustParse("128Mi")))
+			Expect(container.Resources.Requests).To(HaveKeyWithValue(corev1.ResourceCPU, resource.MustParse("10m")))
+			Expect(container.Resources.Requests).To(HaveKeyWithValue(corev1.ResourceMemory, resource.MustParse("64Mi")))
+		})
 	})
 
 	Context("Dashboard controller spec field test", func() {

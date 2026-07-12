@@ -1021,7 +1021,11 @@ spec:
                 minimum: 1
                 type: integer
               containerSecurityContext:
-                description: containerSecurityContext is the container security context
+                description: |-
+                  containerSecurityContext is the container security context. Defaults
+                  include readOnlyRootFilesystem: true (the dashboard is a distroless
+                  static binary that writes nothing to disk); set any field here to
+                  override the corresponding default.
                 properties:
                   allowPrivilegeEscalation:
                     description: |-
@@ -1619,7 +1623,10 @@ spec:
                 minProperties: 1
                 type: object
               livenessProbe:
-                description: livenessProbe is the liveness probe configuration
+                description: |-
+                  livenessProbe is the liveness probe configuration. Defaults to an
+                  httpGet probe against /healthz on containerPort when unset; set this
+                  field to fully override the default rather than merge with it.
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -2184,7 +2191,10 @@ spec:
                 minLength: 1
                 type: string
               readinessProbe:
-                description: readinessProbe is the readiness probe configuration
+                description: |-
+                  readinessProbe is the readiness probe configuration. Defaults to an
+                  httpGet probe against /healthz on containerPort when unset; set this
+                  field to fully override the default rather than merge with it.
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -2359,8 +2369,11 @@ spec:
                 minimum: 0
                 type: integer
               resources:
-                description: resources are the resource requests and limits for the
-                  container
+                description: |-
+                  resources are the resource requests and limits for the container.
+                  Defaults to modest limits/requests (mirroring the manager's own
+                  defaults) so a Dashboard doesn't run unbounded; set limits and/or
+                  requests here to override the corresponding default.
                 properties:
                   claims:
                     description: |-
