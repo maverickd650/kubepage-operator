@@ -113,15 +113,19 @@ Cross-field schema invariants (e.g. `SecretValueSource` sets exactly one of
 `value`/`secretKeyRef`; a `ServiceCard` sets at most one of `ping`/
 `siteMonitor`/`podSelector`; widget `type` is one of the registered set) are
 enforced as CEL `+kubebuilder:validation:XValidation` markers directly on the
-`api/v1alpha1` types (K8s 1.29+, no webhook server/certs) rather than as
+`api/v1alpha1` types (K8s 1.29+ for most rules; the `egressCIDRs` rule uses
+the `isCIDR()` CEL function added in 1.31, making **1.31+** the effective CRD
+floor since an older apiserver rejects the CRD at CEL compile time; no
+webhook server/certs) rather than as
 separate `ValidatingAdmissionPolicy` objects — the rules travel with the CRD
 and show up in `kubectl explain`. The one thing that *is* still a
 `ValidatingAdmissionPolicy` (`config/admission/credential_shaped_value_policy.yaml`,
 K8s 1.30+) is a `Warn`-action heuristic — flagging a credential-shaped field
 name (`token`, `apiKey`, ...) that uses an inline `value` instead of
 `secretKeyRef` — that can't be expressed as a hard schema rule since it's a
-naming heuristic, not an invariant. 1.29+/1.30+ are the floors required by
-the API surface in use; the CI-tested floor is higher, **1.33** — the
+naming heuristic, not an invariant. 1.31+ (CRD CEL) / 1.30+ (the admission
+policy) are the floors required by the API surface in use; the CI-tested
+floor is higher, **1.33** — the
 `k8s-compat` workflow only exercises 1.33 since Kind v0.32.0 ships no older
 node image, so older versions are expected to work but aren't exercised.
 

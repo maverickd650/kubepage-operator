@@ -363,21 +363,18 @@ type NetworkPolicySpec struct {
 	// CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
 	// is an opt-in positive scope, not a default deny.
 	//
-	// Each entry must look like a CIDR block (IPv4 or IPv6, with a mask), so
+	// Each entry must be a valid CIDR block (IPv4 or IPv6, with a mask), so
 	// a malformed entry is rejected at admission instead of passing schema
 	// validation and only surfacing as an opaque reconcile error once it's
-	// placed into a NetworkPolicy IPBlock. This uses a regex Pattern rather
-	// than CEL's isCIDR() extension function: isCIDR() requires Kubernetes
-	// 1.31+ (see https://kubernetes.io/docs/reference/using-api/cel/), newer
-	// than this project's documented CEL floor of 1.29/1.30 (see CLAUDE.md),
-	// so a regex keeps the same floor. The pattern is a shape check, not a
-	// full validator (e.g. it doesn't enforce octet/hextet range or IPv6
-	// compression rules) — it exists to catch obviously malformed input, not
-	// to replace the apiserver's own CIDR parsing.
+	// placed into a NetworkPolicy IPBlock. Validated with CEL's isCIDR()
+	// extension function, which requires Kubernetes 1.31+ (see
+	// https://kubernetes.io/docs/reference/using-api/cel/) — a step above
+	// the 1.29/1.30 floor the rest of the API surface needs (see CLAUDE.md),
+	// but still below the CI-tested floor of 1.33.
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:items:MinLength=1
 	// +kubebuilder:validation:items:MaxLength=43
-	// +kubebuilder:validation:items:Pattern=`^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}|[0-9A-Fa-f:]+:[0-9A-Fa-f:]*/[0-9]{1,3})$`
+	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="each egressCIDRs entry must be a valid CIDR block (e.g. 10.0.0.0/8 or 2001:db8::/32)"
 	// +listType=set
 	// +optional
 	EgressCIDRs []string `json:"egressCIDRs,omitempty"`

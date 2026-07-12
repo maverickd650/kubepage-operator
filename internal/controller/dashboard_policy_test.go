@@ -58,6 +58,20 @@ var _ = Describe("Dashboard CRD schema validation", func() {
 			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 
+		It("rejects a CIDR-shaped entry with an out-of-range octet", func() {
+			d := dashboardWithEgressCIDRs("dash-cidr-octet", []string{"10.0.0.999/8"})
+			err := k8sClient.Create(ctx, d)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("rejects a CIDR-shaped entry with an out-of-range prefix length", func() {
+			d := dashboardWithEgressCIDRs("dash-cidr-prefix", []string{"10.0.0.0/33"})
+			err := k8sClient.Create(ctx, d)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
 		It("admits a valid IPv4 CIDR", func() {
 			d := dashboardWithEgressCIDRs("dash-cidr-v4", []string{"10.0.0.0/8"})
 			Expect(k8sClient.Create(ctx, d)).To(Succeed())
