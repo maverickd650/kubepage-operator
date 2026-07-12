@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -645,24 +646,30 @@ func TestDeleteClusterMetricsRBACNoOpWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestDeleteClusterMetricsRBACGetError(t *testing.T) {
+// TestDeleteClusterMetricsRBACRetriesOrphanedClusterRole covers the case
+// where a previous reconcile deleted the ClusterRoleBinding but failed
+// before deleting the ClusterRole (e.g. a transient error). The
+// ClusterRoleBinding is already gone (Get would return NotFound), but the
+// ClusterRole must still be deleted on retry rather than being silently
+// skipped — the ClusterRole has no owner reference, so a skip would leave
+// it permanently orphaned.
+func TestDeleteClusterMetricsRBACRetriesOrphanedClusterRole(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newRBACTestDashboard()
-	wantErr := errors.New("get ClusterRoleBinding boom")
+	name := clusterRBACName(instance)
 
-	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
-	cl := interceptor.NewClient(base, interceptor.Funcs{
-		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
-			if _, ok := o.(*rbacv1.ClusterRoleBinding); ok {
-				return wantErr
-			}
-			return c.Get(ctx, key, o, opts...)
-		},
-	})
+	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, cr).Build()
 	r := &DashboardReconciler{Client: cl, Scheme: scheme}
 
-	if err := r.deleteClusterMetricsRBAC(t.Context(), instance); !errors.Is(err, wantErr) {
-		t.Errorf("deleteClusterMetricsRBAC() error = %v, want wrapping %v", err, wantErr)
+	if err := r.deleteClusterMetricsRBAC(t.Context(), instance); err != nil {
+		t.Fatalf("deleteClusterMetricsRBAC() error = %v, want nil", err)
+	}
+
+	got := &rbacv1.ClusterRole{}
+	err := cl.Get(t.Context(), client.ObjectKey{Name: name}, got)
+	if !apierrors.IsNotFound(err) {
+		t.Errorf("ClusterRole still present after deleteClusterMetricsRBAC(), got err = %v, want NotFound", err)
 	}
 }
 
