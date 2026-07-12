@@ -87,3 +87,28 @@ func TestBroadcasterSubscribeRejectsPastMaxSubscribers(t *testing.T) {
 		t.Error("Subscribe() ok = true at maxSSESubscribers, want false")
 	}
 }
+
+// TestBroadcasterUnsubscribeFreesSlotAtCap verifies Unsubscribe actually
+// frees the slot it held: at the cap, unsubscribing one connection must let
+// exactly one new Subscribe succeed, not zero (a leaked count) and not more
+// than one (a miscounted map).
+func TestBroadcasterUnsubscribeFreesSlotAtCap(t *testing.T) {
+	b := NewBroadcaster()
+	chs := make([]chan sseHashes, 0, maxSSESubscribers)
+	for i := range maxSSESubscribers {
+		ch, ok := b.Subscribe()
+		if !ok {
+			t.Fatalf("Subscribe() ok = false at subscriber %d, want true below the cap", i)
+		}
+		chs = append(chs, ch)
+	}
+
+	b.Unsubscribe(chs[0])
+
+	if _, ok := b.Subscribe(); !ok {
+		t.Error("Subscribe() ok = false right after freeing a slot, want true")
+	}
+	if _, ok := b.Subscribe(); ok {
+		t.Error("Subscribe() ok = true after refilling the freed slot, want false (still at cap)")
+	}
+}
