@@ -1821,9 +1821,22 @@ spec:
                       even with networkPolicy enabled for ingress — widget URLs are
                       CRD-supplied by design (see SECURITY.md's explicit non-goals), so this
                       is an opt-in positive scope, not a default deny.
+
+                      Each entry must look like a CIDR block (IPv4 or IPv6, with a mask), so
+                      a malformed entry is rejected at admission instead of passing schema
+                      validation and only surfacing as an opaque reconcile error once it's
+                      placed into a NetworkPolicy IPBlock. This uses a regex Pattern rather
+                      than CEL's isCIDR() extension function: isCIDR() requires Kubernetes
+                      1.31+ (see https://kubernetes.io/docs/reference/using-api/cel/), newer
+                      than this project's documented CEL floor of 1.29/1.30 (see CLAUDE.md),
+                      so a regex keeps the same floor. The pattern is a shape check, not a
+                      full validator (e.g. it doesn't enforce octet/hextet range or IPv6
+                      compression rules) — it exists to catch obviously malformed input, not
+                      to replace the apiserver's own CIDR parsing.
                     items:
                       maxLength: 43
                       minLength: 1
+                      pattern: ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}|[0-9A-Fa-f:]+:[0-9A-Fa-f:]*/[0-9]{1,3})$
                       type: string
                     maxItems: 64
                     type: array
