@@ -20,7 +20,7 @@ IMG = "{{ env.IMG | default(value='controller:latest') }}"
 KIND_CLUSTER = "{{ env.KIND_CLUSTER | default(value='kubepage-operator-test-e2e') }}"
 CONTAINER_TOOL = "{{ env.CONTAINER_TOOL | default(value='docker') }}"
 # Passed to the Dockerfile's GO_VERSION build-arg; must match [tools].go above.
-GO_VERSION = "1.26.4"
+GO_VERSION = "1.26.5"
 
 ##@ Development
 
