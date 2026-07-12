@@ -167,7 +167,10 @@ func TestPollerPollOnceBroadcastsCompletion(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	broadcast := NewBroadcaster()
-	ch := broadcast.Subscribe()
+	ch, ok := broadcast.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe() ok = false, want true")
+	}
 	p := &Poller{
 		Reader:        cl,
 		SecretReader:  cl,
@@ -182,7 +185,11 @@ func TestPollerPollOnceBroadcastsCompletion(t *testing.T) {
 	p.pollOnce(t.Context())
 
 	select {
-	case <-ch:
+	case h := <-ch:
+		wantFragment, wantHeader := currentHashes(t.Context(), p.Reader, p.Namespace, p.DashboardName, p.Store)
+		if h.fragment != wantFragment || h.header != wantHeader {
+			t.Errorf("published %+v, want {%q %q} (currentHashes computed independently against the same Store/Reader)", h, wantFragment, wantHeader)
+		}
 	default:
 		t.Error("pollOnce did not publish to Broadcast")
 	}

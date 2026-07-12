@@ -550,8 +550,15 @@ func etagFor(b []byte) string {
 // server-rendered initial fragment) and handleFragment (every subsequent
 // htmx poll), so the two never drift apart.
 func (s *Server) buildFragmentData(site Site) fragmentData {
+	return buildFragmentData(s.Store.Snapshot(), site)
+}
+
+// buildFragmentData is the free-function form of Server.buildFragmentData,
+// also used by currentHashes (called from Poller.pollOnce, which has no
+// Server to hang the method off of).
+func buildFragmentData(cards []Card, site Site) fragmentData {
 	return fragmentData{
-		Tabs:               layoutTabs(serviceCards(s.Store.Snapshot()), site),
+		Tabs:               layoutTabs(serviceCards(cards), site),
 		BookmarkGroups:     site.BookmarkGroups,
 		SiteTarget:         site.Target,
 		DisableCollapse:    site.DisableCollapse,
@@ -581,9 +588,12 @@ const sseHeartbeatInterval = 25 * time.Second
 
 // handleEvents serves GET /events as a Server-Sent Events stream: one
 // "fragmentChanged" or "headerChanged" event whenever a poll cycle actually
-// changes what /fragment or /header would render, computed the same
-// content-hash way writeCachedHTML's ETag is (so a cosmetic no-op cycle —
-// the common case once a dashboard's data has settled — sends nothing). The
+// changes what /fragment or /header would render. The content hashes
+// (etagFor, the same one writeCachedHTML's ETag uses) are computed once per
+// poll cycle by Poller.pollOnce and carried through Broadcast — this handler
+// only compares them against its own last-sent baseline, so a cosmetic no-op
+// cycle — the common case once a dashboard's data has settled — sends
+// nothing, and N open connections cost one render per cycle, not N. The
 // event carries no payload; the page shell's own script re-fetches the
 // fragment via htmx on receiving it (see index.templ) rather than the
 // server pushing HTML down the SSE channel itself, keeping the same
@@ -594,6 +604,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server-sent events not available", http.StatusNotImplemented)
 		return
 	}
+	ch, subscribed := s.Broadcast.Subscribe()
+	if !subscribed {
+		// maxSSESubscribers already reached: htmx's interval poll (index.templ)
+		// still covers this client, so reject rather than growing unbounded.
+		http.Error(w, "too many active event streams", http.StatusServiceUnavailable)
+		return
+	}
+	defer s.Broadcast.Unsubscribe(ch)
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -620,9 +639,6 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	lastFragment, lastHeader := s.currentHashes(ctx)
 
-	ch := s.Broadcast.Subscribe()
-	defer s.Broadcast.Unsubscribe(ch)
-
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
 
@@ -635,18 +651,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
-		case <-ch:
-			fragment, header := s.currentHashes(ctx)
+		case h := <-ch:
 			var wrote bool
-			if fragment != "" && fragment != lastFragment {
-				lastFragment = fragment
+			if h.fragment != "" && h.fragment != lastFragment {
+				lastFragment = h.fragment
 				if _, err := io.WriteString(w, "event: fragmentChanged\ndata: refresh\n\n"); err != nil {
 					return
 				}
 				wrote = true
 			}
-			if header != "" && header != lastHeader {
-				lastHeader = header
+			if h.header != "" && h.header != lastHeader {
+				lastHeader = h.header
 				if _, err := io.WriteString(w, "event: headerChanged\ndata: refresh\n\n"); err != nil {
 					return
 				}
@@ -662,24 +677,35 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // currentHashes returns the content-hash (etagFor) of what /fragment and
 // /header would currently render, or "" for either on a LoadSite error (a
 // transient read failure shouldn't itself look like a content change, and ""
-// never matches a real hash so it's simply skipped by handleEvents).
-func (s *Server) currentHashes(ctx context.Context) (fragment, header string) {
-	site, err := LoadSite(ctx, s.Reader, s.Namespace, s.DashboardName)
+// never matches a real hash so it's simply skipped by handleEvents). A free
+// function, not a Server method, so Poller.pollOnce can also call it —
+// computing the pair once per poll cycle there and carrying it through
+// Broadcast, rather than every handleEvents subscriber recomputing it on
+// every broadcast (see Broadcaster's doc comment).
+func currentHashes(ctx context.Context, reader client.Reader, namespace, dashboardName string, store *Store) (fragment, header string) {
+	site, err := LoadSite(ctx, reader, namespace, dashboardName)
 	if err != nil {
 		return "", ""
 	}
+	cards := store.Snapshot()
 
 	var fragBuf bytes.Buffer
-	if err := Cards(s.buildFragmentData(site)).Render(ctx, &fragBuf); err == nil {
+	if err := Cards(buildFragmentData(cards, site)).Render(ctx, &fragBuf); err == nil {
 		fragment = etagFor(fragBuf.Bytes())
 	}
 
 	var headerBuf bytes.Buffer
-	hdrData := headerData{Widgets: buildHeader(site.HeaderWidgets, s.Store.Snapshot())}
+	hdrData := headerData{Widgets: buildHeader(site.HeaderWidgets, cards)}
 	if err := Header(hdrData).Render(ctx, &headerBuf); err == nil {
 		header = etagFor(headerBuf.Bytes())
 	}
 	return fragment, header
+}
+
+// currentHashes is the Server-side convenience wrapper handleEvents uses to
+// compute a new SSE connection's baseline hashes on connect.
+func (s *Server) currentHashes(ctx context.Context) (fragment, header string) {
+	return currentHashes(ctx, s.Reader, s.Namespace, s.DashboardName, s.Store)
 }
 
 // serviceCards returns only the non-header cards (header InfoWidget cards are

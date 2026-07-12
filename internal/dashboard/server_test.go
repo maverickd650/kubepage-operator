@@ -2108,18 +2108,23 @@ func TestServerEventsWithoutBroadcastReturns501(t *testing.T) {
 	}
 }
 
-// waitUntil polls cond every 5ms until it reports true or timeout elapses,
-// failing the test in the latter case.
-func waitUntil(t *testing.T, timeout time.Duration, cond func() bool) {
+// waitUntilTimeout is the fixed deadline every waitUntil call in this file
+// uses — long enough to absorb scheduling jitter on a loaded CI runner,
+// short enough that a genuinely stuck test still fails promptly.
+const waitUntilTimeout = time.Second
+
+// waitUntil polls cond every 5ms until it reports true or waitUntilTimeout
+// elapses, failing the test in the latter case.
+func waitUntil(t *testing.T, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(waitUntilTimeout)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("condition not met within %s", timeout)
+	t.Fatalf("condition not met within %s", waitUntilTimeout)
 }
 
 // syncRecorder is httptest.ResponseRecorder's role for a handler under test
@@ -2189,23 +2194,105 @@ func TestServerEventsPushesFragmentChanged(t *testing.T) {
 		srv.handleEvents(rec, req)
 	}()
 
-	waitUntil(t, time.Second, func() bool { return rec.Code() == http.StatusOK })
+	waitUntil(t, func() bool { return rec.Code() == http.StatusOK })
 	if got := rec.Header().Get("Content-Type"); got != "text/event-stream" {
 		t.Errorf("Content-Type = %q, want text/event-stream", got)
 	}
 
 	// A cycle that doesn't change anything (no Store mutation) must not
-	// produce an event.
-	broadcast.Publish()
+	// produce an event. Real callers (Poller.pollOnce) compute the hashes
+	// once per cycle and pass them to Publish; the test does the same via
+	// the package-level currentHashes helper.
+	fragment, header := currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
+	broadcast.Publish(fragment, header)
 	time.Sleep(20 * time.Millisecond)
 	if strings.Contains(rec.String(), "event:") {
 		t.Errorf("unchanged Publish produced an SSE event:\n%s", rec.String())
 	}
 
 	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
-	broadcast.Publish()
-	waitUntil(t, time.Second, func() bool { return strings.Contains(rec.String(), "event: fragmentChanged") })
+	fragment, header = currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
+	broadcast.Publish(fragment, header)
+	waitUntil(t, func() bool { return strings.Contains(rec.String(), "event: fragmentChanged") })
 
 	cancel()
 	<-done
+}
+
+// TestServerEventsPushesHeaderChanged is TestServerEventsPushesFragmentChanged's
+// counterpart for the header side: mutating a header-only card (Header:
+// true, so it's excluded from the fragment's card grid — see serviceCards)
+// must fire headerChanged without also firing fragmentChanged.
+func TestServerEventsPushesHeaderChanged(t *testing.T) {
+	store := NewStore()
+	headerKey := "header/" + testHeaderWeather + "/0"
+	store.Set(Card{
+		Key: headerKey, ServiceName: testHeaderWeather, Header: true,
+		Fields: []Field{{Label: labelWeather, Value: "5°C"}},
+	})
+	weather := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type: testOpenMeteoType,
+			}},
+		},
+	}
+	srv := newTestServer(t, store, weather)
+	broadcast := NewBroadcaster()
+	srv.Broadcast = broadcast
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/events", nil).WithContext(ctx)
+	rec := newSyncRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.handleEvents(rec, req)
+	}()
+
+	waitUntil(t, func() bool { return rec.Code() == http.StatusOK })
+
+	store.Set(Card{
+		Key: headerKey, ServiceName: testHeaderWeather, Header: true,
+		Fields: []Field{{Label: labelWeather, Value: "20°C"}},
+	})
+	fragment, header := currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
+	broadcast.Publish(fragment, header)
+	waitUntil(t, func() bool { return strings.Contains(rec.String(), "event: headerChanged") })
+
+	if strings.Contains(rec.String(), "event: fragmentChanged") {
+		t.Errorf("a header-only card change fired fragmentChanged too:\n%s", rec.String())
+	}
+
+	cancel()
+	<-done
+}
+
+// TestServerEventsRejectsPastMaxSubscribers verifies handleEvents responds
+// 503 (rather than opening a goroutine and channel) once Broadcast is
+// already at maxSSESubscribers — bounding the resource an unauthenticated
+// client can force the dashboard pod to hold open indefinitely.
+func TestServerEventsRejectsPastMaxSubscribers(t *testing.T) {
+	store := NewStore()
+	srv := newTestServer(t, store)
+	broadcast := NewBroadcaster()
+	srv.Broadcast = broadcast
+
+	for i := range maxSSESubscribers {
+		if _, ok := broadcast.Subscribe(); !ok {
+			t.Fatalf("Subscribe() ok = false at subscriber %d, want true below the cap", i)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/events", nil)
+	rec := httptest.NewRecorder()
+	srv.handleEvents(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
 }

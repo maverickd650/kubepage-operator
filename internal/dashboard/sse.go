@@ -2,52 +2,84 @@ package dashboard
 
 import "sync"
 
-// Broadcaster fans a single signal out to any number of subscribers without
-// blocking the publisher when a subscriber isn't currently reading — used to
-// wake every open SSE connection (see Server.handleEvents) at the end of
-// each Poller.pollOnce cycle, so they can check whether the fragment/header
-// content actually changed and push a refresh event to the browser only
-// then, rather than the browser having to poll on a fixed interval.
+// sseHashes is the fragment/header content-hash pair computed once per poll
+// cycle (Poller.pollOnce, via currentHashes) and carried through Broadcast
+// to every subscriber — see Broadcast's doc comment for why this replaced a
+// plain wakeup signal.
+type sseHashes struct {
+	fragment, header string
+}
+
+// maxSSESubscribers bounds Broadcaster.Subscribe. With no auth enabled by
+// default, anyone who can reach the dashboard Service can open GET /events
+// connections, each holding a goroutine and a channel open indefinitely;
+// past this many concurrent subscribers, handleEvents rejects new
+// connections with 503 rather than growing unbounded. htmx's own interval
+// poll (see index.templ) already covers a client that can't get an SSE
+// connection, so a rejected client still gets refreshed, just not pushed.
+const maxSSESubscribers = 256
+
+// Broadcaster fans the latest fragment/header content hashes out to any
+// number of subscribers without blocking the publisher when a subscriber
+// isn't currently reading — used to wake every open SSE connection (see
+// Server.handleEvents) at the end of each Poller.pollOnce cycle. The hashes
+// are computed once by the publisher rather than once per subscriber, so an
+// SSE broadcast costs O(1) renders per cycle regardless of how many tabs are
+// open.
 type Broadcaster struct {
 	mu   sync.Mutex
-	subs map[chan struct{}]struct{}
+	subs map[chan sseHashes]struct{}
 }
 
 // NewBroadcaster returns a ready-to-use Broadcaster.
 func NewBroadcaster() *Broadcaster {
-	return &Broadcaster{subs: map[chan struct{}]struct{}{}}
+	return &Broadcaster{subs: map[chan sseHashes]struct{}{}}
 }
 
-// Subscribe registers a new channel that receives a value every time
-// Publish is called, until Unsubscribe removes it. The channel is buffered
-// (size 1): a subscriber that hasn't drained the previous signal yet just
-// coalesces into the same pending wakeup instead of blocking Publish.
-func (b *Broadcaster) Subscribe() chan struct{} {
-	ch := make(chan struct{}, 1)
+// Subscribe registers a new channel that receives the latest fragment/header
+// hashes every time Publish is called, until Unsubscribe removes it. ok is
+// false, and no channel is registered, once maxSSESubscribers is already
+// reached. The channel is buffered (size 1): Publish overwrites a pending,
+// not-yet-delivered value with the newer one rather than blocking or
+// accumulating a backlog.
+func (b *Broadcaster) Subscribe() (ch chan sseHashes, ok bool) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.subs) >= maxSSESubscribers {
+		return nil, false
+	}
+	ch = make(chan sseHashes, 1)
 	b.subs[ch] = struct{}{}
-	b.mu.Unlock()
-	return ch
+	return ch, true
 }
 
 // Unsubscribe removes ch, added by a prior Subscribe call. Safe to call more
 // than once or with a channel that was never subscribed.
-func (b *Broadcaster) Unsubscribe(ch chan struct{}) {
+func (b *Broadcaster) Unsubscribe(ch chan sseHashes) {
 	b.mu.Lock()
 	delete(b.subs, ch)
 	b.mu.Unlock()
 }
 
-// Publish wakes every current subscriber. Never blocks: a full subscriber
-// channel (an already-pending, not-yet-drained wakeup) is left as-is rather
-// than waited on.
-func (b *Broadcaster) Publish() {
+// Publish sends fragment/header to every current subscriber. Never blocks: a
+// channel still holding an undelivered previous value has that value
+// replaced with the newer one instead of Publish waiting on it.
+func (b *Broadcaster) Publish(fragment, header string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	h := sseHashes{fragment: fragment, header: header}
 	for ch := range b.subs {
 		select {
-		case ch <- struct{}{}:
+		case ch <- h:
 		default:
+			select {
+			case <-ch:
+			default:
+			}
+			select {
+			case ch <- h:
+			default:
+			}
 		}
 	}
 }
