@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 func init() {
@@ -176,11 +175,10 @@ func unifiIntegrationRequest(ctx context.Context, endpoint, apiKey string) (*htt
 // connections in) a fresh *http.Transport once per target rather than on
 // every poll — an insecureTLS controller was otherwise paying full TLS
 // handshake cost each cycle instead of reusing keep-alive connections like
-// every other widget.
-var unifiInsecureClientCache = struct {
-	mu      sync.Mutex
-	clients map[string]*http.Client
-}{clients: map[string]*http.Client{}}
+// every other widget. Bounded (see boundedClientCache) so editing a
+// controller's baseURL over the dashboard pod's indefinite lifetime doesn't
+// leak *http.Client/*http.Transport entries forever.
+var unifiInsecureClientCache = newBoundedClientCache()
 
 // unifiHTTPClient returns client unchanged unless insecureTLS is set, in
 // which case it returns a cached (or newly built and cached) client for
@@ -194,15 +192,9 @@ func unifiHTTPClient(client *http.Client, baseURL string, insecureTLS bool) *htt
 		return client
 	}
 
-	unifiInsecureClientCache.mu.Lock()
-	defer unifiInsecureClientCache.mu.Unlock()
-	if c, ok := unifiInsecureClientCache.clients[baseURL]; ok {
-		return c
-	}
-
-	transport := newGuardedTransport(nil)
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit per-widget opt-in, see unifiConfig.InsecureTLS
-	c := &http.Client{Timeout: client.Timeout, Transport: transport}
-	unifiInsecureClientCache.clients[baseURL] = c
-	return c
+	return unifiInsecureClientCache.getOrCreate(baseURL, func() *http.Client {
+		transport := newGuardedTransport(nil)
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit per-widget opt-in, see unifiConfig.InsecureTLS
+		return &http.Client{Timeout: client.Timeout, Transport: transport}
+	})
 }

@@ -81,7 +81,7 @@ func TestServerFragmentRevalidatesWithETag(t *testing.T) {
 		t.Errorf("304 response body = %q, want empty", second.Body.String())
 	}
 
-	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testRenamedServiceName})
 	third := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(third, httptest.NewRequest(http.MethodGet, "/fragment", nil))
 	if third.Code != http.StatusOK {
@@ -2210,7 +2210,7 @@ func TestServerEventsPushesFragmentChanged(t *testing.T) {
 		t.Errorf("unchanged Publish produced an SSE event:\n%s", rec.String())
 	}
 
-	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testRenamedServiceName})
 	fragment, header = currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
 	broadcast.Publish(fragment, header)
 	waitUntil(t, func() bool { return strings.Contains(rec.String(), "event: fragmentChanged") })
@@ -2284,7 +2284,9 @@ type failingWriteRecorder struct {
 	code int
 }
 
-func newFailingWriteRecorder() *failingWriteRecorder { return &failingWriteRecorder{header: http.Header{}} }
+func newFailingWriteRecorder() *failingWriteRecorder {
+	return &failingWriteRecorder{header: http.Header{}}
+}
 
 func (r *failingWriteRecorder) Header() http.Header { return r.header }
 
@@ -2318,8 +2320,7 @@ func TestServerEventsWriteErrorReleasesSubscriberSlot(t *testing.T) {
 	broadcast := NewBroadcaster()
 	srv.Broadcast = broadcast
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	req := httptest.NewRequest(http.MethodGet, "/events", nil).WithContext(ctx)
 	rec := newFailingWriteRecorder()
 
@@ -2336,7 +2337,7 @@ func TestServerEventsWriteErrorReleasesSubscriberSlot(t *testing.T) {
 	// handleEvents would see no change and never attempt the write that's
 	// meant to fail here. The initial header write (w.WriteHeader +
 	// flusher.Flush) doesn't go through sseWrite, but this event write does.
-	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testRenamedServiceName})
 	fragment, header := currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
 	broadcast.Publish(fragment, header)
 

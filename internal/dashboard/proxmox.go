@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 func init() {
@@ -152,11 +151,9 @@ func (proxmoxWidget) Sample(WidgetConfig) []Field {
 // proxmoxInsecureClientCache holds one *http.Client per baseURL for
 // insecureTLS controllers — same rationale as unifi.go's
 // unifiInsecureClientCache, kept separate since each widget's cache is only
-// ever read/written by that widget's own Poll.
-var proxmoxInsecureClientCache = struct {
-	mu      sync.Mutex
-	clients map[string]*http.Client
-}{clients: map[string]*http.Client{}}
+// ever read/written by that widget's own Poll. Bounded (see
+// boundedClientCache) for the same reason unifiInsecureClientCache is.
+var proxmoxInsecureClientCache = newBoundedClientCache()
 
 // proxmoxHTTPClient returns client unchanged unless insecureTLS is set, in
 // which case it returns a cached (or newly built and cached) client for
@@ -167,15 +164,9 @@ func proxmoxHTTPClient(client *http.Client, baseURL string, insecureTLS bool) *h
 		return client
 	}
 
-	proxmoxInsecureClientCache.mu.Lock()
-	defer proxmoxInsecureClientCache.mu.Unlock()
-	if c, ok := proxmoxInsecureClientCache.clients[baseURL]; ok {
-		return c
-	}
-
-	transport := newGuardedTransport(nil)
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit per-widget opt-in, see proxmoxConfig.InsecureTLS
-	c := &http.Client{Timeout: client.Timeout, Transport: transport}
-	proxmoxInsecureClientCache.clients[baseURL] = c
-	return c
+	return proxmoxInsecureClientCache.getOrCreate(baseURL, func() *http.Client {
+		transport := newGuardedTransport(nil)
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit per-widget opt-in, see proxmoxConfig.InsecureTLS
+		return &http.Client{Timeout: client.Timeout, Transport: transport}
+	})
 }
