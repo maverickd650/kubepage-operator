@@ -2195,17 +2195,46 @@ func TestServerEventsPushesFragmentChanged(t *testing.T) {
 	}
 
 	// A cycle that doesn't change anything (no Store mutation) must not
-	// produce an event.
-	broadcast.Publish()
+	// produce an event. Real callers (Poller.pollOnce) compute the hashes
+	// once per cycle and pass them to Publish; the test does the same via
+	// the package-level currentHashes helper.
+	fragment, header := currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
+	broadcast.Publish(fragment, header)
 	time.Sleep(20 * time.Millisecond)
 	if strings.Contains(rec.String(), "event:") {
 		t.Errorf("unchanged Publish produced an SSE event:\n%s", rec.String())
 	}
 
 	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: "Renamed"})
-	broadcast.Publish()
+	fragment, header = currentHashes(ctx, srv.Reader, srv.Namespace, srv.DashboardName, srv.Store)
+	broadcast.Publish(fragment, header)
 	waitUntil(t, time.Second, func() bool { return strings.Contains(rec.String(), "event: fragmentChanged") })
 
 	cancel()
 	<-done
+}
+
+// TestServerEventsRejectsPastMaxSubscribers verifies handleEvents responds
+// 503 (rather than opening a goroutine and channel) once Broadcast is
+// already at maxSSESubscribers — bounding the resource an unauthenticated
+// client can force the dashboard pod to hold open indefinitely.
+func TestServerEventsRejectsPastMaxSubscribers(t *testing.T) {
+	store := NewStore()
+	srv := newTestServer(t, store)
+	broadcast := NewBroadcaster()
+	srv.Broadcast = broadcast
+
+	for i := range maxSSESubscribers {
+		if _, ok := broadcast.Subscribe(); !ok {
+			t.Fatalf("Subscribe() ok = false at subscriber %d, want true below the cap", i)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/events", nil)
+	rec := httptest.NewRecorder()
+	srv.handleEvents(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
 }

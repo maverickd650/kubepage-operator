@@ -167,7 +167,10 @@ func TestPollerPollOnceBroadcastsCompletion(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	broadcast := NewBroadcaster()
-	ch := broadcast.Subscribe()
+	ch, ok := broadcast.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe() ok = false, want true")
+	}
 	p := &Poller{
 		Reader:        cl,
 		SecretReader:  cl,

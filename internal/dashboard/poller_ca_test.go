@@ -98,3 +98,37 @@ func TestHTTPClientForCACertSecretResolutionError(t *testing.T) {
 		t.Fatal("httpClientForCACert() error = nil, want error when the Secret doesn't exist")
 	}
 }
+
+// TestPruneCAClientCacheDropsUnusedEntries verifies pruneCAClientCache
+// evicts a caClientCache entry once a poll cycle completes without any
+// widget resolving that CA bundle again — e.g. after a caCert rotation —
+// mirroring pruneWidgetLastPolled's behavior for widgetLastPolled.
+func TestPruneCAClientCacheDropsUnusedEntries(t *testing.T) {
+	base := &http.Client{Timeout: 5 * time.Second}
+	stalePEM := string(generateTestCACertPEM(t))
+	freshPEM := string(generateTestCACertPEM(t))
+
+	if _, err := caClient(base, stalePEM); err != nil {
+		t.Fatalf("caClient(stale) error = %v", err)
+	}
+	if _, err := caClient(base, freshPEM); err != nil {
+		t.Fatalf("caClient(fresh) error = %v", err)
+	}
+	staleKey, freshKey := caCacheKey(stalePEM), caCacheKey(freshPEM)
+
+	p := &Poller{}
+	p.markCAKeyUsed(freshKey) // simulates only freshPEM being resolved this cycle
+	p.pruneCAClientCache()
+
+	caClientCache.mu.Lock()
+	_, staleStillCached := caClientCache.clients[staleKey]
+	_, freshStillCached := caClientCache.clients[freshKey]
+	caClientCache.mu.Unlock()
+
+	if staleStillCached {
+		t.Error("pruneCAClientCache() left an entry not used this cycle cached")
+	}
+	if !freshStillCached {
+		t.Error("pruneCAClientCache() evicted an entry that was used this cycle")
+	}
+}

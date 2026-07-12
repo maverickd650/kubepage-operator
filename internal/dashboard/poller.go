@@ -111,6 +111,15 @@ type Poller struct {
 	// from pollOnce itself.
 	widgetLastPolledMu sync.Mutex
 	widgetLastPolled   map[string]time.Time
+
+	// caKeysUsed is the set of caClientCache keys (see caClient) resolved
+	// during the poll cycle currently running, reset at the start of each
+	// pollOnce and consulted by pruneCAClientCache after wg.Wait() to evict
+	// any cached *http.Client — and its idle-connection pool — for a caCert
+	// bundle no widget referenced this cycle (e.g. after a caCert rotation).
+	// Guarded by caKeysUsedMu for the same reason as widgetLastPolledMu.
+	caKeysUsedMu sync.Mutex
+	caKeysUsed   map[string]bool
 }
 
 // Run polls once immediately, then on Interval until ctx is done.
@@ -130,6 +139,10 @@ func (p *Poller) Run(ctx context.Context) {
 }
 
 func (p *Poller) pollOnce(ctx context.Context) {
+	p.caKeysUsedMu.Lock()
+	p.caKeysUsed = map[string]bool{}
+	p.caKeysUsedMu.Unlock()
+
 	var keepMu sync.Mutex
 	keep := map[string]bool{}
 	markKeep := func(key string) {
@@ -275,9 +288,15 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	p.Store.Prune(keep)
 	p.pruneMonitorMetrics(monitorLabels)
 	p.pruneWidgetLastPolled(keep)
+	p.pruneCAClientCache()
 
 	if p.Broadcast != nil {
-		p.Broadcast.Publish()
+		// Computed once here rather than once per SSE subscriber
+		// (Server.handleEvents used to call this on every broadcast): with N
+		// open dashboard tabs, that was N+ full LoadSite + Cards/Header
+		// renders per poll cycle instead of one.
+		fragment, header := currentHashes(ctx, p.Reader, p.Namespace, p.DashboardName, p.Store)
+		p.Broadcast.Publish(fragment, header)
 	}
 }
 
@@ -314,6 +333,30 @@ func (p *Poller) pruneWidgetLastPolled(keep map[string]bool) {
 	for key := range p.widgetLastPolled {
 		if !keep[key] {
 			delete(p.widgetLastPolled, key)
+		}
+	}
+}
+
+// pruneCAClientCache deletes any caClientCache entry not resolved during
+// this poll cycle (tracked in caKeysUsed) — otherwise rotating or removing a
+// widget's caCert leaves its old *http.Client, and the idle-connection pool
+// behind it, cached forever. Unlike pruneWidgetLastPolled's keep set (marked
+// for every widget bound this cycle, before its due-poll check), caKeysUsed
+// only sees a caCert that was actually resolved this cycle: a widget with a
+// PollIntervalSeconds override that isn't due yet won't mark its key, so its
+// cached client can get evicted and rebuilt on its next due poll. That's a
+// harmless extra TLS handshake, not a correctness issue — the rebuilt client
+// still trusts the same CA bundle.
+func (p *Poller) pruneCAClientCache() {
+	p.caKeysUsedMu.Lock()
+	used := p.caKeysUsed
+	p.caKeysUsedMu.Unlock()
+
+	caClientCache.mu.Lock()
+	defer caClientCache.mu.Unlock()
+	for key := range caClientCache.clients {
+		if !used[key] {
+			delete(caClientCache.clients, key)
 		}
 	}
 }
@@ -573,12 +616,18 @@ var caClientCache = struct {
 	clients map[string]*http.Client
 }{clients: map[string]*http.Client{}}
 
+// caCacheKey returns caClientCache's key for a CA PEM bundle: its SHA-256
+// content hash, hex-encoded.
+func caCacheKey(caPEM string) string {
+	sum := sha256.Sum256([]byte(caPEM))
+	return hex.EncodeToString(sum[:])
+}
+
 // caClient returns an *http.Client trusting caPEM in addition to the system
 // trust store, built from base's Timeout, caching the result by the PEM
 // bundle's content hash (see caClientCache).
 func caClient(base *http.Client, caPEM string) (*http.Client, error) {
-	sum := sha256.Sum256([]byte(caPEM))
-	key := hex.EncodeToString(sum[:])
+	key := caCacheKey(caPEM)
 
 	caClientCache.mu.Lock()
 	defer caClientCache.mu.Unlock()
@@ -609,7 +658,19 @@ func (p *Poller) httpClientForCACert(ctx context.Context, namespace string, caCe
 	if err != nil {
 		return nil, fmt.Errorf("resolving caCert: %w", err)
 	}
+	p.markCAKeyUsed(caCacheKey(caPEM))
 	return caClient(base, caPEM)
+}
+
+// markCAKeyUsed records key (a caClientCache key) as resolved during the
+// current poll cycle, so pruneCAClientCache doesn't evict it.
+func (p *Poller) markCAKeyUsed(key string) {
+	p.caKeysUsedMu.Lock()
+	if p.caKeysUsed == nil {
+		p.caKeysUsed = map[string]bool{}
+	}
+	p.caKeysUsed[key] = true
+	p.caKeysUsedMu.Unlock()
 }
 
 // metricErr returns the error to record for a poll metric, treating an
