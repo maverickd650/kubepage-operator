@@ -55,7 +55,13 @@ trusted network:
    internal URLs, and live widget data (Plex sessions, TrueNAS pools, node
    metrics) to anyone who can reach the Service, Ingress, or HTTPRoute.
    `spec.ingress`/`spec.gateway` are one field away from making that
-   internet-facing.
+   internet-facing. On a poll failure, that same audience sees the raw error
+   text (`card.Err`, `internal/dashboard/poller.go`) — and Go's `net/http`
+   client errors embed the full request URL, query string included. **Never
+   put a credential in a widget's `url` as a query parameter** (e.g.
+   `?apikey=...`); use the widget's `Secrets`/`secretKeyRef` fields instead
+   (see point 2 above), which are sent as headers or form data and never
+   appear in that error text.
 
 If your environment doesn't match this model — untrusted CRD authors, or
 viewers who shouldn't see each other's data — do not rely on this operator's
