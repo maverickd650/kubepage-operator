@@ -48,6 +48,38 @@ func TestOwnDashboardImageMissingEnvVars(t *testing.T) {
 	}
 }
 
+// TestResolveDashboardImageOverride verifies the --dashboard-image flag path
+// short-circuits before ever consulting c: passing a nil client would panic
+// if resolveDashboardImage fell through to ownDashboardImage's Pod lookup, so
+// a nil client here also proves the fallback path is genuinely skipped.
+func TestResolveDashboardImageOverride(t *testing.T) {
+	const want = "kubepage-operator:dev"
+	got, err := resolveDashboardImage(t.Context(), want, nil)
+	if err != nil {
+		t.Fatalf("resolveDashboardImage() error = %v, want nil", err)
+	}
+	if got != want {
+		t.Errorf("resolveDashboardImage() = %q, want %q", got, want)
+	}
+}
+
+// TestResolveDashboardImageFallsBackToOwnPodLookup verifies an empty override
+// falls through to ownDashboardImage's own-Pod self-lookup (the in-cluster
+// path), reusing TestOwnDashboardImageMissingEnvVars' assertion that it
+// surfaces the same POD_NAME/POD_NAMESPACE error when run outside a Pod.
+func TestResolveDashboardImageFallsBackToOwnPodLookup(t *testing.T) {
+	t.Setenv("POD_NAME", "")
+	t.Setenv("POD_NAMESPACE", "")
+
+	_, err := resolveDashboardImage(t.Context(), "", nil)
+	if err == nil {
+		t.Fatal("resolveDashboardImage() error = nil, want error when override is empty and POD_NAME/POD_NAMESPACE are unset")
+	}
+	if !strings.Contains(err.Error(), "POD_NAME and POD_NAMESPACE") {
+		t.Errorf("resolveDashboardImage() error = %q, want it to mention POD_NAME/POD_NAMESPACE", err.Error())
+	}
+}
+
 // TestOwnDashboardImageAgainstRealAPIServer exercises the Pod-lookup paths,
 // which need a real API server to Get against (client.New(cfg, ...) talks to
 // a live REST endpoint, unlike the fake client used elsewhere in this repo's

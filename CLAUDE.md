@@ -36,7 +36,7 @@ mise run test           # unit tests: go test $(go list ./... | grep -v /e2e) -r
 mise run test-e2e       # e2e tests against an ephemeral Kind cluster (creates/deletes it automatically)
 
 mise run build          # go build -o bin/manager ./cmd
-mise run run            # go run ./cmd (manager mode, against your current kubeconfig context)
+mise run run            # go run ./cmd --dashboard-image=... (manager mode, against your current kubeconfig context)
 mise run preview        # go run ./cmd preview -f config/samples (no cluster required)
 ```
 
@@ -76,7 +76,9 @@ committed, like the CRD YAML).
   startup by reading the manager's own Pod spec via the `POD_NAME`/
   `POD_NAMESPACE` downward-API env vars — see `ownDashboardImage` in
   `cmd/main.go` — since there's no way for a pod to look up its own image
-  otherwise).
+  otherwise). Outside a Pod (e.g. `mise run run`) there's nothing for that
+  lookup to find, so the `--dashboard-image` flag bypasses it with an
+  explicit image reference — see `resolveDashboardImage` in `cmd/main.go`.
 - **Preview mode** (`<binary> preview -f <path>`, `mise run preview`): serves
   the same dashboard UI against CRD YAML loaded from local files instead of a
   live cluster, so a Dashboard's look can be checked without installing the

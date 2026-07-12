@@ -188,7 +188,11 @@ run = "go build -o bin/manager ./cmd"
 [tasks.run]
 description = "Run a controller from your host"
 depends = ["manifests", "generate", "templ-generate", "fmt", "vet"]
-run = "go run ./cmd"
+# --dashboard-image is required outside a Pod: ownDashboardImage's own-Pod
+# self-lookup (POD_NAME/POD_NAMESPACE downward-API env vars) has nothing to
+# find when run from a host, so pass a placeholder to skip that lookup — see
+# cmd/main.go's --dashboard-image flag doc comment.
+run = "go run ./cmd --dashboard-image=kubepage-operator:dev"
 
 [tasks.preview]
 description = "Serve the dashboard locally from config/samples, no cluster required"

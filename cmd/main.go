@@ -94,6 +94,7 @@ func runManager() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var watchNamespaces string
+	var dashboardImageOverride string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -110,6 +111,10 @@ func runManager() {
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
+	flag.StringVar(&dashboardImageOverride, "dashboard-image", "", "Image reference to use for dashboard "+
+		"Deployments, bypassing the manager's own-Pod self-lookup. Set this for local runs (`go run ./cmd` "+
+		"outside a Pod, e.g. `mise run run`), where POD_NAME/POD_NAMESPACE aren't set by the downward API. "+
+		"Leave unset in-cluster to keep reusing the manager's own running image.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
@@ -230,15 +235,20 @@ func runManager() {
 	// POD_NAME/POD_NAMESPACE downward-API env vars set in
 	// config/manager/manager.yaml. A direct (uncached) client is used since
 	// this runs once before mgr.Start() brings up the cache.
+	//
+	// --dashboard-image bypasses this lookup entirely: outside a Pod (e.g.
+	// `mise run run`, plain `go run ./cmd` against a kubeconfig) there's no
+	// running Pod to look up and ownDashboardImage would always fail, so
+	// local runs pass a placeholder image explicitly instead.
 	directClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "Failed to build direct (uncached) client")
 		os.Exit(1)
 	}
 
-	dashboardImage, err := ownDashboardImage(context.Background(), directClient)
+	dashboardImage, err := resolveDashboardImage(context.Background(), dashboardImageOverride, directClient)
 	if err != nil {
-		setupLog.Error(err, "Failed to determine the manager's own image for the dashboard Deployment")
+		setupLog.Error(err, "Failed to determine the image for the dashboard Deployment")
 		os.Exit(1)
 	}
 
@@ -334,6 +344,20 @@ func namespaceCacheConfigs(namespaces []string) map[string]cache.Config {
 		configs[ns] = cache.Config{}
 	}
 	return configs
+}
+
+// resolveDashboardImage returns the image reference for DashboardReconciler
+// to reuse when it builds each Dashboard's dashboard Deployment. When
+// override is non-empty (the --dashboard-image flag), it's returned as-is
+// and c is never consulted — this is the path local runs take (`mise run
+// run`, plain `go run ./cmd` against a kubeconfig), where there's no running
+// Pod for ownDashboardImage to look up. Otherwise it falls back to
+// ownDashboardImage's own-Pod self-lookup, the in-cluster path.
+func resolveDashboardImage(ctx context.Context, override string, c client.Reader) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	return ownDashboardImage(ctx, c)
 }
 
 // ownDashboardImage looks up the running manager Pod (named by the
