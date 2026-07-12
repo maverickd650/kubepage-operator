@@ -111,6 +111,42 @@ func TestNetworkPolicyForDashboardEgressCIDRsAddEgressPolicyType(t *testing.T) {
 	}
 }
 
+// TestNetworkPolicyForDashboardIngressPortsHaveExplicitProtocol guards
+// against false drift: the API server defaults an omitted
+// NetworkPolicyPort.Protocol to TCP, but reconcileNetworkPolicy's drift
+// check compares the built (never-submitted-to-the-API-server) desired
+// Spec against the stored found.Spec via reflect.DeepEqual — if the
+// builder leaves Protocol nil while the stored object has it defaulted to
+// TCP, every reconcile sees drift and issues a no-op Update. Every port
+// this builder produces, ingress and egress, must therefore set Protocol
+// explicitly.
+func TestNetworkPolicyForDashboardIngressPortsHaveExplicitProtocol(t *testing.T) {
+	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
+	instance := newNetworkPolicyTestDashboard()
+	instance.Spec.Metrics = &pagev1alpha1.MetricsSpec{Enabled: pagev1alpha1.Enabled}
+	instance.Spec.NetworkPolicy.EgressCIDRs = []string{testEgressCIDR}
+
+	np, err := r.networkPolicyForDashboard(instance)
+	if err != nil {
+		t.Fatalf("networkPolicyForDashboard() error = %v", err)
+	}
+
+	for i, rule := range np.Spec.Ingress {
+		for j, port := range rule.Ports {
+			if port.Protocol == nil {
+				t.Errorf("Ingress[%d].Ports[%d].Protocol = nil, want explicit protocol (server-side defaulting causes false drift)", i, j)
+			}
+		}
+	}
+	for i, rule := range np.Spec.Egress {
+		for j, port := range rule.Ports {
+			if port.Protocol == nil {
+				t.Errorf("Egress[%d].Ports[%d].Protocol = nil, want explicit protocol (server-side defaulting causes false drift)", i, j)
+			}
+		}
+	}
+}
+
 func TestReconcileNetworkPolicyLifecycle(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newNetworkPolicyTestDashboard()

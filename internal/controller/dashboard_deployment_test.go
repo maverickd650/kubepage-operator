@@ -47,6 +47,47 @@ func schemeWithoutDashboard(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
+// TestDeploymentForDashboardNormalizesNilReplicas guards against a
+// self-sustaining requeue loop: a Dashboard stored before the CRD's
+// +default=1 took effect has Spec.Replicas == nil (defaulting only applies
+// on write, not to already-stored objects), while the API server defaults
+// the created Deployment's own Spec.Replicas to 1. If deploymentForDashboard
+// left the desired Deployment's Replicas nil, reconcileDeployment's
+// replicasChanged check (nil desired vs. 1 on found) would be permanently
+// true. deploymentForDashboard must normalize a nil Spec.Replicas to 1
+// itself so the comparison is stable.
+func TestDeploymentForDashboardNormalizesNilReplicas(t *testing.T) {
+	instance := newDeploymentTestDashboard()
+	if instance.Spec.Replicas != nil {
+		t.Fatalf("test fixture Spec.Replicas = %v, want nil", instance.Spec.Replicas)
+	}
+	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
+
+	dep, err := r.deploymentForDashboard(instance)
+	if err != nil {
+		t.Fatalf("deploymentForDashboard() unexpected error: %v", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 1 {
+		t.Errorf("dep.Spec.Replicas = %v, want pointer to 1 when Spec.Replicas is nil", dep.Spec.Replicas)
+	}
+}
+
+// TestDeploymentForDashboardPreservesExplicitReplicas ensures the nil
+// normalization doesn't clobber an explicitly-set replica count.
+func TestDeploymentForDashboardPreservesExplicitReplicas(t *testing.T) {
+	instance := newDeploymentTestDashboard()
+	instance.Spec.Replicas = new(int32(3))
+	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
+
+	dep, err := r.deploymentForDashboard(instance)
+	if err != nil {
+		t.Fatalf("deploymentForDashboard() unexpected error: %v", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 3 {
+		t.Errorf("dep.Spec.Replicas = %v, want pointer to 3", dep.Spec.Replicas)
+	}
+}
+
 func TestReconcileDeploymentDefineError(t *testing.T) {
 	clientScheme := networkTestScheme(t)
 	instance := newDeploymentTestDashboard()

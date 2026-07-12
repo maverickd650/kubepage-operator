@@ -705,13 +705,24 @@ func dashboardArgs(instance *pagev1alpha1.Dashboard) []string {
 
 // deploymentForDashboard returns a Dashboard Deployment object
 func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dashboard) (*appsv1.Deployment, error) {
+	// Spec.Replicas is nil only for an object stored before the CRD's
+	// +default=1 took effect (defaulting only applies on write, not to
+	// already-stored objects); normalize it here so replicasChanged in
+	// reconcileDeployment compares two concrete values instead of nil vs.
+	// the API server's own defaulting of found.Spec.Replicas to 1 — the
+	// latter compares nil != 1 forever and self-sustains a requeue loop.
+	replicas := instance.Spec.Replicas
+	if replicas == nil {
+		replicas = ptr.To(int32(1))
+	}
+
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: instance.Spec.Replicas,
+			Replicas: replicas,
 			// Selector must stay stable across reconciles — Deployment
 			// selectors are immutable once created — so it deliberately
 			// excludes app.kubernetes.io/version, which changes whenever
