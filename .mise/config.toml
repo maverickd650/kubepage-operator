@@ -16,7 +16,7 @@ kubeconform = "0.8.0"
 
 [env]
 # Image used by build/deploy targets; override with `IMG=... mise run docker-build`.
-IMG = "{{ env.IMG | default(value='controller:latest') }}"
+IMG = "{{ env.IMG | default(value='ghcr.io/maverickd650/kubepage-operator:latest') }}"
 KIND_CLUSTER = "{{ env.KIND_CLUSTER | default(value='kubepage-operator-test-e2e') }}"
 CONTAINER_TOOL = "{{ env.CONTAINER_TOOL | default(value='docker') }}"
 # Passed to the Dockerfile's GO_VERSION build-arg; must match [tools].go above.
@@ -367,6 +367,16 @@ rm -rf dist/chart/templates/extras
 # source of truth (see CLAUDE.md) — and chart linting/deploy is already
 # covered by test-e2e.yml's own `helm lint dist/chart` step. Never keep it.
 rm -f .github/workflows/test-chart.yml
+
+# The plugin always emits the literal placeholder `repository: controller` in
+# values.yaml, regardless of the image actually baked into dist/install.yaml
+# above — confirmed empirically, not just from --help text. Left as-is, a
+# bare `helm install` pulls a nonexistent `controller:<tag>` image and every
+# manager pod ImagePullBackOffs. Patch it to the real default image (IMG,
+# minus its tag: the chart's own tag default already falls back to
+# Chart.AppVersion) so the chart works out of the box.
+sed -i.bak "s|repository: controller|repository: ${IMG%:*}|" dist/chart/values.yaml
+rm -f dist/chart/values.yaml.bak
 
 helm lint dist/chart
 echo "--- dist/chart diff ---"
