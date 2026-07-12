@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "InfoWidget is the Schema for the infowidgets API",
+  "properties": {
+    "apiVersion": {
+      "description": "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "spec": {
+      "description": "spec defines the desired state of InfoWidget",
+      "properties": {
+        "dashboardRef": {
+          "description": "dashboardRef names the Dashboard this InfoWidget belongs to.",
+          "properties": {
+            "name": {
+              "description": "name of the Dashboard this object belongs to.",
+              "maxLength": 253,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "widgets": {
+          "description": "widgets defines one entry per header widget, for an InfoWidget that\ngroups multiple header widgets (a whole dashboard's worth) into one\nobject instead of one InfoWidget per widget. Unlike\nServiceCard.Services/Bookmark.Bookmarks there is no shared-default\nfield here (no Group concept for header widgets). A header strip never\nholds anywhere near 32 widgets, let alone more.",
+          "items": {
+            "description": "InfoWidgetEntry is one header widget's configuration. An InfoWidgetSpec\nholds a list of these in Widgets, one InfoWidget object per whole\ndashboard.\n\nUnlike BookmarkEntry/ServiceEntry there is no Group field: header widgets\nare a flat, ordered list rather than grouped like ServiceCard/Bookmark, so\nInfoWidgetSpec.Entries() has no shared-default pass to reconcile.",
+            "properties": {
+              "align": {
+                "description": "align places this widget in the header strip's left or right slot,\nmatching homepage's right-aligned info widgets. Unset defaults to\n\"Left\" for \"greeting\"/\"datetime\" and \"Right\" for every other type\n(homepage's own default layout: greeting/clock on the left, live\nstats on the right).",
+                "enum": [
+                  "Left",
+                  "Right"
+                ],
+                "type": "string"
+              },
+              "caCert": {
+                "description": "caCert optionally supplies a PEM-encoded CA certificate (or bundle)\nused, in addition to the system trust store, to verify this widget's\nupstream. See ServiceWidget.CACert's doc comment for the full\nrationale.",
+                "properties": {
+                  "secretKeyRef": {
+                    "description": "secretKeyRef selects a key of a Secret in the same namespace.",
+                    "properties": {
+                      "key": {
+                        "description": "The key of the secret to select from.  Must be a valid secret key.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "default": "",
+                        "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                        "type": "string"
+                      },
+                      "optional": {
+                        "description": "Specify whether the Secret or its key must be defined",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "key"
+                    ],
+                    "type": "object",
+                    "x-kubernetes-map-type": "atomic"
+                  },
+                  "value": {
+                    "description": "value is a literal value. Avoid this for real credentials; prefer\nSecretKeyRef so the value isn't stored in the CR.",
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object",
+                "x-kubernetes-validations": [
+                  {
+                    "message": "exactly one of value or secretKeyRef must be set",
+                    "rule": "(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1 : 0) == 1"
+                  }
+                ]
+              },
+              "icon": {
+                "description": "icon shown to the left of this widget's value(s) in the header strip,\nmatching homepage's Resource component. Resolved the same way as\nServiceCard/Bookmark Icon: a full URL passes through unchanged,\n\"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\"fa6-solid-X\"/\"sh-X\" resolve via\nhomepage's icon prefix syntax (see ServiceEntry.Icon), and anything\nelse is treated as a dashboard-icons slug. Ignored by the\n\"greeting\" and \"datetime\" widget types, which homepage renders without\nan icon. Every other polled type (openmeteo/openweathermap,\nkubemetrics, glances, longhorn) already renders a sensible built-in\nicon when this is unset — openmeteo/openweathermap's tracks the\ncurrent weather condition each poll — so this field only needs\nsetting to override that default.",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "options": {
+                "description": "options holds every widget-type-specific field; unrecognized keys are\nsilently ignored rather than rejected (see internal/dashboard's\nper-widget source for the authoritative shape). Known keys by type:\n  - greeting: text (the message shown)\n  - datetime: format (a JSON-encoded Intl.DateTimeFormat options\n    object, e.g. {\"dateStyle\":\"short\",\"timeStyle\":\"short\"}; defaults\n    to medium date/short time, i.e. no seconds)\n  - openmeteo, openweathermap: latitude, longitude (both required),\n    units (\"metric\"/\"imperial\"), label\n  - kubemetrics: cpuLabel, memoryLabel\n  - glances: url (required unless the typed URL field below is set;\n    Glances REST API base URL), apiVersion (\"3\" or \"4\"; defaults to \"4\")\n  - longhorn: url (required unless the typed URL field below is set;\n    Longhorn Manager REST API base URL, e.g.\n    http://longhorn-frontend.longhorn-system:80)\nFor a header widget type that polls an HTTP upstream, the typed URL\nfield above takes precedence over this options block's \"url\" key,\nwhich remains supported for backwards compatibility.\nlogo takes no options.",
+                "x-kubernetes-preserve-unknown-fields": true
+              },
+              "order": {
+                "description": "order controls rendering position: widgets are sorted by Order (nil\nsorts last), ties broken by the InfoWidget object's name then this\nentry's index, since CRDs have no inherent ordering of their own.",
+                "format": "int32",
+                "type": "integer"
+              },
+              "pollIntervalSeconds": {
+                "description": "pollIntervalSeconds overrides the dashboard's global --poll-interval\nfor this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by\n\"datetime\"/\"greeting\"/\"logo\", which aren't polled at all.",
+                "format": "int32",
+                "minimum": 1,
+                "type": "integer"
+              },
+              "secrets": {
+                "additionalProperties": {
+                  "description": "SecretValueSource is an inline value or a reference to a key in a Secret,\nused for any config field that may hold a credential (e.g. a widget API\nkey). Exactly one of Value or SecretKeyRef must be set; this is enforced by\nthe CRD schema's CEL rule below, so neither a secret that sets both nor one\nthat sets neither reaches the dashboard, which resolves whichever is set\nin-process at poll time.",
+                  "properties": {
+                    "secretKeyRef": {
+                      "description": "secretKeyRef selects a key of a Secret in the same namespace.",
+                      "properties": {
+                        "key": {
+                          "description": "The key of the secret to select from.  Must be a valid secret key.",
+                          "type": "string"
+                        },
+                        "name": {
+                          "default": "",
+                          "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                          "type": "string"
+                        },
+                        "optional": {
+                          "description": "Specify whether the Secret or its key must be defined",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "key"
+                      ],
+                      "type": "object",
+                      "x-kubernetes-map-type": "atomic"
+                    },
+                    "value": {
+                      "description": "value is a literal value. Avoid this for real credentials; prefer\nSecretKeyRef so the value isn't stored in the CR.",
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "x-kubernetes-validations": [
+                    {
+                      "message": "exactly one of value or secretKeyRef must be set",
+                      "rule": "(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1 : 0) == 1"
+                    }
+                  ]
+                },
+                "description": "secrets are secret-bearing option fields, resolved in-process at poll\ntime (internal/dashboard/poller.go's pollInfoWidget) into the widget's\nWidgetConfig.Secrets map, keyed by the same field names used here —\ndistinct from Options/Config, which never carry secret values.\n\nRBAC note: the same caveat as ServiceCard's widgets.secrets applies\nhere — see ServiceWidget.Secrets' doc comment. Anyone who can create\nan InfoWidget in this namespace can read any Secret in it by\nreferencing it via secretKeyRef and pointing this widget's options at\na server they control.",
+                "maxProperties": 32,
+                "minProperties": 1,
+                "type": "object"
+              },
+              "type": {
+                "description": "type is the widget type: \"greeting\"/\"datetime\" render statically\n(internal/dashboard/server.go); the rest are polled header widgets\n(openmeteo, openweathermap, glances, longhorn) or cluster-sourced\n(kubemetrics). internal/controller/widget_type_policy_test.go asserts\nthis enum stays in sync with the internal/dashboard widget registry.",
+                "enum": [
+                  "greeting",
+                  "datetime",
+                  "logo",
+                  "openmeteo",
+                  "kubemetrics",
+                  "glances",
+                  "longhorn",
+                  "openweathermap"
+                ],
+                "type": "string"
+              },
+              "url": {
+                "description": "url is the base URL this widget polls, for widget types with an HTTP\nupstream (glances, longhorn). Takes precedence over options' \"url\"\nkey, which remains supported for backwards compatibility.",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^https?://",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "required": [
+        "dashboardRef",
+        "widgets"
+      ],
+      "type": "object"
+    },
+    "status": {
+      "description": "status defines the observed state of InfoWidget",
+      "minProperties": 1,
+      "properties": {
+        "conditions": {
+          "description": "conditions represent the current state of the InfoWidget resource.",
+          "items": {
+            "description": "Condition contains details for one aspect of the current state of this API Resource.",
+            "properties": {
+              "lastTransitionTime": {
+                "description": "lastTransitionTime is the last time the condition transitioned from one status to another.\nThis should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.",
+                "format": "date-time",
+                "type": "string"
+              },
+              "message": {
+                "description": "message is a human readable message indicating details about the transition.\nThis may be an empty string.",
+                "maxLength": 32768,
+                "type": "string"
+              },
+              "observedGeneration": {
+                "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason": {
+                "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "pattern": "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$",
+                "type": "string"
+              },
+              "status": {
+                "description": "status of the condition, one of True, False, Unknown.",
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "type of condition in CamelCase or in foo.example.com/CamelCase.",
+                "maxLength": 316,
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lastTransitionTime",
+              "message",
+              "reason",
+              "status",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array",
+          "x-kubernetes-list-map-keys": [
+            "type"
+          ],
+          "x-kubernetes-list-type": "map"
+        },
+        "entries": {
+          "description": "entries is the number of entries this object defines (len(spec.widgets)).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "spec"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,551 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "ServiceCard is the Schema for the servicecards API",
+  "properties": {
+    "apiVersion": {
+      "description": "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "spec": {
+      "description": "spec defines the desired state of ServiceCard",
+      "properties": {
+        "dashboardRef": {
+          "description": "dashboardRef names the Dashboard this ServiceCard belongs to.",
+          "properties": {
+            "name": {
+              "description": "name of the Dashboard this object belongs to.",
+              "maxLength": 253,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "group": {
+          "description": "group is the name of the (top-level) group this ServiceCard belongs\nto, used as the default group for any Services entry that doesn't set\nits own group.",
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "services": {
+          "description": "services defines one entry per service card, for a ServiceCard that\ngroups multiple cards (a whole group, or a whole dashboard) into one\nobject instead of one ServiceCard per card. group is optional on each\nentry: an entry without its own group falls back to spec.group as a\nshared default.",
+          "items": {
+            "description": "ServiceEntry is one service card's configuration: display fields, monitor\nsource, and widgets. A ServiceCardSpec holds a list of these in Services,\none ServiceCard object per group, or per whole dashboard.\n\nNested groups (a group inside another group) are not supported in this\nversion of the operator; Group always names a top-level group.",
+            "properties": {
+              "description": {
+                "description": "description overrides the default description shown on the card.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              },
+              "errorDisplay": {
+                "description": "errorDisplay controls whether a widget's error text is shown on the\ncard (e.g. set \"Hidden\" for a service that is expected to be\nintermittently unreachable). Defaults to \"Shown\".",
+                "enum": [
+                  "Shown",
+                  "Hidden"
+                ],
+                "type": "string"
+              },
+              "group": {
+                "description": "group is the name of the (top-level) group this entry belongs to.\nEntries sharing a Group are rendered together. An entry that omits\ngroup falls back to ServiceCardSpec.Group as a shared default (see\nServiceCardSpec.Entries).",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "href": {
+                "description": "href makes the card's title a link to the service.",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^https?://",
+                "type": "string"
+              },
+              "icon": {
+                "description": "icon resolves as a dashboard-icons slug (e.g. \"grafana\"), passes\nthrough as-is if it's already a full URL, or accepts homepage's icon\nprefix syntax: \"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\"fa6-solid-X\" for a\ngeneric icon glyph (Material Design Icons/Simple Icons/Lucide/Weather\nIcons/Font Awesome 6 Solid, resolved via Iconify — X may end in\n\"-#hexcolor\" to recolor it), or \"sh-X\" for a selfh.st/icons glyph (X\nmay end in .svg/.png/.webp, defaulting to .png).",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "name": {
+                "description": "name is the service's display name (the card title).",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "order": {
+                "description": "order controls rendering position: groups and entries are sorted by\nOrder (nil sorts last), ties broken by Name, since CRDs have no\ninherent ordering but the dashboard's groups/entries are displayed in a\nfixed order.",
+                "format": "int32",
+                "type": "integer"
+              },
+              "ping": {
+                "description": "ping is a URL probed over HTTP for reachability and latency, shown as\nan up/down status on the card. (Raw ICMP is not used, so a pod needs\nno elevated capabilities.)",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^https?://",
+                "type": "string"
+              },
+              "podSelector": {
+                "description": "podSelector selects pods in this ServiceCard's namespace whose\nreadiness determines this service's up/down status — a\nKubernetes-native alternative to Ping/SiteMonitor for services that\nrun as pods in this cluster, needing no externally reachable URL.\nWith multiple matches, any Ready pod renders \"Up\"; the card shows\n\"\u003cready\u003e/\u003ctotal\u003e ready\" in place of Ping/SiteMonitor's latency.\nMutually exclusive with Ping and SiteMonitor (enforced by this type's\nCEL validation rule).",
+                "properties": {
+                  "matchExpressions": {
+                    "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
+                    "items": {
+                      "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
+                      "properties": {
+                        "key": {
+                          "description": "key is the label key that the selector applies to.",
+                          "type": "string"
+                        },
+                        "operator": {
+                          "description": "operator represents a key's relationship to a set of values.\nValid operators are In, NotIn, Exists and DoesNotExist.",
+                          "type": "string"
+                        },
+                        "values": {
+                          "description": "values is an array of string values. If the operator is In or NotIn,\nthe values array must be non-empty. If the operator is Exists or DoesNotExist,\nthe values array must be empty. This array is replaced during a strategic\nmerge patch.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array",
+                          "x-kubernetes-list-type": "atomic"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "operator"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array",
+                    "x-kubernetes-list-type": "atomic"
+                  },
+                  "matchLabels": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels\nmap is equivalent to an element of matchExpressions, whose key field is \"key\", the\noperator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
+                    "type": "object"
+                  }
+                },
+                "type": "object",
+                "x-kubernetes-map-type": "atomic"
+              },
+              "showStats": {
+                "description": "showStats controls whether the polled widget fields are displayed on\nthe card. Defaults to \"Show\"; set \"Hide\" to show only the title/icon/\ndescription (and any monitor status).",
+                "enum": [
+                  "Show",
+                  "Hide"
+                ],
+                "type": "string"
+              },
+              "siteMonitor": {
+                "description": "siteMonitor is a URL probed over HTTP, shown as an up/down status with\nresponse latency on the card.",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^https?://",
+                "type": "string"
+              },
+              "statusStyle": {
+                "description": "statusStyle controls how the Ping/SiteMonitor/PodSelector status\nrenders: \"dot\" a colored status dot, \"basic\" up/down text. Ignored\nunless one of Ping, SiteMonitor, or PodSelector is set.",
+                "enum": [
+                  "dot",
+                  "basic"
+                ],
+                "type": "string"
+              },
+              "target": {
+                "description": "target overrides the DashboardStyle's default link target for this\ncard's Href (\"_blank\" opens a new tab, \"_self\" the same tab).",
+                "enum": [
+                  "_blank",
+                  "_self"
+                ],
+                "type": "string"
+              },
+              "widgets": {
+                "description": "widgets attached to this service. Zero, one, or many are allowed; the\ndashboard polls each one independently and shows its fields on the\ncard.",
+                "items": {
+                  "description": "ServiceWidget configures one of the native dashboard's pollable widgets\n(internal/dashboard's Widget interface) for a service card. Type and URL\nare typed because nearly every widget has them; everything else\n(widget-type-specific options) goes in Config. Secret-bearing fields (e.g.\nAPI tokens) go in Secrets instead of Config: the dashboard resolves them\ndirectly in-process at poll time, so the plaintext value never appears in\npod env, a ConfigMap, or a projected file.",
+                  "properties": {
+                    "caCert": {
+                      "description": "caCert optionally supplies a PEM-encoded CA certificate (or bundle)\nused, in addition to the system trust store, to verify this widget's\nurl. An alternative to Config's per-widget \"insecureTLS\" escape hatch\n(e.g. unifi.go) for self-hosted upstreams with a private CA: this lets\nthe connection stay verified instead of skipping verification\nentirely. Resolved the same way as Secrets (never stored outside this\nobject beyond the dashboard pod's in-memory TLS config).",
+                      "properties": {
+                        "secretKeyRef": {
+                          "description": "secretKeyRef selects a key of a Secret in the same namespace.",
+                          "properties": {
+                            "key": {
+                              "description": "The key of the secret to select from.  Must be a valid secret key.",
+                              "type": "string"
+                            },
+                            "name": {
+                              "default": "",
+                              "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                              "type": "string"
+                            },
+                            "optional": {
+                              "description": "Specify whether the Secret or its key must be defined",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "key"
+                          ],
+                          "type": "object",
+                          "x-kubernetes-map-type": "atomic"
+                        },
+                        "value": {
+                          "description": "value is a literal value. Avoid this for real credentials; prefer\nSecretKeyRef so the value isn't stored in the CR.",
+                          "maxLength": 4096,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object",
+                      "x-kubernetes-validations": [
+                        {
+                          "message": "exactly one of value or secretKeyRef must be set",
+                          "rule": "(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1 : 0) == 1"
+                        }
+                      ]
+                    },
+                    "config": {
+                      "description": "config holds the remaining widget-type-specific options; unrecognized\nkeys are silently ignored rather than rejected (see internal/dashboard's\nper-widget source for the authoritative shape). Known keys by type:\n  - cloudflared: accountId, tunnelId (both required)\n  - customapi: mappings (required) — a list of {label, jsonpath, suffix}\n  - prometheusmetric: query (required), label (defaults to \"Value\")\n  - unifi: site (defaults to \"default\"), insecureTLS (bool)\n  - iframe: height (a CSS length, e.g. \"300px\"; defaults to \"300px\")\n  - glances: apiVersion (\"3\" or \"4\"; defaults to \"4\")\n  - proxmox: node (restricts to one cluster node), insecureTLS (bool)\n  - opnsense: wan (interface name; defaults to \"wan\")\n  - speedtest: version (1 or 2; defaults to 1)\nEvery other registered type takes no Config options.",
+                      "x-kubernetes-preserve-unknown-fields": true
+                    },
+                    "fields": {
+                      "description": "fields restricts which of the widget's returned fields are rendered,\nby label (e.g. \"queued\", \"wanted\"). Unset (the default) renders every\nfield the widget returns.",
+                      "items": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 32,
+                      "minItems": 1,
+                      "type": "array",
+                      "x-kubernetes-list-type": "set"
+                    },
+                    "highlight": {
+                      "additionalProperties": {
+                        "description": "FieldHighlight configures highlight rules for one widget field, keyed by\nthe field's label in ServiceWidget.Highlight.",
+                        "properties": {
+                          "rules": {
+                            "description": "rules are evaluated in order; the first match sets the field's\nhighlight level. No match leaves the field unhighlighted.",
+                            "items": {
+                              "description": "HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules\nare evaluated in order; the first match sets the field's highlight level.\nMirrors homepage's per-field highlight rule, see\nhttps://gethomepage.dev/configs/services/#block-highlighting.",
+                              "properties": {
+                                "caseSensitive": {
+                                  "description": "caseSensitive makes a string operator's comparison case-sensitive.\nDefaults to \"CaseInsensitive\"; ignored by numeric operators.",
+                                  "enum": [
+                                    "CaseSensitive",
+                                    "CaseInsensitive"
+                                  ],
+                                  "type": "string"
+                                },
+                                "level": {
+                                  "description": "level this rule sets when it matches.",
+                                  "enum": [
+                                    "good",
+                                    "warn",
+                                    "danger"
+                                  ],
+                                  "type": "string"
+                                },
+                                "negate": {
+                                  "description": "negate inverts the rule's match (\"Negate\") instead of the default\n(\"Match\").",
+                                  "enum": [
+                                    "Match",
+                                    "Negate"
+                                  ],
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "description": "value is the rule's comparison value: a number for a numeric\noperator, text for a string operator. For \"between\"/\"outside\" this is\nthe lower bound.",
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "value2": {
+                                  "description": "value2 is the upper bound for the \"between\"/\"outside\" operators;\nignored by every other operator.",
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "when": {
+                                  "description": "when is the comparison operator. Numeric fields use gt/gte/lt/lte/eq/\nne/between/outside (Value/Value2 parsed as numbers); string fields use\nequals/includes/startsWith/endsWith/regex (Value compared as text).",
+                                  "enum": [
+                                    "gt",
+                                    "gte",
+                                    "lt",
+                                    "lte",
+                                    "eq",
+                                    "ne",
+                                    "between",
+                                    "outside",
+                                    "equals",
+                                    "includes",
+                                    "startsWith",
+                                    "endsWith",
+                                    "regex"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "level",
+                                "value",
+                                "when"
+                              ],
+                              "type": "object",
+                              "x-kubernetes-validations": [
+                                {
+                                  "message": "value2 is required when when is \"between\" or \"outside\"",
+                                  "rule": "!(self.when in ['between','outside']) || has(self.value2)"
+                                }
+                              ]
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "x-kubernetes-list-type": "atomic"
+                          },
+                          "scope": {
+                            "description": "scope controls how much of the stat chip a matching rule highlights:\n\"WholeField\" (the default) highlights the whole chip, label included;\n\"ValueOnly\" highlights just the value.",
+                            "enum": [
+                              "WholeField",
+                              "ValueOnly"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "rules"
+                        ],
+                        "type": "object"
+                      },
+                      "description": "highlight tints a field's stat chip by severity (good/warn/danger),\nkeyed by the field's label. See FieldHighlight.",
+                      "minProperties": 1,
+                      "type": "object"
+                    },
+                    "pollIntervalSeconds": {
+                      "description": "pollIntervalSeconds overrides the dashboard's global --poll-interval\nfor this widget only, letting a slow upstream (e.g. weather) poll less\noften than a fast one (e.g. Prometheus) without slowing every other\nwidget down to match. Unset polls at the global interval every cycle.\nFloor-clamped to the global interval: a value smaller than it would\nhave no effect anyway, since the poller only ever runs once per cycle.",
+                      "format": "int32",
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "secrets": {
+                      "additionalProperties": {
+                        "description": "SecretValueSource is an inline value or a reference to a key in a Secret,\nused for any config field that may hold a credential (e.g. a widget API\nkey). Exactly one of Value or SecretKeyRef must be set; this is enforced by\nthe CRD schema's CEL rule below, so neither a secret that sets both nor one\nthat sets neither reaches the dashboard, which resolves whichever is set\nin-process at poll time.",
+                        "properties": {
+                          "secretKeyRef": {
+                            "description": "secretKeyRef selects a key of a Secret in the same namespace.",
+                            "properties": {
+                              "key": {
+                                "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                "type": "string"
+                              },
+                              "name": {
+                                "default": "",
+                                "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                "type": "string"
+                              },
+                              "optional": {
+                                "description": "Specify whether the Secret or its key must be defined",
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": "object",
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "value": {
+                            "description": "value is a literal value. Avoid this for real credentials; prefer\nSecretKeyRef so the value isn't stored in the CR.",
+                            "maxLength": 4096,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object",
+                        "x-kubernetes-validations": [
+                          {
+                            "message": "exactly one of value or secretKeyRef must be set",
+                            "rule": "(has(self.value) ? 1 : 0) + (has(self.secretKeyRef) ? 1 : 0) == 1"
+                          }
+                        ]
+                      },
+                      "description": "secrets are secret-bearing widget fields (commonly \"token\", sometimes\n\"username\"/\"password\" depending on widget type), resolved directly by\nthe dashboard backend rather than stored inline.\n\nRBAC note: creating a ServiceCard that references a secretKeyRef\ngrants no RBAC to the creator, but it does let the dashboard pod read\nthat Secret and send its plaintext value to this widget's own url —\nso anyone who can create a ServiceCard in this namespace can read any\nSecret in it by pointing url at a server they control, without ever\nneeding \"get secrets\" themselves. Only grant ServiceCard create\naccess to principals you'd also trust with every Secret in the\nnamespace.",
+                      "maxProperties": 32,
+                      "minProperties": 1,
+                      "type": "object"
+                    },
+                    "type": {
+                      "description": "type is the widget type. Must be one of the service widget types\nregistered in internal/dashboard (each widget's init() Register call);\ninternal/controller/widget_type_policy_test.go asserts this enum stays\nin sync with the registry.",
+                      "enum": [
+                        "plex",
+                        "stash",
+                        "paperlessngx",
+                        "grafana",
+                        "prometheus",
+                        "prometheusmetric",
+                        "unifi",
+                        "truenas",
+                        "cloudflared",
+                        "linkwarden",
+                        "homeassistant",
+                        "mealie",
+                        "customapi",
+                        "iframe",
+                        "sonarr",
+                        "radarr",
+                        "jellyfin",
+                        "jellyseerr",
+                        "immich",
+                        "adguard",
+                        "pihole",
+                        "uptime-kuma",
+                        "portainer",
+                        "argocd",
+                        "gitea",
+                        "tautulli",
+                        "proxmox",
+                        "nextcloud",
+                        "opnsense",
+                        "netdata",
+                        "speedtest",
+                        "gatus"
+                      ],
+                      "type": "string"
+                    },
+                    "url": {
+                      "description": "url is the base URL the widget talks to.",
+                      "maxLength": 2048,
+                      "minLength": 1,
+                      "pattern": "^https?://",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 16,
+                "minItems": 1,
+                "type": "array",
+                "x-kubernetes-list-type": "atomic"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object",
+            "x-kubernetes-validations": [
+              {
+                "message": "at most one of ping, siteMonitor, or podSelector may be set",
+                "rule": "(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) + (has(self.podSelector) ? 1 : 0) \u003c= 1"
+              }
+            ]
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        }
+      },
+      "required": [
+        "dashboardRef",
+        "services"
+      ],
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "every services entry must resolve a group: set spec.group as a default, or set group on every entry",
+          "rule": "has(self.group) || self.services.all(s, has(s.group))"
+        }
+      ]
+    },
+    "status": {
+      "description": "status defines the observed state of ServiceCard",
+      "minProperties": 1,
+      "properties": {
+        "conditions": {
+          "description": "conditions represent the current state of the ServiceCard resource.",
+          "items": {
+            "description": "Condition contains details for one aspect of the current state of this API Resource.",
+            "properties": {
+              "lastTransitionTime": {
+                "description": "lastTransitionTime is the last time the condition transitioned from one status to another.\nThis should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.",
+                "format": "date-time",
+                "type": "string"
+              },
+              "message": {
+                "description": "message is a human readable message indicating details about the transition.\nThis may be an empty string.",
+                "maxLength": 32768,
+                "type": "string"
+              },
+              "observedGeneration": {
+                "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason": {
+                "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "pattern": "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$",
+                "type": "string"
+              },
+              "status": {
+                "description": "status of the condition, one of True, False, Unknown.",
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "type of condition in CamelCase or in foo.example.com/CamelCase.",
+                "maxLength": 316,
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lastTransitionTime",
+              "message",
+              "reason",
+              "status",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array",
+          "x-kubernetes-list-map-keys": [
+            "type"
+          ],
+          "x-kubernetes-list-type": "map"
+        },
+        "entries": {
+          "description": "entries is the number of entries this object defines (len(spec.services)).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "spec"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Bookmark is the Schema for the bookmarks API",
+  "properties": {
+    "apiVersion": {
+      "description": "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "spec": {
+      "description": "spec defines the desired state of Bookmark",
+      "properties": {
+        "bookmarks": {
+          "description": "bookmarks defines one entry per bookmark, for a Bookmark object that\ngroups multiple bookmarks (a whole group, or a whole dashboard) into\none object instead of one Bookmark per bookmark. group is optional on\neach entry: an entry without its own group falls back to spec.group as\na shared default.",
+          "items": {
+            "description": "BookmarkEntry is one bookmark's configuration: display fields and link\ntarget. A BookmarkSpec holds a list of these in Bookmarks, one Bookmark\nobject per group, or per whole dashboard.\n\nNested groups (a group inside another group) are not supported in this\nversion of the operator; Group always names a top-level group.",
+            "properties": {
+              "abbr": {
+                "description": "abbr is a short abbreviation (up to 8 characters) shown when Icon is\nnot set. If both are set, Icon takes precedence.",
+                "maxLength": 8,
+                "minLength": 1,
+                "type": "string"
+              },
+              "description": {
+                "description": "description overrides the default hostname-derived description.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              },
+              "group": {
+                "description": "group is the name of the (top-level) group this entry belongs to.\nEntries sharing a Group are rendered together. An entry that omits\ngroup falls back to BookmarkSpec.Group as a shared default (see\nBookmarkSpec.Entries).",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "href": {
+                "description": "href is the bookmark's link target. The scheme must be one of an\nexplicit allowlist (http/https/ftp/sftp/ssh/rdp/vnc/smb as\n\"scheme://...\", or mailto/tel as \"scheme:...\") rather than an open\npattern: this field is rendered as an anchor href\n(internal/dashboard's bookmark template) with no further scheme\nchecking, so a \"javascript:\"/\"data:\"/\"vbscript:\" href would be a\nstored-XSS vector — the same reasoning that keeps SearchSpec.URL\nrestricted to http(s). Widening the allowlist later is fine; this is\nthe deliberate, one-time choice of which schemes are safe to accept.",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^(https?|ftp|sftp|ssh|rdp|vnc|smb)://|^(mailto|tel):",
+                "type": "string"
+              },
+              "icon": {
+                "description": "icon overrides the group header's icon, resolved as a dashboard-icons\nslug, passed through as-is if it's already a full URL, or accepts\nhomepage's icon prefix syntax (\"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\n\"fa6-solid-X\"/\"sh-X\", see ServiceEntry.Icon).",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "name": {
+                "description": "name is the bookmark's display name.",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "order": {
+                "description": "order controls rendering position: groups and entries are sorted by\nOrder (nil sorts last), ties broken by Name, since CRDs have no\ninherent ordering but bookmarks.yaml's groups/entries are an ordered\nlist. Purely an operator-side rendering concern; not a homepage field.",
+                "format": "int32",
+                "type": "integer"
+              },
+              "target": {
+                "description": "target overrides the DashboardStyle's default link target for this\nbookmark (\"_blank\" opens a new tab, \"_self\" the same tab).",
+                "enum": [
+                  "_blank",
+                  "_self"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "href",
+              "name"
+            ],
+            "type": "object"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "dashboardRef": {
+          "description": "dashboardRef names the Dashboard this Bookmark belongs to.",
+          "properties": {
+            "name": {
+              "description": "name of the Dashboard this object belongs to.",
+              "maxLength": 253,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "group": {
+          "description": "group is the name of the (top-level) bookmarks.yaml group this\nBookmark belongs to, used as the default group for any Bookmarks\nentry that doesn't set its own group. Entries sharing a Group are\nrendered together.",
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "bookmarks",
+        "dashboardRef"
+      ],
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "every bookmarks entry must resolve a group: set spec.group as a default, or set group on every entry",
+          "rule": "has(self.group) || self.bookmarks.all(b, has(b.group))"
+        }
+      ]
+    },
+    "status": {
+      "description": "status defines the observed state of Bookmark",
+      "minProperties": 1,
+      "properties": {
+        "conditions": {
+          "description": "conditions represent the current state of the Bookmark resource.",
+          "items": {
+            "description": "Condition contains details for one aspect of the current state of this API Resource.",
+            "properties": {
+              "lastTransitionTime": {
+                "description": "lastTransitionTime is the last time the condition transitioned from one status to another.\nThis should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.",
+                "format": "date-time",
+                "type": "string"
+              },
+              "message": {
+                "description": "message is a human readable message indicating details about the transition.\nThis may be an empty string.",
+                "maxLength": 32768,
+                "type": "string"
+              },
+              "observedGeneration": {
+                "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason": {
+                "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "pattern": "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$",
+                "type": "string"
+              },
+              "status": {
+                "description": "status of the condition, one of True, False, Unknown.",
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "type of condition in CamelCase or in foo.example.com/CamelCase.",
+                "maxLength": 316,
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lastTransitionTime",
+              "message",
+              "reason",
+              "status",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array",
+          "x-kubernetes-list-map-keys": [
+            "type"
+          ],
+          "x-kubernetes-list-type": "map"
+        },
+        "entries": {
+          "description": "entries is the number of entries this object defines (len(spec.bookmarks)).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "spec"
+  ],
+  "type": "object"
+}
