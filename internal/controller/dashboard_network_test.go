@@ -122,7 +122,7 @@ func TestReconcileServicePreservesForeignAnnotations(t *testing.T) {
 	if err := cl.Get(ctx, nn, svc); err != nil {
 		t.Fatalf("getting Service: %v", err)
 	}
-	svc.Annotations["cloud.example.com/foreign-lb-id"] = "lb-123"
+	svc.Annotations[testForeignAnnotationKey] = testForeignAnnotationValue
 	if err := cl.Update(ctx, svc); err != nil {
 		t.Fatalf("seeding foreign annotation: %v", err)
 	}
@@ -138,8 +138,8 @@ func TestReconcileServicePreservesForeignAnnotations(t *testing.T) {
 	if err := cl.Get(ctx, nn, got); err != nil {
 		t.Fatalf("getting Service after update: %v", err)
 	}
-	if got.Annotations["cloud.example.com/foreign-lb-id"] != "lb-123" {
-		t.Errorf("foreign annotation lost, got Annotations = %+v, want cloud.example.com/foreign-lb-id preserved", got.Annotations)
+	if got.Annotations[testForeignAnnotationKey] != testForeignAnnotationValue {
+		t.Errorf("foreign annotation lost, got Annotations = %+v, want the foreign annotation preserved", got.Annotations)
 	}
 	if got.Annotations["managed.example.com/key"] != "v2" {
 		t.Errorf("managed annotation not updated, got Annotations = %+v, want managed.example.com/key=v2", got.Annotations)
@@ -159,8 +159,8 @@ func TestReconcileServicePreservesForeignAnnotations(t *testing.T) {
 	if _, ok := final.Annotations["managed.example.com/key"]; ok {
 		t.Errorf("managed annotation not pruned, got Annotations = %+v", final.Annotations)
 	}
-	if final.Annotations["cloud.example.com/foreign-lb-id"] != "lb-123" {
-		t.Errorf("foreign annotation lost after prune, got Annotations = %+v, want cloud.example.com/foreign-lb-id preserved", final.Annotations)
+	if final.Annotations[testForeignAnnotationKey] != testForeignAnnotationValue {
+		t.Errorf("foreign annotation lost after prune, got Annotations = %+v, want the foreign annotation preserved", final.Annotations)
 	}
 }
 
