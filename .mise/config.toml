@@ -289,6 +289,15 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
+# Also ship the generated CRD JSON Schemas (schemas/) as their own release
+# tarball, so a separate schema-hosting repo can pull a single versioned
+# archive instead of vendoring config/crd/bases and running the converter
+# itself. Tarred from the repo root (not a copied workdir like the platform
+# archives above) so the archive contains "schemas/..." paths, matching the
+# CRDs-catalog layout schemas/ already uses on disk.
+echo "Packing CRD JSON Schemas..."
+tar -czf "${outdir}/kubepage-operator-crd-schemas_${version}.tar.gz" LICENSE schemas
+
 (cd "$outdir" && sha256sum -- * > checksums.txt)
 '''
 
