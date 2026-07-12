@@ -71,12 +71,6 @@ jobs:
     steps:
       - run: echo "Skipping — docs-only change"
 
-  test-chart:
-    name: Test Chart
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Skipping — docs-only change"
-
   test-e2e:
     name: E2E Tests
     runs-on: ubuntu-latest

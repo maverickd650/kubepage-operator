@@ -87,6 +87,83 @@ func TestDashboardURL(t *testing.T) {
 	})
 }
 
+// TestReconcileServicePreservesForeignAnnotations ensures reconcileService
+// uses mergeManagedAnnotations, the same as reconcileIngress/
+// reconcileHTTPRoute, rather than a wholesale
+// found.Annotations = desired.Annotations that would clobber annotations a
+// foreign controller (e.g. a cloud load-balancer controller) writes onto the
+// Service.
+func TestReconcileServicePreservesForeignAnnotations(t *testing.T) {
+	scheme := networkTestScheme(t)
+	ns := "svc-annotations-ns"
+	ctx := t.Context()
+
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardObjName, Namespace: ns},
+		Spec: pagev1alpha1.DashboardSpec{
+			ContainerPort: 8080,
+			Service: &pagev1alpha1.ServiceSpec{
+				Annotations: map[string]string{"managed.example.com/key": "v1"},
+			},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+	nn := types.NamespacedName{Name: instance.Name, Namespace: ns}
+
+	if err := r.reconcileService(ctx, instance); err != nil {
+		t.Fatalf("reconcileService() unexpected error: %v", err)
+	}
+
+	// Simulate a foreign controller (e.g. a cloud LB controller) writing its
+	// own annotation onto the Service after creation.
+	svc := &corev1.Service{}
+	if err := cl.Get(ctx, nn, svc); err != nil {
+		t.Fatalf("getting Service: %v", err)
+	}
+	svc.Annotations[testForeignAnnotationKey] = testForeignAnnotationValue
+	if err := cl.Update(ctx, svc); err != nil {
+		t.Fatalf("seeding foreign annotation: %v", err)
+	}
+
+	// Change the managed annotation to trigger a drift-driven Update.
+	updated := instance.DeepCopy()
+	updated.Spec.Service.Annotations = map[string]string{"managed.example.com/key": "v2"}
+	if err := r.reconcileService(ctx, updated); err != nil {
+		t.Fatalf("reconcileService() unexpected error on drift correction: %v", err)
+	}
+
+	got := &corev1.Service{}
+	if err := cl.Get(ctx, nn, got); err != nil {
+		t.Fatalf("getting Service after update: %v", err)
+	}
+	if got.Annotations[testForeignAnnotationKey] != testForeignAnnotationValue {
+		t.Errorf("foreign annotation lost, got Annotations = %+v, want the foreign annotation preserved", got.Annotations)
+	}
+	if got.Annotations["managed.example.com/key"] != "v2" {
+		t.Errorf("managed annotation not updated, got Annotations = %+v, want managed.example.com/key=v2", got.Annotations)
+	}
+
+	// Removing the managed annotation from the spec should prune it, while
+	// still leaving the foreign annotation alone.
+	pruned := instance.DeepCopy()
+	pruned.Spec.Service.Annotations = nil
+	if err := r.reconcileService(ctx, pruned); err != nil {
+		t.Fatalf("reconcileService() unexpected error on prune: %v", err)
+	}
+	final := &corev1.Service{}
+	if err := cl.Get(ctx, nn, final); err != nil {
+		t.Fatalf("getting Service after prune: %v", err)
+	}
+	if _, ok := final.Annotations["managed.example.com/key"]; ok {
+		t.Errorf("managed annotation not pruned, got Annotations = %+v", final.Annotations)
+	}
+	if final.Annotations[testForeignAnnotationKey] != testForeignAnnotationValue {
+		t.Errorf("foreign annotation lost after prune, got Annotations = %+v, want the foreign annotation preserved", final.Annotations)
+	}
+}
+
 func TestServiceForDashboardAppliesServiceSpec(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := &pagev1alpha1.Dashboard{
