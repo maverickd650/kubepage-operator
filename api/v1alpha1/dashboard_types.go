@@ -72,7 +72,10 @@ type DashboardSpec struct {
 	// +optional
 	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
 
-	// containerSecurityContext is the container security context
+	// containerSecurityContext is the container security context. Defaults
+	// include readOnlyRootFilesystem: true (the dashboard is a distroless
+	// static binary that writes nothing to disk); set any field here to
+	// override the corresponding default.
 	// +optional
 	ContainerSecurityContext *corev1.SecurityContext `json:"containerSecurityContext,omitempty"`
 
@@ -160,15 +163,22 @@ type DashboardSpec struct {
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
-	// readinessProbe is the readiness probe configuration
+	// readinessProbe is the readiness probe configuration. Defaults to an
+	// httpGet probe against /healthz on containerPort when unset; set this
+	// field to fully override the default rather than merge with it.
 	// +optional
 	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
 
-	// livenessProbe is the liveness probe configuration
+	// livenessProbe is the liveness probe configuration. Defaults to an
+	// httpGet probe against /healthz on containerPort when unset; set this
+	// field to fully override the default rather than merge with it.
 	// +optional
 	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
 
-	// resources are the resource requests and limits for the container
+	// resources are the resource requests and limits for the container.
+	// Defaults to modest limits/requests (mirroring the manager's own
+	// defaults) so a Dashboard doesn't run unbounded; set limits and/or
+	// requests here to override the corresponding default.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 

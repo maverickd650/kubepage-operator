@@ -16,9 +16,11 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -756,6 +758,7 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 							RunAsNonRoot:             new(true),
 							RunAsUser:                new(int64(568)),
 							AllowPrivilegeEscalation: new(false),
+							ReadOnlyRootFilesystem:   new(true),
 							Capabilities: &corev1.Capabilities{
 								Drop: []corev1.Capability{
 									"ALL",
@@ -782,9 +785,9 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 							},
 						},
 						Env:            instance.Spec.Env,
-						ReadinessProbe: instance.Spec.ReadinessProbe,
-						LivenessProbe:  instance.Spec.LivenessProbe,
-						Resources:      instance.Spec.Resources,
+						ReadinessProbe: probeOrDefault(instance.Spec.ReadinessProbe, instance.Spec.ContainerPort),
+						LivenessProbe:  probeOrDefault(instance.Spec.LivenessProbe, instance.Spec.ContainerPort),
+						Resources:      *mergeOverride(defaultDashboardResources(), &instance.Spec.Resources),
 						VolumeMounts:   instance.Spec.VolumeMounts,
 					}},
 				},
@@ -808,6 +811,52 @@ func hostUsersBool(s *string) *bool {
 	}
 	b := *s == pagev1alpha1.Enabled
 	return &b
+}
+
+// probeOrDefault returns probe unchanged (a full user override) when set, and
+// otherwise a default httpGet probe against /healthz on containerPort —
+// /healthz is exempted from basic auth precisely for this (see
+// internal/dashboard/auth.go's healthzPath) so unset ReadinessProbe/
+// LivenessProbe no longer means no probe at all. The numeric fields and
+// httpGet scheme are set explicitly to the same values the API server would
+// otherwise default on the stored object (scheme: HTTP, periodSeconds: 10,
+// timeoutSeconds: 1, successThreshold: 1, failureThreshold: 3) — same
+// defaulting pitfall as Ports.Protocol above: leaving them zero here would
+// make deploymentTemplateChanged see permanent drift against the
+// server-defaulted found object.
+func probeOrDefault(probe *corev1.Probe, containerPort int32) *corev1.Probe {
+	if probe != nil {
+		return probe
+	}
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path:   "/healthz",
+				Port:   intstr.FromInt32(containerPort),
+				Scheme: corev1.URISchemeHTTP,
+			},
+		},
+		PeriodSeconds:    10,
+		TimeoutSeconds:   1,
+		SuccessThreshold: 1,
+		FailureThreshold: 3,
+	}
+}
+
+// defaultDashboardResources mirrors the manager's own modest defaults
+// (config/manager/manager.yaml) so a Dashboard with no spec.resources set
+// doesn't run unbounded.
+func defaultDashboardResources() corev1.ResourceRequirements {
+	return corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    apiresource.MustParse("500m"),
+			corev1.ResourceMemory: apiresource.MustParse("128Mi"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    apiresource.MustParse("10m"),
+			corev1.ResourceMemory: apiresource.MustParse("64Mi"),
+		},
+	}
 }
 
 // mergeOverride layers override onto a copy of base, field by field: any
