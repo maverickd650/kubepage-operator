@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -48,8 +50,16 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 	Describe("LayoutGroupSpec.Name path pattern", func() {
 		DescribeTable("name value acceptance",
 			func(name string, wantErr bool) {
+				// An admitted path entry must also list its root in the same
+				// tab (LayoutTabSpec's parent-listed CEL rule), so prepend it
+				// for the acceptance cases — this table exercises only the
+				// Name pattern, the tab rule has its own specs below.
+				groups := []pagev1alpha1.LayoutGroupSpec{{Name: name}}
+				if i := strings.Index(name, "/"); i > 0 && !wantErr {
+					groups = append([]pagev1alpha1.LayoutGroupSpec{{Name: name[:i]}}, groups...)
+				}
 				ds := dashboardStyleWithLayout("style-name-"+sanitizeName(name), []pagev1alpha1.LayoutTabSpec{
-					{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: name}}},
+					{Name: nestedGroupTab1, Groups: groups},
 				})
 				err := k8sClient.Create(ctx, ds)
 				if wantErr {
