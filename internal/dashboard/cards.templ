@@ -134,25 +134,51 @@ templ groupHeading(name, iconURL string) {
 	{ name }
 }
 
-// serviceGroupBlock renders one service group's header (if any) and card
-// grid. A header-less group (LayoutGroupSpec.Header=false) can't be
-// collapsed — there's nothing to click — so it always renders its grid
-// directly regardless of collapsible.
+// serviceGroupBlock renders one service group's header (if any), card grid,
+// and — recursively — any nested Subgroups (homepage parity for nested
+// service groups, https://gethomepage.dev/configs/services/#nested-groups;
+// see docs/design/nested-groups.md), rendered after the group's own direct
+// cards and wrapped in a "subgroups" div inside this group's own
+// <details>/plain block so collapsing a parent hides its children too.
+// data-group-name carries the group's full path (cardGroup.Path, e.g.
+// "Media/Movies"), not just its leaf Name, so index.templ's collapse-state
+// capture/restore (keyed on that attribute) tells same-named subgroups under
+// different parents apart. A header-less group (LayoutGroupSpec.Header=
+// false) can't be collapsed — there's nothing to click — so it always
+// renders its grid directly regardless of collapsible.
 templ serviceGroupBlock(g cardGroup, siteTarget string, collapsible bool) {
 	if !g.Header {
 		@serviceCardGrid(g, siteTarget)
+		@serviceSubgroups(g, siteTarget, collapsible)
 	} else if collapsible {
-		<details class="group" data-group-name={ g.Name } open?={ !g.InitiallyCollapsed }>
+		<details class="group" data-group-name={ g.Path } open?={ !g.InitiallyCollapsed }>
 			<summary>
 				@groupHeading(g.Name, g.IconURL)
 			</summary>
 			@serviceCardGrid(g, siteTarget)
+			@serviceSubgroups(g, siteTarget, collapsible)
 		</details>
 	} else {
 		<h2>
 			@groupHeading(g.Name, g.IconURL)
 		</h2>
 		@serviceCardGrid(g, siteTarget)
+		@serviceSubgroups(g, siteTarget, collapsible)
+	}
+}
+
+// serviceSubgroups renders g's nested Subgroups, if any, wrapped in a single
+// "subgroups" div (index.templ's nesting CSS indents/steps down the summary
+// type scale from that wrapper). Renders nothing for a group with no
+// Subgroups, so a flat (non-nested) group's markup is unchanged from before
+// nesting existed.
+templ serviceSubgroups(g cardGroup, siteTarget string, collapsible bool) {
+	if len(g.Subgroups) > 0 {
+		<div class="subgroups">
+			for _, sg := range g.Subgroups {
+				@serviceGroupBlock(sg, siteTarget, collapsible)
+			}
+		</div>
 	}
 }
 

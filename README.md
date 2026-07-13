@@ -182,7 +182,8 @@ required.
   silently dropping the source.
 - `spec.discovery.annotationPrefix` is the annotation key prefix a resource
   must carry to be discovered (defaults to `kubepage.io/`), e.g.
-  `kubepage.io/enabled: "true"`, `kubepage.io/name`, `kubepage.io/group`,
+  `kubepage.io/enabled: "true"`, `kubepage.io/name`, `kubepage.io/group`
+  (may itself be a `"/"`-separated path, see [Nested groups](#nested-groups)),
   `kubepage.io/icon`, `kubepage.io/description`, `kubepage.io/href`,
   `kubepage.io/ping`.
 - `spec.discovery.homepageCompat: Enabled` additionally honors homepage's own
@@ -216,6 +217,84 @@ currently no de-duplication between an explicit `ServiceCard` and a
 discovered `Ingress`/`HTTPRoute` that would render under the same
 group/name — both show up as separate cards, so avoid annotating a resource
 for discovery if you already have a `ServiceCard` for the same service.
+
+### Nested groups
+
+`ServiceCard`/`ServiceEntry`'s `group` field (and the discovery annotation's
+`<prefix>group`) accepts a `"/"`-separated path, nesting a group inside one or
+more parent groups — parity with homepage's
+[nested groups](https://gethomepage.dev/configs/services/#nested-groups):
+
+```yaml
+apiVersion: page.kubepage.dev/v1alpha1
+kind: ServiceCard
+metadata:
+  name: media
+spec:
+  dashboardRef:
+    name: dashboard-sample
+  services:
+    - name: Plex
+      group: Media           # a top-level group, same as always
+      href: http://plex.example.com
+    - name: Radarr
+      group: Media/Movies    # nests "Movies" inside "Media"
+      href: http://radarr.example.com
+    - name: Sonarr
+      group: Media/TV        # a sibling subgroup, also under "Media"
+      href: http://sonarr.example.com
+```
+
+`Media` renders as a parent group; `Movies`/`TV` render as collapsible
+subgroups nested inside it, so collapsing `Media` hides both. `Media` doesn't
+need a card of its own — if every entry only ever sets `Media/...`, the
+dashboard still renders an (empty-of-direct-cards) `Media` parent so the
+subgroups have somewhere to nest.
+
+A `DashboardStyle`'s `layout` can style a subgroup the same way it styles a
+top-level group, by giving `groups[].name` the same path:
+
+```yaml
+apiVersion: page.kubepage.dev/v1alpha1
+kind: DashboardStyle
+metadata:
+  name: dashboard-sample
+spec:
+  dashboardRef:
+    name: dashboard-sample
+  layout:
+    - name: Apps
+      groups:
+        - name: Media          # places the whole Media group (+ subtree) in this tab
+          style: row
+        - name: Media/Movies   # styles only the Movies subgroup — doesn't place it
+          columns: 2
+```
+
+Rules to know:
+
+- **Depth is capped at 3 levels** (`a`, `a/b`, or `a/b/c`; a 4th segment is
+  rejected by the CRD schema) — deeper hierarchies belong in tabs instead.
+- **Tab placement is root-only.** A `layout` tab entry places a group by its
+  *root* name only; a nested subgroup always renders in whatever tab its root
+  is placed in. A path-named `groups[].name` entry (like `Media/Movies`
+  above) only styles that subgroup — it never places anything on its own, and
+  the apiserver rejects a tab that lists a path entry without also listing
+  its parent — and so, transitively, its root — in the same tab (there'd be
+  no unambiguous way to say which tab a dangling subgroup belongs to).
+- **Direct cards render before subgroups.** A parent group's own cards (e.g.
+  a card whose `group` is exactly `Media`, not `Media/Movies`) always render
+  above its nested subgroups — there's no ordering field spanning cards and
+  subgroups together, unlike homepage's YAML list order.
+- **A literal `"/"` in a pre-existing group name now means nesting.** If
+  you're upgrading from a version of this operator that predates nested
+  groups and happened to have a `"/"` in a group name (unusual, but the old
+  schema allowed it), that group now renders as two nested levels instead of
+  one flat name — rename it (e.g. to `"Media - Movies"`) to keep the old flat
+  rendering.
+
+Bookmark groups are **not** nested — homepage has no nested-bookmark-group
+equivalent, so `BookmarkEntry.Group` stays a flat, top-level-only name.
 
 ### Hardening opt-ins
 

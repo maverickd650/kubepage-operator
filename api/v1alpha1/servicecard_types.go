@@ -196,14 +196,19 @@ type ServiceWidget struct {
 // source, and widgets. A ServiceCardSpec holds a list of these in Services,
 // one ServiceCard object per group, or per whole dashboard.
 //
-// Nested groups (a group inside another group) are not supported in this
-// version of the operator; Group always names a top-level group.
+// Nested groups (homepage parity, https://gethomepage.dev/configs/services/#nested-groups)
+// are expressed as a "/"-separated path in Group, e.g. "Media/Movies" nests
+// group "Movies" inside group "Media", up to 3 levels deep. See
+// docs/design/nested-groups.md.
 // +kubebuilder:validation:XValidation:rule="(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) + (has(self.podSelector) ? 1 : 0) <= 1",message="at most one of ping, siteMonitor, or podSelector may be set"
 type ServiceEntry struct {
-	// group is the name of the (top-level) group this entry belongs to.
-	// Entries sharing a Group are rendered together. An entry that omits
-	// group falls back to ServiceCardSpec.Group as a shared default (see
-	// ServiceCardSpec.Entries).
+	// group is the name of the group this entry belongs to, or a
+	// "/"-separated path (e.g. "Media/Movies", up to 3 levels) nesting it
+	// inside one or more parent groups (homepage parity: nested service
+	// groups). Entries sharing a Group are rendered together. An entry that
+	// omits group falls back to ServiceCardSpec.Group as a shared default
+	// (see ServiceCardSpec.Entries).
+	// +kubebuilder:validation:Pattern=`^[^/]+(/[^/]+){0,2}$`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +optional
@@ -322,9 +327,11 @@ type ServiceCardSpec struct {
 	// +required
 	DashboardRef DashboardRef `json:"dashboardRef"`
 
-	// group is the name of the (top-level) group this ServiceCard belongs
-	// to, used as the default group for any Services entry that doesn't set
-	// its own group.
+	// group is the name of the group this ServiceCard belongs to, or a
+	// "/"-separated path nesting it inside one or more parent groups (see
+	// ServiceEntry.Group), used as the default group for any Services entry
+	// that doesn't set its own group.
+	// +kubebuilder:validation:Pattern=`^[^/]+(/[^/]+){0,2}$`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +optional

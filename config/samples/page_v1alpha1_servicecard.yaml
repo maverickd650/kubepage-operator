@@ -53,3 +53,16 @@ spec:
               secretKeyRef:
                 name: grafana-credentials
                 key: password
+    # A "/"-separated group nests this card inside the "Media" group as a
+    # "Movies" subgroup (homepage parity: nested service groups, see
+    # https://gethomepage.dev/configs/services/#nested-groups and
+    # docs/design/nested-groups.md). Media itself needs no direct card of
+    # its own — the dashboard still renders a "Media" parent group around
+    # "Movies" — but Plex/Stash above already give it one.
+    - name: Radarr
+      group: Media/Movies
+      href: http://radarr.example.com
+      icon: radarr
+      description: Movie collection manager
+      siteMonitor: http://radarr.example.com
+      statusStyle: dot

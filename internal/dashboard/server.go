@@ -44,11 +44,22 @@ const pwaIconPath = "/assets/icon.svg"
 // cardGroup is a display-ready group of cards sharing a ServiceCard Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
 // Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights come from the
-// DashboardStyle's Layout, when one places this group in a tab, already
-// resolved against the Site-wide defaults by layoutTabs.
+// DashboardStyle's Layout, when one places this group (or, for a nested
+// subgroup, its full Path) in a tab, already resolved against the Site-wide
+// defaults by layoutTabs.
+//
+// Path is the group's full "/"-separated address (e.g. "Media/Movies"; a
+// top-level group's Path has no "/"); Name is just the leaf segment, used
+// for the rendered heading. Subgroups holds any nested child groups (see
+// nestGroups), rendered inside this group's own block, after its direct
+// Cards — homepage parity for nested service groups
+// (https://gethomepage.dev/configs/services/#nested-groups), see
+// docs/design/nested-groups.md.
 type cardGroup struct {
+	Path               string
 	Name               string
 	Cards              []Card
+	Subgroups          []cardGroup
 	Columns            *int32
 	Style              string
 	IconURL            string
@@ -948,11 +959,13 @@ func partitionHeaderAlign(views []headerWidgetView, defs []HeaderWidget) []heade
 	return append(left, right...)
 }
 
-// groupCards buckets an already-ordered card slice into display groups,
-// preserving the incoming order of both groups and cards within a group.
-// Header defaults to true (shown) — only an explicit LayoutGroupSpec.Header
-// false (applied in layoutTabs) turns it off; InitiallyCollapsed/
-// UseEqualHeights start at the Site-wide defaults, also overridable there.
+// groupCards buckets an already-ordered card slice into flat display groups
+// keyed by the card's full Group path (e.g. "Media/Movies" is one flat
+// bucket, not yet split into a tree — see nestGroups), preserving the
+// incoming order of both groups and cards within a group. Header defaults to
+// true (shown) — only an explicit LayoutGroupSpec.Header false (applied in
+// layoutTabs) turns it off; InitiallyCollapsed/UseEqualHeights start at the
+// Site-wide defaults, also overridable there.
 func groupCards(cards []Card, site Site) []cardGroup {
 	var groups []cardGroup
 	index := map[string]int{}
@@ -962,7 +975,8 @@ func groupCards(cards []Card, site Site) []cardGroup {
 			i = len(groups)
 			index[c.Group] = i
 			groups = append(groups, cardGroup{
-				Name:               c.Group,
+				Path:               c.Group,
+				Name:               leafSegment(c.Group),
 				Header:             true,
 				InitiallyCollapsed: site.GroupsInitiallyCollapsed,
 				UseEqualHeights:    site.UseEqualHeights,
@@ -973,54 +987,172 @@ func groupCards(cards []Card, site Site) []cardGroup {
 	return groups
 }
 
-// layoutTabs arranges groupCards' output into tabs per the DashboardStyle's
-// Layout. An empty layout returns the groups unchanged in a single unnamed
-// tab, so the dashboard renders exactly as it did before tabs existed. A
-// Group placed by more than one LayoutTab is shown only under the first;
-// any Group not referenced by any tab is appended to a trailing "Other"
-// tab so nothing silently disappears from the dashboard.
+// leafSegment returns a "/"-separated group path's final segment (e.g.
+// "Movies" for "Media/Movies"), used as a nested group's rendered heading —
+// or the whole string unchanged when it has no "/" (a top-level group).
+func leafSegment(path string) string {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+	return path
+}
+
+// nestGroups turns groupCards' flat, path-keyed groups into a tree: each
+// group's Path is split on "/" and attached under its parent path's
+// cardGroup.Subgroups, materializing any ancestor path that has no direct
+// cards of its own (header shown, zero direct Cards, Site-wide defaults) so
+// e.g. a card at "Media/Movies" with no card directly in "Media" still gets
+// a "Media" parent to render under. Sibling order — both among the returned
+// root groups and within each parent's Subgroups — follows first-seen order
+// in flat (which is itself Store.Snapshot's Order/name order, see
+// groupCards), not alphabetical. Homepage parity for nested service groups,
+// see docs/design/nested-groups.md; depth is bounded to 3 by the CRD's
+// Group/Name pattern, so recursion here is not depth-limited itself.
+func nestGroups(flat []cardGroup, site Site) []cardGroup {
+	type node struct {
+		group    cardGroup
+		children []*node
+	}
+
+	nodes := make(map[string]*node, len(flat))
+	var roots []*node
+
+	var ensure func(path string) *node
+	ensure = func(path string) *node {
+		if n, ok := nodes[path]; ok {
+			return n
+		}
+		n := &node{group: cardGroup{
+			Path:               path,
+			Name:               leafSegment(path),
+			Header:             true,
+			InitiallyCollapsed: site.GroupsInitiallyCollapsed,
+			UseEqualHeights:    site.UseEqualHeights,
+		}}
+		nodes[path] = n
+		if i := strings.LastIndex(path, "/"); i >= 0 {
+			parent := ensure(path[:i])
+			parent.children = append(parent.children, n)
+		} else {
+			roots = append(roots, n)
+		}
+		return n
+	}
+
+	for _, g := range flat {
+		n := ensure(g.Path)
+		n.group.Cards = g.Cards
+		n.group.Columns = g.Columns
+		n.group.Style = g.Style
+		n.group.IconURL = g.IconURL
+		n.group.Header = g.Header
+		n.group.InitiallyCollapsed = g.InitiallyCollapsed
+		n.group.UseEqualHeights = g.UseEqualHeights
+	}
+
+	var toValue func(n *node) cardGroup
+	toValue = func(n *node) cardGroup {
+		out := n.group
+		for _, c := range n.children {
+			out.Subgroups = append(out.Subgroups, toValue(c))
+		}
+		return out
+	}
+
+	out := make([]cardGroup, 0, len(roots))
+	for _, r := range roots {
+		out = append(out, toValue(r))
+	}
+	return out
+}
+
+// applyLayoutStyle applies one LayoutGroupSpec's resolved style
+// (Columns/Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights) to g,
+// falling back to whatever g already carried for anything the spec left
+// unset (nil pointer fields on LayoutGroup, see its own doc comment).
+func applyLayoutStyle(g cardGroup, lg LayoutGroup) cardGroup {
+	g.Columns = lg.Columns
+	g.Style = lg.Style
+	g.IconURL = lg.IconURL
+	if lg.Header != nil {
+		g.Header = *lg.Header
+	}
+	if lg.InitiallyCollapsed != nil {
+		g.InitiallyCollapsed = *lg.InitiallyCollapsed
+	}
+	if lg.UseEqualHeights != nil {
+		g.UseEqualHeights = *lg.UseEqualHeights
+	}
+	return g
+}
+
+// applyLayoutStyles walks g and every descendant in Subgroups, applying
+// styleByPath's entry for each node's full Path when one exists — how a
+// tab's LayoutGroupSpec entries style a placed group and any of its nested
+// subgroups (see layoutTabs). A node with no matching entry is returned
+// unchanged.
+func applyLayoutStyles(g cardGroup, styleByPath map[string]LayoutGroup) cardGroup {
+	if lg, ok := styleByPath[g.Path]; ok {
+		g = applyLayoutStyle(g, lg)
+	}
+	for i := range g.Subgroups {
+		g.Subgroups[i] = applyLayoutStyles(g.Subgroups[i], styleByPath)
+	}
+	return g
+}
+
+// layoutTabs arranges groupCards'/nestGroups' output into tabs per the
+// DashboardStyle's Layout. An empty layout returns the (nested) groups
+// unchanged in a single unnamed tab, so the dashboard renders exactly as it
+// did before tabs existed. Placement is root-only: a LayoutGroupSpec whose
+// Name has no "/" places that root group — and its whole Subgroups tree —
+// into a tab; a path-named entry (e.g. "Media/Movies") never places on its
+// own, it only styles the node at that path once its root has already been
+// placed (the CRD's per-tab CEL rule requires the root be listed too, see
+// LayoutTabSpec). A root Group placed by more than one LayoutTab is shown
+// only under the first; any root Group not referenced by any tab is
+// appended, with its whole subtree, to a trailing "Other" tab so nothing
+// silently disappears from the dashboard.
 func layoutTabs(cards []Card, site Site) []layoutTab {
-	groups := groupCards(cards, site)
+	tree := nestGroups(groupCards(cards, site), site)
 	layout := site.Layout
 	if len(layout) == 0 {
-		return []layoutTab{{Groups: groups}}
+		return []layoutTab{{Groups: tree}}
 	}
 
-	byName := make(map[string]cardGroup, len(groups))
-	for _, g := range groups {
-		byName[g.Name] = g
+	byRootPath := make(map[string]cardGroup, len(tree))
+	for _, g := range tree {
+		byRootPath[g.Path] = g
 	}
 
-	used := make(map[string]bool, len(groups))
+	used := make(map[string]bool, len(tree))
 	tabs := make([]layoutTab, 0, len(layout)+1)
 	for _, t := range layout {
+		styleByPath := make(map[string]LayoutGroup, len(t.Groups))
+		for _, lg := range t.Groups {
+			styleByPath[lg.Name] = lg
+		}
+
 		tab := layoutTab{Name: t.Name}
 		for _, lg := range t.Groups {
-			g, ok := byName[lg.Name]
+			if strings.Contains(lg.Name, "/") {
+				// A path-named entry styles a subgroup in place; it never
+				// places anything on its own (see doc comment above).
+				continue
+			}
+			g, ok := byRootPath[lg.Name]
 			if !ok || used[lg.Name] {
 				continue
 			}
 			used[lg.Name] = true
-			g.Columns = lg.Columns
-			g.Style = lg.Style
-			g.IconURL = lg.IconURL
-			if lg.Header != nil {
-				g.Header = *lg.Header
-			}
-			if lg.InitiallyCollapsed != nil {
-				g.InitiallyCollapsed = *lg.InitiallyCollapsed
-			}
-			if lg.UseEqualHeights != nil {
-				g.UseEqualHeights = *lg.UseEqualHeights
-			}
-			tab.Groups = append(tab.Groups, g)
+			tab.Groups = append(tab.Groups, applyLayoutStyles(g, styleByPath))
 		}
 		tabs = append(tabs, tab)
 	}
 
 	var other []cardGroup
-	for _, g := range groups {
-		if !used[g.Name] {
+	for _, g := range tree {
+		if !used[g.Path] {
 			other = append(other, g)
 		}
 	}
