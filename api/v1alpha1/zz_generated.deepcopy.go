@@ -321,7 +321,7 @@ func (in *DashboardSpec) DeepCopyInto(out *DashboardSpec) {
 	}
 	if in.HostUsers != nil {
 		in, out := &in.HostUsers, &out.HostUsers
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.NodeSelector != nil {
@@ -600,7 +600,7 @@ func (in *DashboardStyleSpec) DeepCopyInto(out *DashboardStyleSpec) {
 	}
 	if in.FullWidth != nil {
 		in, out := &in.FullWidth, &out.FullWidth
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.Search != nil {
@@ -617,17 +617,17 @@ func (in *DashboardStyleSpec) DeepCopyInto(out *DashboardStyleSpec) {
 	}
 	if in.Collapse != nil {
 		in, out := &in.Collapse, &out.Collapse
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.GroupsInitiallyCollapsed != nil {
 		in, out := &in.GroupsInitiallyCollapsed, &out.GroupsInitiallyCollapsed
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.UseEqualHeights != nil {
 		in, out := &in.UseEqualHeights, &out.UseEqualHeights
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.BookmarksStyle != nil {
@@ -637,7 +637,7 @@ func (in *DashboardStyleSpec) DeepCopyInto(out *DashboardStyleSpec) {
 	}
 	if in.Indexing != nil {
 		in, out := &in.Indexing, &out.Indexing
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.StartURL != nil {
@@ -662,12 +662,12 @@ func (in *DashboardStyleSpec) DeepCopyInto(out *DashboardStyleSpec) {
 	}
 	if in.ErrorDisplay != nil {
 		in, out := &in.ErrorDisplay, &out.ErrorDisplay
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.HideVersion != nil {
 		in, out := &in.HideVersion, &out.HideVersion
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 }
@@ -719,7 +719,7 @@ func (in *DiscoverySpec) DeepCopyInto(out *DiscoverySpec) {
 	}
 	if in.HomepageCompat != nil {
 		in, out := &in.HomepageCompat, &out.HomepageCompat
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.Namespaces != nil {
@@ -829,12 +829,12 @@ func (in *HighlightRuleSpec) DeepCopyInto(out *HighlightRuleSpec) {
 	}
 	if in.Negate != nil {
 		in, out := &in.Negate, &out.Negate
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.CaseSensitive != nil {
 		in, out := &in.CaseSensitive, &out.CaseSensitive
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 }
@@ -1077,17 +1077,17 @@ func (in *LayoutGroupSpec) DeepCopyInto(out *LayoutGroupSpec) {
 	}
 	if in.Header != nil {
 		in, out := &in.Header, &out.Header
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.InitiallyCollapsed != nil {
 		in, out := &in.InitiallyCollapsed, &out.InitiallyCollapsed
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.UseEqualHeights != nil {
 		in, out := &in.UseEqualHeights, &out.UseEqualHeights
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 }
@@ -1189,22 +1189,22 @@ func (in *SearchSpec) DeepCopyInto(out *SearchSpec) {
 	}
 	if in.FilterCards != nil {
 		in, out := &in.FilterCards, &out.FilterCards
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.SearchDescriptions != nil {
 		in, out := &in.SearchDescriptions, &out.SearchDescriptions
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.InternetSearchEntry != nil {
 		in, out := &in.InternetSearchEntry, &out.InternetSearchEntry
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.VisitURLEntry != nil {
 		in, out := &in.VisitURLEntry, &out.VisitURLEntry
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 }
@@ -1378,12 +1378,12 @@ func (in *ServiceEntry) DeepCopyInto(out *ServiceEntry) {
 	}
 	if in.ShowStats != nil {
 		in, out := &in.ShowStats, &out.ShowStats
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.ErrorDisplay != nil {
 		in, out := &in.ErrorDisplay, &out.ErrorDisplay
-		*out = new(string)
+		*out = new(bool)
 		**out = **in
 	}
 	if in.Ping != nil {

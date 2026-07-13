@@ -535,8 +535,8 @@ func TestServerIndexServesShell(t *testing.T) {
 // quick-launch toggles reach the page shell's client-side searchConfig JSON
 // (gap-analysis §4.2), which index.templ's qlRender reads.
 func TestServerIndexEmitsQuickLaunchSearchConfig(t *testing.T) {
-	disabled := pagev1alpha1.Disabled
-	hidden := pagev1alpha1.ErrorDisplayHidden
+	disabled := false
+	hidden := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -604,7 +604,7 @@ func TestServerFragmentRendersCollapsibleGroupsByDefault(t *testing.T) {
 func TestServerFragmentDisableCollapseRendersPlainHeaders(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testGroup, ServiceName: testSvcAName})
-	disable := pagev1alpha1.Disabled
+	disable := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -782,7 +782,7 @@ func TestIndexRegistersServiceWorker(t *testing.T) {
 }
 
 func TestServerRobotsRoute(t *testing.T) {
-	disable := pagev1alpha1.IndexingNoIndex
+	disable := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -1667,7 +1667,7 @@ func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})
 
-	header := pagev1alpha1.HeaderHidden
+	header := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -1705,7 +1705,7 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 			}},
 		},
 	}
-	disable := pagev1alpha1.Disabled
+	disable := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -1897,7 +1897,7 @@ func TestServerIndexRendersDescriptionMetaAndParagraph(t *testing.T) {
 }
 
 func TestServerIndexAppliesDisableIndexingMetaRobots(t *testing.T) {
-	disable := pagev1alpha1.IndexingNoIndex
+	disable := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -2056,7 +2056,7 @@ func TestServerFragmentRendersGridRowAndEqualHeightStyles(t *testing.T) {
 	store.Set(Card{Key: "ns/row/0", Group: testGroup, ServiceName: testServiceName})
 
 	style := testStyleRow
-	equalHeights := pagev1alpha1.HeightsEqual
+	equalHeights := true
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -2112,7 +2112,7 @@ func TestServerIndexRendersVersionFooter(t *testing.T) {
 }
 
 func TestServerIndexHidesVersionFooterWhenConfigured(t *testing.T) {
-	hide := pagev1alpha1.Enabled
+	hide := true
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{

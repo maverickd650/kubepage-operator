@@ -203,7 +203,7 @@ func TestDiscoverServicesHomepageCompat(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ing).Build()
 
-	compat := pagev1alpha1.Enabled
+	compat := true
 	services, err := discoverServices(t.Context(), cl, testNamespace, nil, nil, pagev1alpha1.DiscoverySpec{HomepageCompat: &compat})
 	if err != nil {
 		t.Fatalf("discoverServices() error = %v", err)

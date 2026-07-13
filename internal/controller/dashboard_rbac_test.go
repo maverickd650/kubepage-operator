@@ -107,7 +107,7 @@ func TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled(t *testing.T) {
 		t.Fatalf("discoveryNamespaces() with Discovery not Enabled = %v, want nil", got)
 	}
 
-	base.Spec.Discovery.Enabled = pagev1alpha1.Enabled
+	base.Spec.Discovery.Enabled = true
 	base.Spec.Discovery.Namespaces = []string{testDiscoveryTargetNamespace, "dash-ns", "monitoring", testDiscoveryTargetNamespace}
 	got := discoveryNamespaces(base)
 	want := []string{testDiscoveryTargetNamespace, "monitoring"}
@@ -173,7 +173,7 @@ func discoverySpec(enabled bool, sources ...string) *pagev1alpha1.DiscoverySpec 
 	if !enabled {
 		return nil
 	}
-	return &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled, Sources: sources}
+	return &pagev1alpha1.DiscoverySpec{Enabled: true, Sources: sources}
 }
 
 // TestDashboardRolesGrantsIngressOnlyWhenDiscoveryEnabled guards the

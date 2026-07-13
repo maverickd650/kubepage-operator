@@ -9,29 +9,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Enum values for HighlightRuleSpec.Negate/CaseSensitive,
-// FieldHighlight.Scope, and ServiceCardSpec.ShowStats.
-const (
-	NegateMatch  = "Match"
-	NegateNegate = "Negate"
-
-	CaseSensitiveOn  = "CaseSensitive"
-	CaseSensitiveOff = "CaseInsensitive"
-
-	HighlightWholeField = "WholeField"
-	HighlightValueOnly  = "ValueOnly"
-
-	StatsShow = "Show"
-	StatsHide = "Hide"
-)
-
-// Enum values for ServiceCardSpec.ErrorDisplay and
-// DashboardStyleSpec.ErrorDisplay.
-const (
-	ErrorDisplayShown  = "Shown"
-	ErrorDisplayHidden = "Hidden"
-)
-
 // HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules
 // are evaluated in order; the first match sets the field's highlight level.
 // Mirrors homepage's per-field highlight rule, see
@@ -65,17 +42,15 @@ type HighlightRuleSpec struct {
 	// +optional
 	Value2 *string `json:"value2,omitempty"`
 
-	// negate inverts the rule's match ("Negate") instead of the default
-	// ("Match").
-	// +kubebuilder:validation:Enum=Match;Negate
+	// negate inverts the rule's match when true, instead of the default
+	// (matching normally).
 	// +optional
-	Negate *string `json:"negate,omitempty"`
+	Negate *bool `json:"negate,omitempty"`
 
 	// caseSensitive makes a string operator's comparison case-sensitive.
-	// Defaults to "CaseInsensitive"; ignored by numeric operators.
-	// +kubebuilder:validation:Enum=CaseSensitive;CaseInsensitive
+	// Defaults to false; ignored by numeric operators.
 	// +optional
-	CaseSensitive *string `json:"caseSensitive,omitempty"`
+	CaseSensitive *bool `json:"caseSensitive,omitempty"`
 }
 
 // FieldHighlight configures highlight rules for one widget field, keyed by
@@ -259,18 +234,18 @@ type ServiceEntry struct {
 	Description *string `json:"description,omitempty"`
 
 	// showStats controls whether the polled widget fields are displayed on
-	// the card. Defaults to "Show"; set "Hide" to show only the title/icon/
+	// the card. Defaults to true; set false to show only the title/icon/
 	// description (and any monitor status).
-	// +kubebuilder:validation:Enum=Show;Hide
+	// +default=true
 	// +optional
-	ShowStats *string `json:"showStats,omitempty"`
+	ShowStats *bool `json:"showStats,omitempty"`
 
 	// errorDisplay controls whether a widget's error text is shown on the
-	// card (e.g. set "Hidden" for a service that is expected to be
-	// intermittently unreachable). Defaults to "Shown".
-	// +kubebuilder:validation:Enum=Shown;Hidden
+	// card (e.g. set false for a service that is expected to be
+	// intermittently unreachable). Defaults to true.
+	// +default=true
 	// +optional
-	ErrorDisplay *string `json:"errorDisplay,omitempty"`
+	ErrorDisplay *bool `json:"errorDisplay,omitempty"`
 
 	// ping is a URL probed over HTTP for reachability and latency, shown as
 	// an up/down status on the card. (Raw ICMP is not used, so a pod needs

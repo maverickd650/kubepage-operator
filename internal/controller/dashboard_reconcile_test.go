@@ -278,7 +278,7 @@ func TestDashboardReconcileServiceError(t *testing.T) {
 func TestDashboardReconcileIngressError(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newDashboardReconcileTestDashboard()
-	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
+	instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
 	wantErr := errors.New("create Ingress boom")
 
 	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).WithStatusSubresource(instance).Build()
@@ -305,7 +305,7 @@ func TestDashboardReconcileHTTPRouteGatewayNotInstalled(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newDashboardReconcileTestDashboard()
 	instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{
-		Enabled:   pagev1alpha1.Enabled,
+		Enabled:   true,
 		Hostnames: []string{testDashboardHost},
 		ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 	}

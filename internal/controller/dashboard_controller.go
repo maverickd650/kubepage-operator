@@ -123,7 +123,7 @@ var errDiscoveryHTTPRouteUnavailable = errors.New("spec.discovery.sources includ
 // with reconciling.
 func (r *DashboardReconciler) discoveryHTTPRouteAvailable(instance *pagev1alpha1.Dashboard) bool {
 	d := instance.Spec.Discovery
-	if d == nil || d.Enabled != pagev1alpha1.Enabled || !d.HasSource(pagev1alpha1.DiscoverySourceHTTPRoute) {
+	if d == nil || !d.Enabled || !d.HasSource(pagev1alpha1.DiscoverySourceHTTPRoute) {
 		return true
 	}
 	return r.GatewayAPIEnabled
@@ -741,7 +741,7 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 					Annotations: instance.Spec.Annotations,
 				},
 				Spec: corev1.PodSpec{
-					HostUsers:                 hostUsersBool(instance.Spec.HostUsers),
+					HostUsers:                 instance.Spec.HostUsers,
 					ServiceAccountName:        instance.Name,
 					NodeSelector:              instance.Spec.NodeSelector,
 					Tolerations:               instance.Spec.Tolerations,
@@ -812,16 +812,6 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 		return nil, err
 	}
 	return dep, nil
-}
-
-// hostUsersBool converts DashboardSpec.HostUsers's Enabled/Disabled enum into
-// the *bool corev1.PodSpec.HostUsers expects.
-func hostUsersBool(s *string) *bool {
-	if s == nil {
-		return nil
-	}
-	b := *s == pagev1alpha1.Enabled
-	return &b
 }
 
 // probeOrDefault returns probe unchanged (a full user override) when set, and

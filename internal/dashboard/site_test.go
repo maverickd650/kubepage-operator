@@ -137,7 +137,7 @@ func TestLoadSiteAppliesColorHeaderLanguageFullWidth(t *testing.T) {
 	color := testColor
 	headerStyle := "boxed"
 	language := "fr"
-	fullWidth := pagev1alpha1.FullWidthFull
+	fullWidth := true
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -208,7 +208,7 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 	provider := "custom"
 	url := "https://search.invalid/q"
 	target := targetSelf
-	filterCards := pagev1alpha1.Disabled
+	filterCards := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -239,8 +239,8 @@ func TestLoadSiteAppliesSearch(t *testing.T) {
 // but can be turned off with "Hidden".
 func TestLoadSiteAppliesQuickLaunchOptions(t *testing.T) {
 	scheme := testScheme(t)
-	disabled := pagev1alpha1.Disabled
-	hidden := pagev1alpha1.ErrorDisplayHidden
+	disabled := false
+	hidden := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -559,11 +559,11 @@ func TestLoadSiteThemeFixedAndColorFixed(t *testing.T) {
 
 func TestLoadSiteAppliesNewLookFields(t *testing.T) {
 	scheme := testScheme(t)
-	disableCollapse := pagev1alpha1.Disabled
-	groupsCollapsed := pagev1alpha1.CollapseCollapsed
-	equalHeights := pagev1alpha1.HeightsEqual
+	disableCollapse := false
+	groupsCollapsed := true
+	equalHeights := true
 	bookmarksStyle := bookmarksStyleIcons
-	disableIndexing := pagev1alpha1.IndexingNoIndex
+	disableIndexing := false
 	startURL := "/dash"
 	customCSS := "body{color:red}"
 	cfg := &pagev1alpha1.DashboardStyle{
@@ -593,9 +593,9 @@ func TestLoadSiteAppliesNewLookFields(t *testing.T) {
 
 func TestLoadSiteAppliesLayoutGroupOverrides(t *testing.T) {
 	scheme := testScheme(t)
-	header := pagev1alpha1.HeaderHidden
-	initiallyCollapsed := pagev1alpha1.CollapseCollapsed
-	equalHeights := pagev1alpha1.HeightsEqual
+	header := false
+	initiallyCollapsed := true
+	equalHeights := true
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -852,9 +852,9 @@ func TestScalarOptions(t *testing.T) {
 func TestLoadSiteAppliesCustomJSStatusStyleHideErrorsHideVersion(t *testing.T) {
 	scheme := testScheme(t)
 	customJS := "console.log('hi')"
-	statusStyle := testStatusBasic
-	hideErrors := pagev1alpha1.ErrorDisplayHidden
-	hideVersion := pagev1alpha1.Enabled
+	statusStyle := statusStyleBasic
+	hideErrors := false
+	hideVersion := true
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -874,8 +874,8 @@ func TestLoadSiteAppliesCustomJSStatusStyleHideErrorsHideVersion(t *testing.T) {
 	if site.CustomJS != customJS {
 		t.Errorf("CustomJS = %q, want %q", site.CustomJS, customJS)
 	}
-	if site.StatusStyle != statusStyle {
-		t.Errorf("StatusStyle = %q, want %q", site.StatusStyle, statusStyle)
+	if site.StatusStyle != statusStyleBasic {
+		t.Errorf("StatusStyle = %q, want %q", site.StatusStyle, statusStyleBasic)
 	}
 	if !site.HideErrors {
 		t.Error("HideErrors = false, want true")

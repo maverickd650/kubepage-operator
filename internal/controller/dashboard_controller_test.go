@@ -239,7 +239,7 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.DashboardSpec{
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
-					HostUsers:     ptr.To(pagev1alpha1.Disabled),
+					HostUsers:     ptr.To(false),
 					Labels: map[string]string{
 						"team": "platform",
 					},
@@ -525,7 +525,7 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.DashboardSpec{
 					Replicas: new(int32(1)), ContainerPort: 8080,
 					Discovery: &pagev1alpha1.DiscoverySpec{
-						Enabled:    pagev1alpha1.Enabled,
+						Enabled:    true,
 						Namespaces: []string{target.Name},
 					},
 				},
@@ -594,7 +594,7 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.DashboardSpec{
 					Replicas: new(int32(1)), ContainerPort: 8080,
 					Discovery: &pagev1alpha1.DiscoverySpec{
-						Enabled:    pagev1alpha1.Enabled,
+						Enabled:    true,
 						Namespaces: []string{good.Name, nonexistentNamespace},
 					},
 				},
@@ -732,7 +732,7 @@ var _ = Describe("Dashboard controller", func() {
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
-						Enabled: pagev1alpha1.Enabled,
+						Enabled: true,
 						Host:    testDashboardHost,
 						TLS:     &pagev1alpha1.IngressTLSSpec{SecretName: "dashboard-tls"},
 					},
@@ -760,7 +760,7 @@ var _ = Describe("Dashboard controller", func() {
 
 			By("disabling spec.ingress.enabled removes the Ingress")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
-			instance.Spec.Ingress.Enabled = pagev1alpha1.Disabled
+			instance.Spec.Ingress.Enabled = false
 			Expect(k8sClient.Update(ctx, instance)).To(Succeed())
 
 			_, err = instanceReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
@@ -778,7 +778,7 @@ var _ = Describe("Dashboard controller", func() {
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Ingress: &pagev1alpha1.IngressSpec{
-						Enabled: pagev1alpha1.Enabled,
+						Enabled: true,
 						Host:    testDashboardHost,
 					},
 				},
@@ -854,7 +854,7 @@ var _ = Describe("Dashboard controller", func() {
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Gateway: &pagev1alpha1.GatewaySpec{
-						Enabled:   pagev1alpha1.Enabled,
+						Enabled:   true,
 						Hostnames: []string{testDashboardHost},
 						ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 					},
@@ -936,7 +936,7 @@ var _ = Describe("Dashboard controller", func() {
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
 					Discovery: &pagev1alpha1.DiscoverySpec{
-						Enabled: pagev1alpha1.Enabled,
+						Enabled: true,
 						Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute},
 					},
 				},

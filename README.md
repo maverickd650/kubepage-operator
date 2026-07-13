@@ -186,7 +186,7 @@ required.
   (may itself be a `"/"`-separated path, see [Nested groups](#nested-groups)),
   `kubepage.io/icon`, `kubepage.io/description`, `kubepage.io/href`,
   `kubepage.io/ping`.
-- `spec.discovery.homepageCompat: Enabled` additionally honors homepage's own
+- `spec.discovery.homepageCompat: true` additionally honors homepage's own
   `gethomepage.dev/*` annotations (https://gethomepage.dev/configs/kubernetes/)
   on any resource that doesn't carry the native prefix's own enable
   annotation, so a cluster migrating from homepage doesn't need to relabel

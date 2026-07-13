@@ -30,8 +30,12 @@ var pollerLog = ctrl.Log.WithName("dashboard-poller")
 const maxConcurrentPolls = 8
 
 // statusStyleDot is the default ServiceCard.Spec.StatusStyle, rendered by
-// cards.templ as a colored dot rather than a text pill.
-const statusStyleDot = "dot"
+// cards.templ as a colored dot rather than a text pill; statusStyleBasic
+// (StatusStyle: true) renders up/down text instead.
+const (
+	statusStyleDot   = "dot"
+	statusStyleBasic = "basic"
+)
 
 // Poller periodically lists the ServiceCards bound to one Dashboard,
 // resolves each widget's secrets and config, polls every widget whose type
@@ -499,7 +503,7 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 
 	hideErrors := defaultHideErrors
 	if se.ErrorDisplay != nil {
-		hideErrors = *se.ErrorDisplay == pagev1alpha1.ErrorDisplayHidden
+		hideErrors = !*se.ErrorDisplay
 	}
 	card := Card{
 		Key:         key,
@@ -507,7 +511,7 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		ServiceName: se.Name,
 		Order:       se.Order,
 		IconURL:     IconURL(se.Icon),
-		ShowStats:   se.ShowStats == nil || *se.ShowStats != pagev1alpha1.StatsHide,
+		ShowStats:   se.ShowStats == nil || *se.ShowStats,
 		HideErrors:  hideErrors,
 		Status:      status,
 		StatusStyle: statusStyle,
@@ -841,7 +845,7 @@ func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErro
 		statusStyle = *spec.StatusStyle
 	}
 	if spec.ErrorDisplay != nil {
-		hideErrors = *spec.ErrorDisplay == pagev1alpha1.ErrorDisplayHidden
+		hideErrors = !*spec.ErrorDisplay
 	}
 	return statusStyle, hideErrors
 }
@@ -857,7 +861,7 @@ func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec,
 		pollerLog.Error(err, "getting Dashboard for discovery config")
 		return pagev1alpha1.DiscoverySpec{}, false
 	}
-	if instance.Spec.Discovery == nil || instance.Spec.Discovery.Enabled != pagev1alpha1.Enabled {
+	if instance.Spec.Discovery == nil || !instance.Spec.Discovery.Enabled {
 		return pagev1alpha1.DiscoverySpec{}, false
 	}
 	return *instance.Spec.Discovery, true

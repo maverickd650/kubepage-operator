@@ -80,13 +80,12 @@ type DashboardSpec struct {
 	ContainerSecurityContext *corev1.SecurityContext `json:"containerSecurityContext,omitempty"`
 
 	// hostUsers controls whether the pod uses the host's user namespace.
-	// Defaults to "Enabled" (the pod runs in the host's user namespace,
-	// matching the Kubernetes default); "Disabled" requests a separate,
-	// isolated user namespace for the pod.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Enabled"
+	// Defaults to true (the pod runs in the host's user namespace, matching
+	// the Kubernetes default); false requests a separate, isolated user
+	// namespace for the pod.
+	// +default=true
 	// +optional
-	HostUsers *string `json:"hostUsers,omitempty"`
+	HostUsers *bool `json:"hostUsers,omitempty"`
 
 	// nodeSelector constrains the pod to nodes matching every label here,
 	// passed straight through to the pod template.
@@ -304,11 +303,9 @@ type WidgetDefaultsEntry struct {
 // MetricsSpec controls whether the dashboard's /metrics port is exposed on
 // the dashboard Service.
 type MetricsSpec struct {
-	// enabled exposes port 9090 on the dashboard Service when "Enabled".
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Disabled"
+	// enabled exposes port 9090 on the dashboard Service when true.
 	// +optional
-	Enabled string `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // AuthSpec configures the dashboard's optional built-in HTTP Basic
@@ -336,11 +333,9 @@ type AuthSpec struct {
 // Dashboard's dashboard pods.
 type NetworkPolicySpec struct {
 	// enabled creates and manages a NetworkPolicy for this Dashboard's
-	// dashboard pods when "Enabled".
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Disabled"
+	// dashboard pods when true.
 	// +optional
-	Enabled string `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
 
 	// ingressNamespaceSelector selects which namespaces' pods may reach the
 	// dashboard's containerPort. Leave unset to allow ingress from any
@@ -400,10 +395,8 @@ type NetworkPolicySpec struct {
 // see its own doc comment for the RBAC this widens.
 type DiscoverySpec struct {
 	// enabled turns on annotation discovery for this Dashboard.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Disabled"
 	// +optional
-	Enabled string `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
 
 	// sources selects which resource kinds are scanned for the discovery
 	// annotations. Defaults to ["Ingress"] (the pre-existing behavior).
@@ -431,9 +424,8 @@ type DiscoverySpec struct {
 	// (homepage's own discovery convention) on any source resource that
 	// doesn't carry AnnotationPrefix's own enable annotation, so a cluster
 	// migrating from homepage doesn't need to relabel every resource.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
 	// +optional
-	HomepageCompat *string `json:"homepageCompat,omitempty"`
+	HomepageCompat *bool `json:"homepageCompat,omitempty"`
 
 	// namespaces additionally scans these namespaces (beyond the Dashboard's
 	// own, which is always scanned) for the same discovery annotations. A
@@ -502,12 +494,9 @@ type ServiceSpec struct {
 
 // IngressSpec configures an Ingress exposing the dashboard Service.
 type IngressSpec struct {
-	// enabled creates and manages an Ingress for this Dashboard when
-	// "Enabled".
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Disabled"
+	// enabled creates and manages an Ingress for this Dashboard when true.
 	// +optional
-	Enabled string `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
 
 	// host is the hostname routed to the dashboard Service.
 	// +kubebuilder:validation:Pattern=`^(\*\.)?([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
@@ -550,12 +539,9 @@ type IngressTLSSpec struct {
 // config, etc. are the Gateway's concern, not this operator's — mirroring
 // how IngressSpec leaves cert-manager/IngressClass setup to the cluster).
 type GatewaySpec struct {
-	// enabled creates and manages an HTTPRoute for this Dashboard when
-	// "Enabled".
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Disabled"
+	// enabled creates and manages an HTTPRoute for this Dashboard when true.
 	// +optional
-	Enabled string `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
 
 	// hostnames the HTTPRoute matches. At least one is required.
 	// +kubebuilder:validation:MinItems=1

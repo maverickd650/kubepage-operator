@@ -89,7 +89,7 @@ func firstMatchingLevel(rules []pagev1alpha1.HighlightRuleSpec, value string) st
 
 func ruleMatches(r pagev1alpha1.HighlightRuleSpec, value string) bool {
 	matched := evaluateRule(r, value)
-	if r.Negate != nil && *r.Negate == pagev1alpha1.NegateNegate {
+	if r.Negate != nil && *r.Negate {
 		return !matched
 	}
 	return matched
@@ -172,7 +172,7 @@ func evaluateStringRule(r pagev1alpha1.HighlightRuleSpec, value string) bool {
 		return evaluateRegexRule(r, value)
 	}
 
-	caseSensitive := r.CaseSensitive != nil && *r.CaseSensitive == pagev1alpha1.CaseSensitiveOn
+	caseSensitive := r.CaseSensitive != nil && *r.CaseSensitive
 	v, target := value, r.Value
 	if !caseSensitive {
 		v, target = strings.ToLower(v), strings.ToLower(target)
@@ -218,7 +218,7 @@ func compileRegexCached(pattern string) (*regexp.Regexp, error) {
 
 func evaluateRegexRule(r pagev1alpha1.HighlightRuleSpec, value string) bool {
 	pattern := r.Value
-	if r.CaseSensitive == nil || *r.CaseSensitive != pagev1alpha1.CaseSensitiveOn {
+	if r.CaseSensitive == nil || !*r.CaseSensitive {
 		pattern = "(?i)" + pattern
 	}
 	re, err := compileRegexCached(pattern)

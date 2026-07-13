@@ -395,7 +395,7 @@ func applyLookFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 		site.Language = *spec.Language
 	}
 	if spec.FullWidth != nil {
-		site.FullWidth = *spec.FullWidth == pagev1alpha1.FullWidthFull
+		site.FullWidth = *spec.FullWidth
 	}
 	if spec.Background != nil {
 		bg := &Background{Saturate: spec.Background.Saturate, Brightness: spec.Background.Brightness, Opacity: spec.Background.Opacity}
@@ -429,16 +429,16 @@ func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 		site.Search.Target = *s.Target
 	}
 	if s.FilterCards != nil {
-		site.Search.FilterCards = *s.FilterCards == pagev1alpha1.Enabled
+		site.Search.FilterCards = *s.FilterCards
 	}
 	if s.SearchDescriptions != nil {
-		site.Search.SearchDescriptions = *s.SearchDescriptions == pagev1alpha1.Enabled
+		site.Search.SearchDescriptions = *s.SearchDescriptions
 	}
 	if s.InternetSearchEntry != nil {
-		site.Search.HideInternetSearch = *s.InternetSearchEntry == pagev1alpha1.ErrorDisplayHidden
+		site.Search.HideInternetSearch = !*s.InternetSearchEntry
 	}
 	if s.VisitURLEntry != nil {
-		site.Search.HideVisitURL = *s.VisitURLEntry == pagev1alpha1.ErrorDisplayHidden
+		site.Search.HideVisitURL = !*s.VisitURLEntry
 	}
 }
 
@@ -456,9 +456,9 @@ func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
 				Columns:            g.Columns,
 				Style:              stringOrEmpty(g.Style),
 				IconURL:            IconURL(g.Icon),
-				Header:             boolFromEnum(g.Header, pagev1alpha1.HeaderShown),
-				InitiallyCollapsed: boolFromEnum(g.InitiallyCollapsed, pagev1alpha1.CollapseCollapsed),
-				UseEqualHeights:    boolFromEnum(g.UseEqualHeights, pagev1alpha1.HeightsEqual),
+				Header:             g.Header,
+				InitiallyCollapsed: g.InitiallyCollapsed,
+				UseEqualHeights:    g.UseEqualHeights,
 			})
 		}
 		tabs = append(tabs, LayoutTab{Name: t.Name, Groups: groups})
@@ -471,19 +471,19 @@ func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
 // settings, injected CSS/JS, and the site-wide status/error/version defaults.
 func applyBehaviorFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 	if spec.Collapse != nil {
-		site.DisableCollapse = *spec.Collapse == pagev1alpha1.Disabled
+		site.DisableCollapse = !*spec.Collapse
 	}
 	if spec.GroupsInitiallyCollapsed != nil {
-		site.GroupsInitiallyCollapsed = *spec.GroupsInitiallyCollapsed == pagev1alpha1.CollapseCollapsed
+		site.GroupsInitiallyCollapsed = *spec.GroupsInitiallyCollapsed
 	}
 	if spec.UseEqualHeights != nil {
-		site.UseEqualHeights = *spec.UseEqualHeights == pagev1alpha1.HeightsEqual
+		site.UseEqualHeights = *spec.UseEqualHeights
 	}
 	if spec.BookmarksStyle != nil {
 		site.BookmarksIconsOnly = *spec.BookmarksStyle == bookmarksStyleIcons
 	}
 	if spec.Indexing != nil {
-		site.DisableIndexing = *spec.Indexing == pagev1alpha1.IndexingNoIndex
+		site.DisableIndexing = !*spec.Indexing
 	}
 	if spec.StartURL != nil {
 		site.StartURL = *spec.StartURL
@@ -498,23 +498,11 @@ func applyBehaviorFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 		site.StatusStyle = *spec.StatusStyle
 	}
 	if spec.ErrorDisplay != nil {
-		site.HideErrors = *spec.ErrorDisplay == pagev1alpha1.ErrorDisplayHidden
+		site.HideErrors = !*spec.ErrorDisplay
 	}
 	if spec.HideVersion != nil {
-		site.HideVersion = *spec.HideVersion == pagev1alpha1.Enabled
+		site.HideVersion = *spec.HideVersion
 	}
-}
-
-// boolFromEnum converts an optional two-valued enum pointer (e.g.
-// LayoutGroupSpec.Header's "Shown"/"Hidden") into the *bool tri-state used
-// internally: nil stays nil (caller falls back to a site-wide default),
-// otherwise the pointee reports whether the enum equals trueValue.
-func boolFromEnum(s *string, trueValue string) *bool {
-	if s == nil {
-		return nil
-	}
-	b := *s == trueValue
-	return &b
 }
 
 func stringOrEmpty(s *string) string {

@@ -701,8 +701,8 @@ func TestPollerShowStatsAndHideErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	showStats := pagev1alpha1.StatsHide
-	hideErrors := pagev1alpha1.ErrorDisplayHidden
+	showStats := false
+	hideErrors := false
 	url := srv.URL
 	entry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "flags", Namespace: testNamespace},
@@ -1581,8 +1581,8 @@ func TestResolveSecretGetError(t *testing.T) {
 
 func TestPollerSiteDefaultsAppliesDashboardStyle(t *testing.T) {
 	scheme := testScheme(t)
-	style := testStatusBasic
-	hide := pagev1alpha1.ErrorDisplayHidden
+	style := statusStyleBasic
+	hide := false
 	cfg := &pagev1alpha1.DashboardStyle{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardStyleSpec{
@@ -1595,8 +1595,8 @@ func TestPollerSiteDefaultsAppliesDashboardStyle(t *testing.T) {
 	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	statusStyle, hideErrors := p.siteDefaults(t.Context())
-	if statusStyle != style || !hideErrors {
-		t.Errorf("siteDefaults() = (%q, %v), want (%q, true)", statusStyle, hideErrors, style)
+	if statusStyle != statusStyleBasic || !hideErrors {
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, true)", statusStyle, hideErrors, statusStyleBasic)
 	}
 }
 
@@ -1684,14 +1684,14 @@ func TestPollerDiscoverySpecEnabled(t *testing.T) {
 	instance := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
-			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: true},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
 	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
 	spec, ok := p.discoverySpec(t.Context())
-	if !ok || spec.Enabled != pagev1alpha1.Enabled {
+	if !ok || spec.Enabled != true {
 		t.Errorf("discoverySpec() = (%+v, %v), want an enabled DiscoverySpec", spec, ok)
 	}
 }
@@ -1957,7 +1957,7 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 	instance := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
-			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: true},
 		},
 	}
 	ing := &networkingv1.Ingress{
@@ -1998,7 +1998,7 @@ func TestPollerPollOnceDiscoveredServiceSampleDataSkipsNetwork(t *testing.T) {
 	instance := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
-			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: true},
 		},
 	}
 	ing := &networkingv1.Ingress{
@@ -2046,7 +2046,7 @@ func TestPollerPollOnceDiscoversHTTPRoutesWhenGatewayAPIEnabled(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
 			Discovery: &pagev1alpha1.DiscoverySpec{
-				Enabled: pagev1alpha1.Enabled,
+				Enabled: true,
 				Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute},
 			},
 		},
@@ -2087,7 +2087,7 @@ func TestPollerPollOnceSkipsHTTPRoutesWhenGatewayAPIDisabled(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
 			Discovery: &pagev1alpha1.DiscoverySpec{
-				Enabled: pagev1alpha1.Enabled,
+				Enabled: true,
 				Sources: []string{pagev1alpha1.DiscoverySourceIngress, pagev1alpha1.DiscoverySourceHTTPRoute},
 			},
 		},
@@ -2123,7 +2123,7 @@ func TestPollerPollOnceSkipsHTTPRoutesWhenSourcesUnset(t *testing.T) {
 	instance := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
-			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: pagev1alpha1.Enabled},
+			Discovery: &pagev1alpha1.DiscoverySpec{Enabled: true},
 		},
 	}
 	route := &gatewayv1.HTTPRoute{

@@ -24,7 +24,7 @@ func newNetworkPolicyTestDashboard() *pagev1alpha1.Dashboard {
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardObjName, Namespace: networkPolicyTestNamespace},
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
-			NetworkPolicy: &pagev1alpha1.NetworkPolicySpec{Enabled: pagev1alpha1.Enabled},
+			NetworkPolicy: &pagev1alpha1.NetworkPolicySpec{Enabled: true},
 		},
 	}
 }
@@ -58,7 +58,7 @@ func TestNetworkPolicyForDashboardUnrestrictedIngressNoEgressByDefault(t *testin
 func TestNetworkPolicyForDashboardMetricsPortOnlyWhenMetricsEnabled(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := newNetworkPolicyTestDashboard()
-	instance.Spec.Metrics = &pagev1alpha1.MetricsSpec{Enabled: pagev1alpha1.Enabled}
+	instance.Spec.Metrics = &pagev1alpha1.MetricsSpec{Enabled: true}
 
 	np, err := r.networkPolicyForDashboard(instance)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestNetworkPolicyForDashboardEgressCIDRsAddEgressPolicyType(t *testing.T) {
 func TestNetworkPolicyForDashboardIngressPortsHaveExplicitProtocol(t *testing.T) {
 	r := &DashboardReconciler{Scheme: networkTestScheme(t)}
 	instance := newNetworkPolicyTestDashboard()
-	instance.Spec.Metrics = &pagev1alpha1.MetricsSpec{Enabled: pagev1alpha1.Enabled}
+	instance.Spec.Metrics = &pagev1alpha1.MetricsSpec{Enabled: true}
 	instance.Spec.NetworkPolicy.EgressCIDRs = []string{testEgressCIDR}
 
 	np, err := r.networkPolicyForDashboard(instance)

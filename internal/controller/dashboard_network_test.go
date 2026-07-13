@@ -53,7 +53,7 @@ func TestDashboardURL(t *testing.T) {
 
 	t.Run("Ingress without TLS uses http", func(t *testing.T) {
 		instance := base()
-		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Enabled, Host: testDashboardHost}
+		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: true, Host: testDashboardHost}
 		got := dashboardURL(instance)
 		want := "http://" + testDashboardHost + "/"
 		if got != want {
@@ -64,10 +64,10 @@ func TestDashboardURL(t *testing.T) {
 	t.Run("Ingress with TLS uses https and takes priority over Gateway", func(t *testing.T) {
 		instance := base()
 		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{
-			Enabled: pagev1alpha1.Enabled, Host: testDashboardHost,
+			Enabled: true, Host: testDashboardHost,
 			TLS: &pagev1alpha1.IngressTLSSpec{SecretName: "dash-tls"},
 		}
-		instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{Enabled: pagev1alpha1.Enabled, Hostnames: []string{"gw.example.com"}}
+		instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{Enabled: true, Hostnames: []string{"gw.example.com"}}
 		got := dashboardURL(instance)
 		want := "https://" + testDashboardHost + "/"
 		if got != want {
@@ -77,8 +77,8 @@ func TestDashboardURL(t *testing.T) {
 
 	t.Run("disabled Ingress falls through to Gateway", func(t *testing.T) {
 		instance := base()
-		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: pagev1alpha1.Disabled, Host: testDashboardHost}
-		instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{Enabled: pagev1alpha1.Enabled, Hostnames: []string{"gw.example.com", "other.example.com"}}
+		instance.Spec.Ingress = &pagev1alpha1.IngressSpec{Enabled: false, Host: testDashboardHost}
+		instance.Spec.Gateway = &pagev1alpha1.GatewaySpec{Enabled: true, Hostnames: []string{"gw.example.com", "other.example.com"}}
 		got := dashboardURL(instance)
 		want := "https://gw.example.com/"
 		if got != want {
@@ -199,7 +199,7 @@ func TestServiceForDashboardAddsMetricsPortWhenEnabled(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardObjName, Namespace: "metricssvc"},
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
-			Metrics:       &pagev1alpha1.MetricsSpec{Enabled: pagev1alpha1.Enabled},
+			Metrics:       &pagev1alpha1.MetricsSpec{Enabled: true},
 		},
 	}
 
@@ -239,7 +239,7 @@ func TestHTTPRouteForDashboard(t *testing.T) {
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
-				Enabled:   pagev1alpha1.Enabled,
+				Enabled:   true,
 				Hostnames: []string{testDashboardHost, testDashboardHost},
 				ParentRef: pagev1alpha1.GatewayParentRef{
 					Name:        "eg",
@@ -305,7 +305,7 @@ func TestHTTPRouteForDashboardNoParentNamespaceOrSection(t *testing.T) {
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
-				Enabled:   pagev1alpha1.Enabled,
+				Enabled:   true,
 				Hostnames: []string{testDashboardHost},
 				ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 			},
@@ -637,7 +637,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
 			Gateway: &pagev1alpha1.GatewaySpec{
-				Enabled:   pagev1alpha1.Enabled,
+				Enabled:   true,
 				Hostnames: []string{testDashboardHost},
 				ParentRef: pagev1alpha1.GatewayParentRef{Name: "eg"},
 			},
@@ -686,7 +686,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 
 	t.Run("deletes the HTTPRoute once spec.gateway is disabled", func(t *testing.T) {
 		disabled := instance.DeepCopy()
-		disabled.Spec.Gateway.Enabled = pagev1alpha1.Disabled
+		disabled.Spec.Gateway.Enabled = false
 
 		if err := r.reconcileHTTPRoute(ctx, disabled); err != nil {
 			t.Fatalf("reconcileHTTPRoute() unexpected error: %v", err)
@@ -699,7 +699,7 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 
 	t.Run("is a no-op when disabled and already absent", func(t *testing.T) {
 		disabled := instance.DeepCopy()
-		disabled.Spec.Gateway.Enabled = pagev1alpha1.Disabled
+		disabled.Spec.Gateway.Enabled = false
 
 		if err := r.reconcileHTTPRoute(ctx, disabled); err != nil {
 			t.Errorf("reconcileHTTPRoute() unexpected error: %v", err)
