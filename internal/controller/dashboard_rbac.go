@@ -138,7 +138,7 @@ var dashboardPodsRule = rbacv1.PolicyRule{
 // create a Pod mounting arbitrary Secret volumes.
 func dashboardRoles(secretNames []string, discovery *pagev1alpha1.DiscoverySpec, gatewayAPIEnabled bool) []rbacv1.PolicyRule {
 	rules := []rbacv1.PolicyRule{dashboardConfigRule, dashboardPodsRule}
-	discoveryEnabled := discovery != nil && discovery.Enabled == pagev1alpha1.Enabled
+	discoveryEnabled := discovery != nil && discovery.Enabled
 	if discoveryEnabled {
 		if discovery.HasSource(pagev1alpha1.DiscoverySourceIngress) {
 			rules = append(rules, dashboardIngressRule)
@@ -647,7 +647,7 @@ func discoveryClusterRoleRules(discovery *pagev1alpha1.DiscoverySpec, gatewayAPI
 // at all" — see DiscoverySpec's doc comment on the single-namespace default.
 func discoveryNamespaces(instance *pagev1alpha1.Dashboard) []string {
 	discovery := instance.Spec.Discovery
-	if discovery == nil || discovery.Enabled != pagev1alpha1.Enabled {
+	if discovery == nil || !discovery.Enabled {
 		return nil
 	}
 	out := make([]string, 0, len(discovery.Namespaces))

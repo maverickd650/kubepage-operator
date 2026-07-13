@@ -29,7 +29,7 @@ func newDiscoveryTestDashboard(namespaces ...string) *pagev1alpha1.Dashboard {
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
 			Discovery: &pagev1alpha1.DiscoverySpec{
-				Enabled:    pagev1alpha1.Enabled,
+				Enabled:    true,
 				Namespaces: namespaces,
 			},
 		},

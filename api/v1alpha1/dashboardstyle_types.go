@@ -8,26 +8,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Enum values for LayoutGroupSpec.Header/InitiallyCollapsed/UseEqualHeights
-// and DashboardStyleSpec's site-wide equivalents (FullWidth/Collapse/
-// GroupsInitiallyCollapsed/UseEqualHeights/Indexing).
-const (
-	HeaderShown  = "Shown"
-	HeaderHidden = "Hidden"
-
-	CollapseCollapsed = "Collapsed"
-	CollapseExpanded  = "Expanded"
-
-	HeightsEqual = "Equal"
-	HeightsAuto  = "Auto"
-
-	FullWidthFull      = "Full"
-	FullWidthContained = "Contained"
-
-	IndexingIndexed = "Indexed"
-	IndexingNoIndex = "NoIndex"
-)
-
 // BackgroundSpec specifies a background image and the filters applied over it.
 // See https://gethomepage.dev/configs/settings/#background-image
 // +kubebuilder:validation:MinProperties=1
@@ -100,37 +80,33 @@ type SearchSpec struct {
 	// filterCards enables as-you-type filtering of service and bookmark
 	// cards by name/description, independent of the Enter-to-search
 	// fallthrough.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Enabled"
+	// +default=true
 	// +optional
-	FilterCards *string `json:"filterCards,omitempty"`
+	FilterCards *bool `json:"filterCards,omitempty"`
 
 	// searchDescriptions includes each card's description, not just its
 	// name, when matching the quick-launch (Ctrl/Cmd-K) palette's query
 	// against cards. Independent of FilterCards, which controls the
 	// inline as-you-type card filter instead.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
-	// +default="Enabled"
+	// +default=true
 	// +optional
-	SearchDescriptions *string `json:"searchDescriptions,omitempty"`
+	SearchDescriptions *bool `json:"searchDescriptions,omitempty"`
 
 	// internetSearchEntry controls the quick-launch palette's "search the
-	// web" fallthrough entry: "Shown" (the default) shows it alongside card
-	// matches; "Hidden" removes it, leaving only card matches (and, unless
-	// visitURLEntry also hides it, the direct-URL entry).
-	// +kubebuilder:validation:Enum=Shown;Hidden
-	// +default="Shown"
+	// web" fallthrough entry: true (the default) shows it alongside card
+	// matches; false removes it, leaving only card matches (and, unless
+	// visitURLEntry is also false, the direct-URL entry).
+	// +default=true
 	// +optional
-	InternetSearchEntry *string `json:"internetSearchEntry,omitempty"`
+	InternetSearchEntry *bool `json:"internetSearchEntry,omitempty"`
 
 	// visitURLEntry controls the quick-launch palette's "visit <url>" entry
 	// that appears when the typed query itself looks like a URL or domain:
-	// "Shown" (the default) lets the query jump there directly; "Hidden"
-	// removes the entry, requiring a web search instead.
-	// +kubebuilder:validation:Enum=Shown;Hidden
-	// +default="Shown"
+	// true (the default) lets the query jump there directly; false removes
+	// the entry, requiring a web search instead.
+	// +default=true
 	// +optional
-	VisitURLEntry *string `json:"visitURLEntry,omitempty"`
+	VisitURLEntry *bool `json:"visitURLEntry,omitempty"`
 }
 
 // LayoutGroupSpec configures one Group's placement and style within a
@@ -166,25 +142,22 @@ type LayoutGroupSpec struct {
 	// +optional
 	Icon *string `json:"icon,omitempty"`
 
-	// header renders this group's header (name + icon) when "Shown" (the
-	// default). Set "Hidden" to hide it while still rendering the group's
+	// header renders this group's header (name + icon) when true (the
+	// default). Set false to hide it while still rendering the group's
 	// cards.
-	// +kubebuilder:validation:Enum=Shown;Hidden
 	// +optional
-	Header *string `json:"header,omitempty"`
+	Header *bool `json:"header,omitempty"`
 
 	// initiallyCollapsed collapses this group by default on first load,
 	// overriding the DashboardStyle's GroupsInitiallyCollapsed. Ignored when
-	// Collapse is "Disabled".
-	// +kubebuilder:validation:Enum=Collapsed;Expanded
+	// Collapse is false.
 	// +optional
-	InitiallyCollapsed *string `json:"initiallyCollapsed,omitempty"`
+	InitiallyCollapsed *bool `json:"initiallyCollapsed,omitempty"`
 
 	// useEqualHeights makes every card in this group the same height,
 	// overriding the DashboardStyle's UseEqualHeights.
-	// +kubebuilder:validation:Enum=Equal;Auto
 	// +optional
-	UseEqualHeights *string `json:"useEqualHeights,omitempty"`
+	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
 }
 
 // LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
@@ -285,9 +258,8 @@ type DashboardStyleSpec struct {
 
 	// fullWidth uses the entire window width instead of a centered,
 	// constrained layout.
-	// +kubebuilder:validation:Enum=Full;Contained
 	// +optional
-	FullWidth *string `json:"fullWidth,omitempty"`
+	FullWidth *bool `json:"fullWidth,omitempty"`
 
 	// search configures the native dashboard's header search box (card
 	// filtering + web-search fallthrough).
@@ -304,24 +276,22 @@ type DashboardStyleSpec struct {
 	Layout []LayoutTabSpec `json:"layout,omitempty"`
 
 	// collapse controls the collapsible expand/collapse control on service
-	// and bookmark group headers. "Enabled" (the default) shows the control;
-	// "Disabled" renders every group with a plain, non-collapsible header.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
+	// and bookmark group headers. true (the default) shows the control;
+	// false renders every group with a plain, non-collapsible header.
+	// +default=true
 	// +optional
-	Collapse *string `json:"collapse,omitempty"`
+	Collapse *bool `json:"collapse,omitempty"`
 
 	// groupsInitiallyCollapsed collapses every group by default on first
 	// load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
-	// group. Ignored when Collapse is "Disabled".
-	// +kubebuilder:validation:Enum=Collapsed;Expanded
+	// group. Ignored when Collapse is false.
 	// +optional
-	GroupsInitiallyCollapsed *string `json:"groupsInitiallyCollapsed,omitempty"`
+	GroupsInitiallyCollapsed *bool `json:"groupsInitiallyCollapsed,omitempty"`
 
 	// useEqualHeights makes every card in a group the same height. A
 	// LayoutGroupSpec's own UseEqualHeights overrides this per group.
-	// +kubebuilder:validation:Enum=Equal;Auto
 	// +optional
-	UseEqualHeights *string `json:"useEqualHeights,omitempty"`
+	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
 
 	// bookmarksStyle renders every bookmark card icon-only (no name or
 	// description), matching homepage's `bookmarksStyle: icons`.
@@ -330,11 +300,11 @@ type DashboardStyleSpec struct {
 	BookmarksStyle *string `json:"bookmarksStyle,omitempty"`
 
 	// indexing controls whether search engines may index the dashboard:
-	// "NoIndex" disallows all crawlers in robots.txt and adds a noindex meta
-	// tag; "Indexed" (the default) leaves indexing unrestricted.
-	// +kubebuilder:validation:Enum=Indexed;NoIndex
+	// true (the default) leaves indexing unrestricted; false disallows all
+	// crawlers in robots.txt and adds a noindex meta tag.
+	// +default=true
 	// +optional
-	Indexing *string `json:"indexing,omitempty"`
+	Indexing *bool `json:"indexing,omitempty"`
 
 	// startUrl is the PWA manifest's start_url, used when the dashboard is
 	// installed as an app. Defaults to "/".
@@ -364,22 +334,22 @@ type DashboardStyleSpec struct {
 	// statusStyle is the site-wide default for how a ServiceCard's Ping/
 	// SiteMonitor/PodSelector status renders ("dot" or "basic"), used when a
 	// ServiceCard doesn't set its own StatusStyle. Defaults to "dot" when
-	// unset here too.
+	// unset here too. Kept as an enum rather than a bool: a third rendering
+	// style is plausible here, unlike this file's other converted fields.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`
 
 	// errorDisplay is the site-wide default for whether a widget's error
 	// text is shown on its card, used when a ServiceCard doesn't set its own
-	// ErrorDisplay. Defaults to "Shown" when unset here too.
-	// +kubebuilder:validation:Enum=Shown;Hidden
+	// ErrorDisplay. Defaults to true when unset here too.
+	// +default=true
 	// +optional
-	ErrorDisplay *string `json:"errorDisplay,omitempty"`
+	ErrorDisplay *bool `json:"errorDisplay,omitempty"`
 
 	// hideVersion hides the dashboard's version/commit footer.
-	// +kubebuilder:validation:Enum=Enabled;Disabled
 	// +optional
-	HideVersion *string `json:"hideVersion,omitempty"`
+	HideVersion *bool `json:"hideVersion,omitempty"`
 }
 
 // DashboardStyleStatus defines the observed state of DashboardStyle.

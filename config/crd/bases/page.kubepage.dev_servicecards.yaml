@@ -100,14 +100,12 @@ spec:
                       minLength: 1
                       type: string
                     errorDisplay:
+                      default: true
                       description: |-
                         errorDisplay controls whether a widget's error text is shown on the
-                        card (e.g. set "Hidden" for a service that is expected to be
-                        intermittently unreachable). Defaults to "Shown".
-                      enum:
-                      - Shown
-                      - Hidden
-                      type: string
+                        card (e.g. set false for a service that is expected to be
+                        intermittently unreachable). Defaults to true.
+                      type: boolean
                     group:
                       description: |-
                         group is the name of the (top-level) group this entry belongs to.
@@ -212,14 +210,12 @@ spec:
                       type: object
                       x-kubernetes-map-type: atomic
                     showStats:
+                      default: true
                       description: |-
                         showStats controls whether the polled widget fields are displayed on
-                        the card. Defaults to "Show"; set "Hide" to show only the title/icon/
+                        the card. Defaults to true; set false to show only the title/icon/
                         description (and any monitor status).
-                      enum:
-                      - Show
-                      - Hide
-                      type: string
+                      type: boolean
                     siteMonitor:
                       description: |-
                         siteMonitor is a URL probed over HTTP, shown as an up/down status with
@@ -357,11 +353,8 @@ spec:
                                       caseSensitive:
                                         description: |-
                                           caseSensitive makes a string operator's comparison case-sensitive.
-                                          Defaults to "CaseInsensitive"; ignored by numeric operators.
-                                        enum:
-                                        - CaseSensitive
-                                        - CaseInsensitive
-                                        type: string
+                                          Defaults to false; ignored by numeric operators.
+                                        type: boolean
                                       level:
                                         description: level this rule sets when it
                                           matches.
@@ -372,12 +365,9 @@ spec:
                                         type: string
                                       negate:
                                         description: |-
-                                          negate inverts the rule's match ("Negate") instead of the default
-                                          ("Match").
-                                        enum:
-                                        - Match
-                                        - Negate
-                                        type: string
+                                          negate inverts the rule's match when true, instead of the default
+                                          (matching normally).
+                                        type: boolean
                                       value:
                                         description: |-
                                           value is the rule's comparison value: a number for a numeric

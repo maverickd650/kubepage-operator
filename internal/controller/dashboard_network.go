@@ -79,7 +79,7 @@ func (r *DashboardReconciler) serviceForDashboard(instance *pagev1alpha1.Dashboa
 	// dashboardMetricsPort's doc comment — and pod-level scraping (e.g. a
 	// PodMonitor targeting the pod IP directly) keeps working regardless of
 	// this setting.
-	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
 		ports = append(ports, corev1.ServicePort{
 			Name:       dashboardMetricsPortName,
 			Port:       dashboardMetricsPort,
@@ -159,14 +159,14 @@ func (r *DashboardReconciler) reconcileService(ctx context.Context, instance *pa
 // status.url — see DashboardStatus.URL's doc comment for the precedence
 // order and its LoadBalancer-external-IP non-goal.
 func dashboardURL(instance *pagev1alpha1.Dashboard) string {
-	if ing := instance.Spec.Ingress; ing != nil && ing.Enabled == pagev1alpha1.Enabled {
+	if ing := instance.Spec.Ingress; ing != nil && ing.Enabled {
 		scheme := "http"
 		if ing.TLS != nil {
 			scheme = "https"
 		}
 		return scheme + "://" + ing.Host + "/"
 	}
-	if gw := instance.Spec.Gateway; gw != nil && gw.Enabled == pagev1alpha1.Enabled && len(gw.Hostnames) > 0 {
+	if gw := instance.Spec.Gateway; gw != nil && gw.Enabled && len(gw.Hostnames) > 0 {
 		return "https://" + gw.Hostnames[0] + "/"
 	}
 	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/", instance.Name, instance.Namespace, instance.Spec.ContainerPort)
@@ -226,7 +226,7 @@ func (r *DashboardReconciler) ingressForDashboard(instance *pagev1alpha1.Dashboa
 func (r *DashboardReconciler) reconcileIngress(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
 	log := logf.FromContext(ctx)
 
-	enabled := instance.Spec.Ingress != nil && instance.Spec.Ingress.Enabled == pagev1alpha1.Enabled
+	enabled := instance.Spec.Ingress != nil && instance.Spec.Ingress.Enabled
 
 	found := &networkingv1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
@@ -411,7 +411,7 @@ func (r *DashboardReconciler) httpRouteForDashboard(instance *pagev1alpha1.Dashb
 func (r *DashboardReconciler) reconcileHTTPRoute(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
 	log := logf.FromContext(ctx)
 
-	enabled := instance.Spec.Gateway != nil && instance.Spec.Gateway.Enabled == pagev1alpha1.Enabled
+	enabled := instance.Spec.Gateway != nil && instance.Spec.Gateway.Enabled
 	if !enabled {
 		if !r.GatewayAPIEnabled {
 			// Nothing to do, and nothing we could even look up.
@@ -563,7 +563,7 @@ func (r *DashboardReconciler) networkPolicyForDashboard(instance *pagev1alpha1.D
 		Ports: []networkingv1.NetworkPolicyPort{{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(instance.Spec.ContainerPort))}},
 		From:  namespaceSelectorPeers(np.IngressNamespaceSelector),
 	}}
-	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled == pagev1alpha1.Enabled {
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
 		ingressRules = append(ingressRules, networkingv1.NetworkPolicyIngressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: new(corev1.ProtocolTCP), Port: new(intstr.FromInt32(dashboardMetricsPort))}},
 			From:  namespaceSelectorPeers(np.MetricsNamespaceSelector),
@@ -637,7 +637,7 @@ func namespaceSelectorPeers(selector *metav1.LabelSelector) []networkingv1.Netwo
 func (r *DashboardReconciler) reconcileNetworkPolicy(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
 	log := logf.FromContext(ctx)
 
-	enabled := instance.Spec.NetworkPolicy != nil && instance.Spec.NetworkPolicy.Enabled == pagev1alpha1.Enabled
+	enabled := instance.Spec.NetworkPolicy != nil && instance.Spec.NetworkPolicy.Enabled
 	if !enabled {
 		return nil
 	}

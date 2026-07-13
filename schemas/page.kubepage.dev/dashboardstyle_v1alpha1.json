@@ -66,12 +66,9 @@
           "type": "string"
         },
         "collapse": {
-          "description": "collapse controls the collapsible expand/collapse control on service\nand bookmark group headers. \"Enabled\" (the default) shows the control;\n\"Disabled\" renders every group with a plain, non-collapsible header.",
-          "enum": [
-            "Enabled",
-            "Disabled"
-          ],
-          "type": "string"
+          "default": true,
+          "description": "collapse controls the collapsible expand/collapse control on service\nand bookmark group headers. true (the default) shows the control;\nfalse renders every group with a plain, non-collapsible header.",
+          "type": "boolean"
         },
         "color": {
           "description": "color is the fixed color palette, disabling the palette switcher.",
@@ -135,12 +132,9 @@
           "type": "string"
         },
         "errorDisplay": {
-          "description": "errorDisplay is the site-wide default for whether a widget's error\ntext is shown on its card, used when a ServiceCard doesn't set its own\nErrorDisplay. Defaults to \"Shown\" when unset here too.",
-          "enum": [
-            "Shown",
-            "Hidden"
-          ],
-          "type": "string"
+          "default": true,
+          "description": "errorDisplay is the site-wide default for whether a widget's error\ntext is shown on its card, used when a ServiceCard doesn't set its own\nErrorDisplay. Defaults to true when unset here too.",
+          "type": "boolean"
         },
         "favicon": {
           "description": "favicon is a URL to the dashboard's favicon.",
@@ -151,19 +145,11 @@
         },
         "fullWidth": {
           "description": "fullWidth uses the entire window width instead of a centered,\nconstrained layout.",
-          "enum": [
-            "Full",
-            "Contained"
-          ],
-          "type": "string"
+          "type": "boolean"
         },
         "groupsInitiallyCollapsed": {
-          "description": "groupsInitiallyCollapsed collapses every group by default on first\nload. A LayoutGroupSpec's own InitiallyCollapsed overrides this per\ngroup. Ignored when Collapse is \"Disabled\".",
-          "enum": [
-            "Collapsed",
-            "Expanded"
-          ],
-          "type": "string"
+          "description": "groupsInitiallyCollapsed collapses every group by default on first\nload. A LayoutGroupSpec's own InitiallyCollapsed overrides this per\ngroup. Ignored when Collapse is false.",
+          "type": "boolean"
         },
         "headerStyle": {
           "description": "headerStyle for the header info-widget strip (datetime, greeting,\nweather, etc.): \"underlined\" draws a line under it, \"boxed\" wraps it in\na card, \"clean\" leaves it unstyled, and \"boxedWidgets\" additionally\ngives each individual widget its own boxed card.",
@@ -177,19 +163,12 @@
         },
         "hideVersion": {
           "description": "hideVersion hides the dashboard's version/commit footer.",
-          "enum": [
-            "Enabled",
-            "Disabled"
-          ],
-          "type": "string"
+          "type": "boolean"
         },
         "indexing": {
-          "description": "indexing controls whether search engines may index the dashboard:\n\"NoIndex\" disallows all crawlers in robots.txt and adds a noindex meta\ntag; \"Indexed\" (the default) leaves indexing unrestricted.",
-          "enum": [
-            "Indexed",
-            "NoIndex"
-          ],
-          "type": "string"
+          "default": true,
+          "description": "indexing controls whether search engines may index the dashboard:\ntrue (the default) leaves indexing unrestricted; false disallows all\ncrawlers in robots.txt and adds a noindex meta tag.",
+          "type": "boolean"
         },
         "language": {
           "description": "language is the UI language, e.g. \"en\", \"fr\", \"de\".",
@@ -215,12 +194,8 @@
                       "type": "integer"
                     },
                     "header": {
-                      "description": "header renders this group's header (name + icon) when \"Shown\" (the\ndefault). Set \"Hidden\" to hide it while still rendering the group's\ncards.",
-                      "enum": [
-                        "Shown",
-                        "Hidden"
-                      ],
-                      "type": "string"
+                      "description": "header renders this group's header (name + icon) when true (the\ndefault). Set false to hide it while still rendering the group's\ncards.",
+                      "type": "boolean"
                     },
                     "icon": {
                       "description": "icon overrides the group header's icon. Same resolution rules as\nServiceCard/Bookmark Icon: a full URL passes through, homepage's icon\nprefix syntax (\"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\"fa6-solid-X\"/\"sh-X\",\nsee ServiceEntry.Icon) resolves to that icon set, and anything else is\nresolved as a dashboard-icons slug.",
@@ -229,12 +204,8 @@
                       "type": "string"
                     },
                     "initiallyCollapsed": {
-                      "description": "initiallyCollapsed collapses this group by default on first load,\noverriding the DashboardStyle's GroupsInitiallyCollapsed. Ignored when\nCollapse is \"Disabled\".",
-                      "enum": [
-                        "Collapsed",
-                        "Expanded"
-                      ],
-                      "type": "string"
+                      "description": "initiallyCollapsed collapses this group by default on first load,\noverriding the DashboardStyle's GroupsInitiallyCollapsed. Ignored when\nCollapse is false.",
+                      "type": "boolean"
                     },
                     "name": {
                       "description": "name is the ServiceCard Group this entry places and styles.",
@@ -252,11 +223,7 @@
                     },
                     "useEqualHeights": {
                       "description": "useEqualHeights makes every card in this group the same height,\noverriding the DashboardStyle's UseEqualHeights.",
-                      "enum": [
-                        "Equal",
-                        "Auto"
-                      ],
-                      "type": "string"
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -292,22 +259,14 @@
           "minProperties": 1,
           "properties": {
             "filterCards": {
-              "default": "Enabled",
+              "default": true,
               "description": "filterCards enables as-you-type filtering of service and bookmark\ncards by name/description, independent of the Enter-to-search\nfallthrough.",
-              "enum": [
-                "Enabled",
-                "Disabled"
-              ],
-              "type": "string"
+              "type": "boolean"
             },
             "internetSearchEntry": {
-              "default": "Shown",
-              "description": "internetSearchEntry controls the quick-launch palette's \"search the\nweb\" fallthrough entry: \"Shown\" (the default) shows it alongside card\nmatches; \"Hidden\" removes it, leaving only card matches (and, unless\nvisitURLEntry also hides it, the direct-URL entry).",
-              "enum": [
-                "Shown",
-                "Hidden"
-              ],
-              "type": "string"
+              "default": true,
+              "description": "internetSearchEntry controls the quick-launch palette's \"search the\nweb\" fallthrough entry: true (the default) shows it alongside card\nmatches; false removes it, leaving only card matches (and, unless\nvisitURLEntry is also false, the direct-URL entry).",
+              "type": "boolean"
             },
             "provider": {
               "default": "duckduckgo",
@@ -321,13 +280,9 @@
               "type": "string"
             },
             "searchDescriptions": {
-              "default": "Enabled",
+              "default": true,
               "description": "searchDescriptions includes each card's description, not just its\nname, when matching the quick-launch (Ctrl/Cmd-K) palette's query\nagainst cards. Independent of FilterCards, which controls the\ninline as-you-type card filter instead.",
-              "enum": [
-                "Enabled",
-                "Disabled"
-              ],
-              "type": "string"
+              "type": "boolean"
             },
             "target": {
               "default": "_blank",
@@ -346,13 +301,9 @@
               "type": "string"
             },
             "visitURLEntry": {
-              "default": "Shown",
-              "description": "visitURLEntry controls the quick-launch palette's \"visit \u003curl\u003e\" entry\nthat appears when the typed query itself looks like a URL or domain:\n\"Shown\" (the default) lets the query jump there directly; \"Hidden\"\nremoves the entry, requiring a web search instead.",
-              "enum": [
-                "Shown",
-                "Hidden"
-              ],
-              "type": "string"
+              "default": true,
+              "description": "visitURLEntry controls the quick-launch palette's \"visit \u003curl\u003e\" entry\nthat appears when the typed query itself looks like a URL or domain:\ntrue (the default) lets the query jump there directly; false removes\nthe entry, requiring a web search instead.",
+              "type": "boolean"
             }
           },
           "type": "object",
@@ -371,7 +322,7 @@
           "type": "string"
         },
         "statusStyle": {
-          "description": "statusStyle is the site-wide default for how a ServiceCard's Ping/\nSiteMonitor/PodSelector status renders (\"dot\" or \"basic\"), used when a\nServiceCard doesn't set its own StatusStyle. Defaults to \"dot\" when\nunset here too.",
+          "description": "statusStyle is the site-wide default for how a ServiceCard's Ping/\nSiteMonitor/PodSelector status renders (\"dot\" or \"basic\"), used when a\nServiceCard doesn't set its own StatusStyle. Defaults to \"dot\" when\nunset here too. Kept as an enum rather than a bool: a third rendering\nstyle is plausible here, unlike this file's other converted fields.",
           "enum": [
             "dot",
             "basic"
@@ -403,11 +354,7 @@
         },
         "useEqualHeights": {
           "description": "useEqualHeights makes every card in a group the same height. A\nLayoutGroupSpec's own UseEqualHeights overrides this per group.",
-          "enum": [
-            "Equal",
-            "Auto"
-          ],
-          "type": "string"
+          "type": "boolean"
         }
       },
       "required": [

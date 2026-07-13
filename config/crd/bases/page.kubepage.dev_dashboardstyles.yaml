@@ -114,14 +114,12 @@ spec:
                 minLength: 0
                 type: string
               collapse:
+                default: true
                 description: |-
                   collapse controls the collapsible expand/collapse control on service
-                  and bookmark group headers. "Enabled" (the default) shows the control;
-                  "Disabled" renders every group with a plain, non-collapsible header.
-                enum:
-                - Enabled
-                - Disabled
-                type: string
+                  and bookmark group headers. true (the default) shows the control;
+                  false renders every group with a plain, non-collapsible header.
+                type: boolean
               color:
                 description: color is the fixed color palette, disabling the palette
                   switcher.
@@ -189,14 +187,12 @@ spec:
                 minLength: 1
                 type: string
               errorDisplay:
+                default: true
                 description: |-
                   errorDisplay is the site-wide default for whether a widget's error
                   text is shown on its card, used when a ServiceCard doesn't set its own
-                  ErrorDisplay. Defaults to "Shown" when unset here too.
-                enum:
-                - Shown
-                - Hidden
-                type: string
+                  ErrorDisplay. Defaults to true when unset here too.
+                type: boolean
               favicon:
                 description: favicon is a URL to the dashboard's favicon.
                 maxLength: 2048
@@ -207,19 +203,13 @@ spec:
                 description: |-
                   fullWidth uses the entire window width instead of a centered,
                   constrained layout.
-                enum:
-                - Full
-                - Contained
-                type: string
+                type: boolean
               groupsInitiallyCollapsed:
                 description: |-
                   groupsInitiallyCollapsed collapses every group by default on first
                   load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
-                  group. Ignored when Collapse is "Disabled".
-                enum:
-                - Collapsed
-                - Expanded
-                type: string
+                  group. Ignored when Collapse is false.
+                type: boolean
               headerStyle:
                 description: |-
                   headerStyle for the header info-widget strip (datetime, greeting,
@@ -234,19 +224,14 @@ spec:
                 type: string
               hideVersion:
                 description: hideVersion hides the dashboard's version/commit footer.
-                enum:
-                - Enabled
-                - Disabled
-                type: string
+                type: boolean
               indexing:
+                default: true
                 description: |-
                   indexing controls whether search engines may index the dashboard:
-                  "NoIndex" disallows all crawlers in robots.txt and adds a noindex meta
-                  tag; "Indexed" (the default) leaves indexing unrestricted.
-                enum:
-                - Indexed
-                - NoIndex
-                type: string
+                  true (the default) leaves indexing unrestricted; false disallows all
+                  crawlers in robots.txt and adds a noindex meta tag.
+                type: boolean
               language:
                 description: language is the UI language, e.g. "en", "fr", "de".
                 maxLength: 16
@@ -284,13 +269,10 @@ spec:
                             type: integer
                           header:
                             description: |-
-                              header renders this group's header (name + icon) when "Shown" (the
-                              default). Set "Hidden" to hide it while still rendering the group's
+                              header renders this group's header (name + icon) when true (the
+                              default). Set false to hide it while still rendering the group's
                               cards.
-                            enum:
-                            - Shown
-                            - Hidden
-                            type: string
+                            type: boolean
                           icon:
                             description: |-
                               icon overrides the group header's icon. Same resolution rules as
@@ -305,11 +287,8 @@ spec:
                             description: |-
                               initiallyCollapsed collapses this group by default on first load,
                               overriding the DashboardStyle's GroupsInitiallyCollapsed. Ignored when
-                              Collapse is "Disabled".
-                            enum:
-                            - Collapsed
-                            - Expanded
-                            type: string
+                              Collapse is false.
+                            type: boolean
                           name:
                             description: name is the ServiceCard Group this entry
                               places and styles.
@@ -327,10 +306,7 @@ spec:
                             description: |-
                               useEqualHeights makes every card in this group the same height,
                               overriding the DashboardStyle's UseEqualHeights.
-                            enum:
-                            - Equal
-                            - Auto
-                            type: string
+                            type: boolean
                         required:
                         - name
                         type: object
@@ -358,26 +334,20 @@ spec:
                 minProperties: 1
                 properties:
                   filterCards:
-                    default: Enabled
+                    default: true
                     description: |-
                       filterCards enables as-you-type filtering of service and bookmark
                       cards by name/description, independent of the Enter-to-search
                       fallthrough.
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                    type: boolean
                   internetSearchEntry:
-                    default: Shown
+                    default: true
                     description: |-
                       internetSearchEntry controls the quick-launch palette's "search the
-                      web" fallthrough entry: "Shown" (the default) shows it alongside card
-                      matches; "Hidden" removes it, leaving only card matches (and, unless
-                      visitURLEntry also hides it, the direct-URL entry).
-                    enum:
-                    - Shown
-                    - Hidden
-                    type: string
+                      web" fallthrough entry: true (the default) shows it alongside card
+                      matches; false removes it, leaving only card matches (and, unless
+                      visitURLEntry is also false, the direct-URL entry).
+                    type: boolean
                   provider:
                     default: duckduckgo
                     description: |-
@@ -390,16 +360,13 @@ spec:
                     - custom
                     type: string
                   searchDescriptions:
-                    default: Enabled
+                    default: true
                     description: |-
                       searchDescriptions includes each card's description, not just its
                       name, when matching the quick-launch (Ctrl/Cmd-K) palette's query
                       against cards. Independent of FilterCards, which controls the
                       inline as-you-type card filter instead.
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                    type: boolean
                   target:
                     default: _blank
                     description: |-
@@ -421,16 +388,13 @@ spec:
                     pattern: ^https?://
                     type: string
                   visitURLEntry:
-                    default: Shown
+                    default: true
                     description: |-
                       visitURLEntry controls the quick-launch palette's "visit <url>" entry
                       that appears when the typed query itself looks like a URL or domain:
-                      "Shown" (the default) lets the query jump there directly; "Hidden"
-                      removes the entry, requiring a web search instead.
-                    enum:
-                    - Shown
-                    - Hidden
-                    type: string
+                      true (the default) lets the query jump there directly; false removes
+                      the entry, requiring a web search instead.
+                    type: boolean
                 type: object
                 x-kubernetes-validations:
                 - message: url is required when provider is "custom"
@@ -448,7 +412,8 @@ spec:
                   statusStyle is the site-wide default for how a ServiceCard's Ping/
                   SiteMonitor/PodSelector status renders ("dot" or "basic"), used when a
                   ServiceCard doesn't set its own StatusStyle. Defaults to "dot" when
-                  unset here too.
+                  unset here too. Kept as an enum rather than a bool: a third rendering
+                  style is plausible here, unlike this file's other converted fields.
                 enum:
                 - dot
                 - basic
@@ -481,10 +446,7 @@ spec:
                 description: |-
                   useEqualHeights makes every card in a group the same height. A
                   LayoutGroupSpec's own UseEqualHeights overrides this per group.
-                enum:
-                - Equal
-                - Auto
-                type: string
+                type: boolean
             required:
             - dashboardRef
             type: object

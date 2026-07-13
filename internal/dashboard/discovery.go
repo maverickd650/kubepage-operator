@@ -117,7 +117,7 @@ func discoverServices(ctx context.Context, reader client.Reader, namespace strin
 	if spec.AnnotationPrefix != nil && *spec.AnnotationPrefix != "" {
 		prefix = *spec.AnnotationPrefix
 	}
-	homepageCompat := spec.HomepageCompat != nil && *spec.HomepageCompat == pagev1alpha1.Enabled
+	homepageCompat := spec.HomepageCompat != nil && *spec.HomepageCompat
 
 	out := make([]discoveredService, 0, len(ingresses.Items))
 	for _, ing := range ingresses.Items {
@@ -225,7 +225,7 @@ func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace str
 	if spec.AnnotationPrefix != nil && *spec.AnnotationPrefix != "" {
 		prefix = *spec.AnnotationPrefix
 	}
-	homepageCompat := spec.HomepageCompat != nil && *spec.HomepageCompat == pagev1alpha1.Enabled
+	homepageCompat := spec.HomepageCompat != nil && *spec.HomepageCompat
 
 	out := make([]discoveredService, 0, len(routes.Items))
 	for _, route := range routes.Items {

@@ -1234,22 +1234,15 @@ spec:
                     minLength: 1
                     type: string
                   enabled:
-                    default: Disabled
                     description: enabled turns on annotation discovery for this Dashboard.
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                    type: boolean
                   homepageCompat:
                     description: |-
                       homepageCompat additionally honors "gethomepage.dev/*" annotations
                       (homepage's own discovery convention) on any source resource that
                       doesn't carry AnnotationPrefix's own enable annotation, so a cluster
                       migrating from homepage doesn't need to relabel every resource.
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                    type: boolean
                   namespaces:
                     description: |-
                       namespaces additionally scans these namespaces (beyond the Dashboard's
@@ -1478,14 +1471,9 @@ spec:
                     minProperties: 1
                     type: object
                   enabled:
-                    default: Disabled
-                    description: |-
-                      enabled creates and manages an HTTPRoute for this Dashboard when
-                      "Enabled".
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                    description: enabled creates and manages an HTTPRoute for this
+                      Dashboard when true.
+                    type: boolean
                   hostnames:
                     description: hostnames the HTTPRoute matches. At least one is
                       required.
@@ -1529,16 +1517,13 @@ spec:
                 - parentRef
                 type: object
               hostUsers:
-                default: Enabled
+                default: true
                 description: |-
                   hostUsers controls whether the pod uses the host's user namespace.
-                  Defaults to "Enabled" (the pod runs in the host's user namespace,
-                  matching the Kubernetes default); "Disabled" requests a separate,
-                  isolated user namespace for the pod.
-                enum:
-                - Enabled
-                - Disabled
-                type: string
+                  Defaults to true (the pod runs in the host's user namespace, matching
+                  the Kubernetes default); false requests a separate, isolated user
+                  namespace for the pod.
+                type: boolean
               imagePullSecrets:
                 description: |-
                   imagePullSecrets names Secrets in this namespace holding registry
@@ -1580,14 +1565,9 @@ spec:
                     minProperties: 1
                     type: object
                   enabled:
-                    default: Disabled
-                    description: |-
-                      enabled creates and manages an Ingress for this Dashboard when
-                      "Enabled".
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                    description: enabled creates and manages an Ingress for this Dashboard
+                      when true.
+                    type: boolean
                   host:
                     description: host is the hostname routed to the dashboard Service.
                     maxLength: 253
@@ -1792,13 +1772,9 @@ spec:
                   check at all.
                 properties:
                   enabled:
-                    default: Disabled
                     description: enabled exposes port 9090 on the dashboard Service
-                      when "Enabled".
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                      when true.
+                    type: boolean
                 type: object
               networkPolicy:
                 description: |-
@@ -1839,14 +1815,10 @@ spec:
                         10.0.0.0/8 or 2001:db8::/32)
                       rule: self.all(c, isCIDR(c))
                   enabled:
-                    default: Disabled
                     description: |-
                       enabled creates and manages a NetworkPolicy for this Dashboard's
-                      dashboard pods when "Enabled".
-                    enum:
-                    - Enabled
-                    - Disabled
-                    type: string
+                      dashboard pods when true.
+                    type: boolean
                   ingressNamespaceSelector:
                     description: |-
                       ingressNamespaceSelector selects which namespaces' pods may reach the

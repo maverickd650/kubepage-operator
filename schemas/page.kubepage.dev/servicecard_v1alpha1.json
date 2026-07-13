@@ -49,12 +49,9 @@
                 "type": "string"
               },
               "errorDisplay": {
-                "description": "errorDisplay controls whether a widget's error text is shown on the\ncard (e.g. set \"Hidden\" for a service that is expected to be\nintermittently unreachable). Defaults to \"Shown\".",
-                "enum": [
-                  "Shown",
-                  "Hidden"
-                ],
-                "type": "string"
+                "default": true,
+                "description": "errorDisplay controls whether a widget's error text is shown on the\ncard (e.g. set false for a service that is expected to be\nintermittently unreachable). Defaults to true.",
+                "type": "boolean"
               },
               "group": {
                 "description": "group is the name of the (top-level) group this entry belongs to.\nEntries sharing a Group are rendered together. An entry that omits\ngroup falls back to ServiceCardSpec.Group as a shared default (see\nServiceCardSpec.Entries).",
@@ -139,12 +136,9 @@
                 "x-kubernetes-map-type": "atomic"
               },
               "showStats": {
-                "description": "showStats controls whether the polled widget fields are displayed on\nthe card. Defaults to \"Show\"; set \"Hide\" to show only the title/icon/\ndescription (and any monitor status).",
-                "enum": [
-                  "Show",
-                  "Hide"
-                ],
-                "type": "string"
+                "default": true,
+                "description": "showStats controls whether the polled widget fields are displayed on\nthe card. Defaults to true; set false to show only the title/icon/\ndescription (and any monitor status).",
+                "type": "boolean"
               },
               "siteMonitor": {
                 "description": "siteMonitor is a URL probed over HTTP, shown as an up/down status with\nresponse latency on the card.",
@@ -241,12 +235,8 @@
                               "description": "HighlightRuleSpec is one rule in a FieldHighlight's evaluation list. Rules\nare evaluated in order; the first match sets the field's highlight level.\nMirrors homepage's per-field highlight rule, see\nhttps://gethomepage.dev/configs/services/#block-highlighting.",
                               "properties": {
                                 "caseSensitive": {
-                                  "description": "caseSensitive makes a string operator's comparison case-sensitive.\nDefaults to \"CaseInsensitive\"; ignored by numeric operators.",
-                                  "enum": [
-                                    "CaseSensitive",
-                                    "CaseInsensitive"
-                                  ],
-                                  "type": "string"
+                                  "description": "caseSensitive makes a string operator's comparison case-sensitive.\nDefaults to false; ignored by numeric operators.",
+                                  "type": "boolean"
                                 },
                                 "level": {
                                   "description": "level this rule sets when it matches.",
@@ -258,12 +248,8 @@
                                   "type": "string"
                                 },
                                 "negate": {
-                                  "description": "negate inverts the rule's match (\"Negate\") instead of the default\n(\"Match\").",
-                                  "enum": [
-                                    "Match",
-                                    "Negate"
-                                  ],
-                                  "type": "string"
+                                  "description": "negate inverts the rule's match when true, instead of the default\n(matching normally).",
+                                  "type": "boolean"
                                 },
                                 "value": {
                                   "description": "value is the rule's comparison value: a number for a numeric\noperator, text for a string operator. For \"between\"/\"outside\" this is\nthe lower bound.",

@@ -7,14 +7,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Enabled/Disabled are the shared enum values for every simple on/off toggle
-// field across this package (e.g. IngressSpec.Enabled, GatewaySpec.Enabled,
-// SearchSpec.FilterCards).
-const (
-	Enabled  = "Enabled"
-	Disabled = "Disabled"
-)
-
 // SecretPolicySpec.SecretPolicy enum values; see that field's doc comment.
 const (
 	SecretPolicyUnrestricted = "Unrestricted"

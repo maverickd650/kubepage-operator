@@ -176,7 +176,7 @@ func dashboardWithEgressCIDRs(name string, cidrs []string) *pagev1alpha1.Dashboa
 		Spec: pagev1alpha1.DashboardSpec{
 			ContainerPort: 8080,
 			NetworkPolicy: &pagev1alpha1.NetworkPolicySpec{
-				Enabled:     pagev1alpha1.Enabled,
+				Enabled:     true,
 				EgressCIDRs: cidrs,
 			},
 		},
