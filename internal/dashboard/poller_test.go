@@ -52,6 +52,18 @@ const (
 	testPlexSecretRefName       = "plex-secret"
 	testWidgetTypePlex          = "plex"
 
+	// Nested-group test fixtures (docs/design/nested-groups.md): a
+	// "Media" root with "Movies"/"TV" subgroups, and one 3-level path
+	// exercising the CRD's max depth.
+	testGroupMedia       = "Media"
+	testGroupMediaMovies = "Media/Movies"
+	testGroupMediaTV     = "Media/TV"
+	testGroupA           = "A"
+	testGroupABC         = "A/B/C"
+	testNameMovies       = "Movies"
+	testNameRadarr       = "Radarr"
+	testNameSonarr       = "Sonarr"
+
 	// testEphemeralAddr requests an OS-assigned port, for tests that don't
 	// care which one they get.
 	testEphemeralAddr = "127.0.0.1:0"
@@ -409,7 +421,7 @@ func TestPollerPollOnceListEntriesErrorLeavesStoreUntouched(t *testing.T) {
 func TestPollerPollOnceListInfoWidgetsErrorStillPolicsEntriesAndPrunes(t *testing.T) {
 	url := testUnreachableAddr
 	entry := &pagev1alpha1.ServiceCard{
-		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
@@ -982,7 +994,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 	description := "a description"
 	target := targetSelf
 	entry := pagev1alpha1.ServiceCard{
-		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			Group: testGroup,
 			Services: []pagev1alpha1.ServiceEntry{{

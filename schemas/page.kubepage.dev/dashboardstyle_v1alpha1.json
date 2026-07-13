@@ -179,10 +179,10 @@
         "layout": {
           "description": "layout arranges ServiceCard Groups into tabs, mirroring homepage's\nsettings.yaml `layout:` map (group -\u003e style) with tabs added on top.\nOmitted/empty renders every group flat with no tab UI, as before.",
           "items": {
-            "description": "LayoutTabSpec is one tab: a named, ordered set of Groups shown together.\nGroups not referenced by any tab still render, appended to an implicit\ntrailing \"Other\" tab; a Group referenced by more than one tab is shown\nunder the first tab that lists it.",
+            "description": "LayoutTabSpec is one tab: a named, ordered set of Groups shown together.\nGroups not referenced by any tab still render, appended to an implicit\ntrailing \"Other\" tab; a Group referenced by more than one tab is shown\nunder the first tab that lists it. Tab placement is root-only: a nested\nsubgroup always renders in whatever tab its root group is placed in, so a\npath-named LayoutGroupSpec entry (e.g. \"Media/Movies\", only styling that\nsubgroup) must not appear in a tab unless an ancestor prefix of that path\n(\"Media\", or \"Media/Movies\" for a \"Media/Movies/4K\" entry) is also listed\nin this same tab's groups — applied to every path entry, this makes the\nroot itself required transitively; otherwise which tab the subgroup would\nrender under is ambiguous. (The rule checks the immediate prefix rather\nthan splitting out the root segment to stay within the apiserver's static\nCEL cost budget.)",
             "properties": {
               "groups": {
-                "description": "groups lists, in display order, the Groups shown under this tab.",
+                "description": "groups lists, in display order, the Groups shown under this tab.\nMaxItems is 32 (down from 64 pre-nesting) to keep the tab's\nparent-listed CEL rule within the apiserver's static cost budget —\nthe rule's estimated cost is quadratic in this bound.",
                 "items": {
                   "description": "LayoutGroupSpec configures one Group's placement and style within a\nLayoutTabSpec, mirroring homepage's settings.yaml `layout:` per-group\nstyle keys (style/columns/icon).\nSee https://gethomepage.dev/configs/settings/#layout",
                   "properties": {
@@ -208,9 +208,10 @@
                       "type": "boolean"
                     },
                     "name": {
-                      "description": "name is the ServiceCard Group this entry places and styles.",
+                      "description": "name is the ServiceCard Group this entry places and styles, or a\n\"/\"-separated path (e.g. \"Media/Movies\") naming a nested subgroup to\nstyle (see ServiceEntry.Group). A root name (no \"/\") also places the\nwhole group — and everything nested under it — into this tab; a path\nentry only styles the subgroup it names and must not place it into a\ndifferent tab than its root (see LayoutTabSpec's validation rule).",
                       "maxLength": 256,
                       "minLength": 1,
+                      "pattern": "^[^/]+(/[^/]+){0,2}$",
                       "type": "string"
                     },
                     "style": {
@@ -231,7 +232,7 @@
                   ],
                   "type": "object"
                 },
-                "maxItems": 64,
+                "maxItems": 32,
                 "minItems": 1,
                 "type": "array",
                 "x-kubernetes-list-type": "atomic"
@@ -247,7 +248,13 @@
               "groups",
               "name"
             ],
-            "type": "object"
+            "type": "object",
+            "x-kubernetes-validations": [
+              {
+                "message": "a nested group entry's parent group must be listed in the same tab",
+                "rule": "self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, g.name.startsWith(r.name + '/')))"
+              }
+            ]
           },
           "maxItems": 32,
           "minItems": 1,

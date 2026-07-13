@@ -101,7 +101,7 @@ func TestGoldenFragment(t *testing.T) {
 		},
 	})
 	store.Set(Card{
-		Key: "ns/plex/0", Group: "Media", ServiceName: "Plex",
+		Key: "ns/plex/0", Group: testGroupMedia, ServiceName: testMultiEntryNamePlex,
 		Fields: []Field{
 			{Label: "Streams", Value: "3"},
 		},

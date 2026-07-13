@@ -28,3 +28,9 @@ spec:
       groups:
         - name: Media
           style: row
+        # A "/"-separated path entry styles the "Movies" subgroup nested
+        # under "Media" above; it doesn't place anything on its own — Media
+        # (its path's root) must also be listed in this same tab, or the
+        # apiserver rejects the object (see LayoutTabSpec's CEL rule).
+        - name: Media/Movies
+          columns: 2

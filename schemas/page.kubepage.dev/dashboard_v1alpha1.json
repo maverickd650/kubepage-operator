@@ -953,7 +953,7 @@
           "description": "discovery opts this Dashboard into synthesizing service cards from\nannotated Ingresses in its own namespace, in addition to explicit\nServiceCard cards. There is no de-duplication: an explicit ServiceCard\nand a discovered Ingress/HTTPRoute that would render under the same\nGroup+Name both show up as separate cards. Off by default. See\nDiscoverySpec for the annotation contract.",
           "properties": {
             "annotationPrefix": {
-              "description": "annotationPrefix is the annotation key prefix a source resource must\ncarry to be discovered, e.g. \"\u003cprefix\u003eenabled\", \"\u003cprefix\u003ename\",\n\"\u003cprefix\u003egroup\". Defaults to \"kubepage.io/\".",
+              "description": "annotationPrefix is the annotation key prefix a source resource must\ncarry to be discovered, e.g. \"\u003cprefix\u003eenabled\", \"\u003cprefix\u003ename\",\n\"\u003cprefix\u003egroup\" (\"\u003cprefix\u003egroup\"'s value may itself be a \"/\"-separated\npath, e.g. \"Media/Movies\", nesting the discovered card the same way a\nServiceEntry.Group path does). Defaults to \"kubepage.io/\".",
               "maxLength": 253,
               "minLength": 1,
               "type": "string"

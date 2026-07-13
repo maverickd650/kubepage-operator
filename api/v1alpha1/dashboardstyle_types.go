@@ -114,7 +114,13 @@ type SearchSpec struct {
 // style keys (style/columns/icon).
 // See https://gethomepage.dev/configs/settings/#layout
 type LayoutGroupSpec struct {
-	// name is the ServiceCard Group this entry places and styles.
+	// name is the ServiceCard Group this entry places and styles, or a
+	// "/"-separated path (e.g. "Media/Movies") naming a nested subgroup to
+	// style (see ServiceEntry.Group). A root name (no "/") also places the
+	// whole group — and everything nested under it — into this tab; a path
+	// entry only styles the subgroup it names and must not place it into a
+	// different tab than its root (see LayoutTabSpec's validation rule).
+	// +kubebuilder:validation:Pattern=`^[^/]+(/[^/]+){0,2}$`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	// +required
@@ -163,7 +169,17 @@ type LayoutGroupSpec struct {
 // LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
 // Groups not referenced by any tab still render, appended to an implicit
 // trailing "Other" tab; a Group referenced by more than one tab is shown
-// under the first tab that lists it.
+// under the first tab that lists it. Tab placement is root-only: a nested
+// subgroup always renders in whatever tab its root group is placed in, so a
+// path-named LayoutGroupSpec entry (e.g. "Media/Movies", only styling that
+// subgroup) must not appear in a tab unless an ancestor prefix of that path
+// ("Media", or "Media/Movies" for a "Media/Movies/4K" entry) is also listed
+// in this same tab's groups — applied to every path entry, this makes the
+// root itself required transitively; otherwise which tab the subgroup would
+// render under is ambiguous. (The rule checks the immediate prefix rather
+// than splitting out the root segment to stay within the apiserver's static
+// CEL cost budget.)
+// +kubebuilder:validation:XValidation:rule="self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, g.name.startsWith(r.name + '/')))",message="a nested group entry's parent group must be listed in the same tab"
 type LayoutTabSpec struct {
 	// name is the tab's label.
 	// +kubebuilder:validation:MinLength=1
@@ -172,8 +188,11 @@ type LayoutTabSpec struct {
 	Name string `json:"name"`
 
 	// groups lists, in display order, the Groups shown under this tab.
+	// MaxItems is 32 (down from 64 pre-nesting) to keep the tab's
+	// parent-listed CEL rule within the apiserver's static cost budget —
+	// the rule's estimated cost is quadratic in this bound.
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:MaxItems=32
 	// +listType=atomic
 	// +required
 	Groups []LayoutGroupSpec `json:"groups"`
