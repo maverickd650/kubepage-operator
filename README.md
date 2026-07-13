@@ -24,6 +24,12 @@ the dashboard pod's memory for the duration of the poll. See
 [`CLAUDE.md`](CLAUDE.md) for the full architecture overview and
 [`SECURITY.md`](SECURITY.md) for the secret-handling rationale.
 
+> **New here, or configuring a dashboard rather than developing the operator?**
+> Start with the task-oriented [Configuration guide](docs/configuration/README.md)
+> — a plain-language walkthrough of building a dashboard, with a gentle
+> [introduction to widgets](docs/configuration/widgets.md) (the part most people
+> find confusing).
+
 ### Supported widgets
 
 `ServiceCard`/`InfoWidget` widget `type`s, kept in sync with the registry in
