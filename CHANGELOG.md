@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/maverickd650/kubepage-operator/compare/v0.3.1...v0.4.0) (2026-07-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** the following fields changed from string enum to bool; existing CRs setting any of them need their values migrated (e.g. "Enabled" -> true, "Disabled"/"Hidden"/"Contained"/"Auto" -> false) before the next apply/update:
+
+### Features
+
+* **api:** convert on/off toggle fields from string enums to bool ([#153](https://github.com/maverickd650/kubepage-operator/issues/153)) ([00d6b1e](https://github.com/maverickd650/kubepage-operator/commit/00d6b1e5f2ab5590ae04b3032447c7c6dffc2ba2))
+* **dashboard:** nested service-card groups ([#154](https://github.com/maverickd650/kubepage-operator/issues/154)) ([105560d](https://github.com/maverickd650/kubepage-operator/commit/105560de9f68b165a7205bbfba5be028411a16b6))
+
 ## [0.3.1](https://github.com/maverickd650/kubepage-operator/compare/v0.3.0...v0.3.1) (2026-07-12)
 
 
