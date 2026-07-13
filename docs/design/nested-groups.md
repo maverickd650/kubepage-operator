@@ -1,6 +1,6 @@
 # Design: nested service-card groups
 
-Status: proposed (nothing implemented yet).
+Status: implemented.
 
 ## Problem
 

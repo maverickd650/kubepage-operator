@@ -419,7 +419,9 @@ type DiscoverySpec struct {
 
 	// annotationPrefix is the annotation key prefix a source resource must
 	// carry to be discovered, e.g. "<prefix>enabled", "<prefix>name",
-	// "<prefix>group". Defaults to "kubepage.io/".
+	// "<prefix>group" ("<prefix>group"'s value may itself be a "/"-separated
+	// path, e.g. "Media/Movies", nesting the discovered card the same way a
+	// ServiceEntry.Group path does). Defaults to "kubepage.io/".
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
