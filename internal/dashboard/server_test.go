@@ -1055,6 +1055,169 @@ func TestLayoutTabsGroupReferencedTwiceUsesFirstTab(t *testing.T) {
 	}
 }
 
+// TestNestGroupsMaterializesMissingAncestor verifies a card at testGroupMediaMovies
+// with no direct card in testGroupMedia still gets a testGroupMedia parent group
+// (header shown, zero direct cards) to render its subgroup under.
+func TestNestGroupsMaterializesMissingAncestor(t *testing.T) {
+	flat := groupCards([]Card{{Group: testGroupMediaMovies, ServiceName: testNameRadarr}}, Site{})
+	tree := nestGroups(flat, Site{})
+
+	if len(tree) != 1 || tree[0].Path != testGroupMedia || tree[0].Name != testGroupMedia {
+		t.Fatalf("nestGroups() = %+v, want one materialized root group %q", tree, testGroupMedia)
+	}
+	root := tree[0]
+	if len(root.Cards) != 0 {
+		t.Errorf("materialized root Cards = %+v, want none", root.Cards)
+	}
+	if !root.Header {
+		t.Error("materialized root Header = false, want true (shown)")
+	}
+	if len(root.Subgroups) != 1 || root.Subgroups[0].Path != testGroupMediaMovies || root.Subgroups[0].Name != testNameMovies {
+		t.Fatalf("root.Subgroups = %+v, want one subgroup Path=Media/Movies Name=Movies", root.Subgroups)
+	}
+	if len(root.Subgroups[0].Cards) != 1 || root.Subgroups[0].Cards[0].ServiceName != testNameRadarr {
+		t.Errorf("root.Subgroups[0].Cards = %+v, want [Radarr]", root.Subgroups[0].Cards)
+	}
+}
+
+// TestNestGroupsRealAncestorKeepsOwnCards verifies a real testGroupMedia flat group
+// (with its own direct cards) is used as the parent node rather than being
+// overwritten by a zero-card materialized placeholder, regardless of
+// relative order between the parent and child paths in the flat input.
+func TestNestGroupsRealAncestorKeepsOwnCards(t *testing.T) {
+	flat := groupCards([]Card{
+		{Group: testGroupMediaMovies, ServiceName: testNameRadarr},
+		{Group: testGroupMedia, ServiceName: testMultiEntryNamePlex},
+	}, Site{})
+	tree := nestGroups(flat, Site{})
+
+	if len(tree) != 1 || tree[0].Path != testGroupMedia {
+		t.Fatalf("nestGroups() = %+v, want one root group Media", tree)
+	}
+	root := tree[0]
+	if len(root.Cards) != 1 || root.Cards[0].ServiceName != testMultiEntryNamePlex {
+		t.Errorf("root.Cards = %+v, want [Plex] (Media's own direct card)", root.Cards)
+	}
+	if len(root.Subgroups) != 1 || root.Subgroups[0].Name != testNameMovies {
+		t.Fatalf("root.Subgroups = %+v, want one Movies subgroup", root.Subgroups)
+	}
+}
+
+// TestNestGroupsPreservesFirstSeenOrder verifies both root groups and
+// sibling subgroups within a parent keep the order they first appear in the
+// flat, already store-ordered input — not alphabetical.
+func TestNestGroupsPreservesFirstSeenOrder(t *testing.T) {
+	flat := groupCards([]Card{
+		{Group: testGroupMediaTV, ServiceName: testNameSonarr},
+		{Group: "Zeta", ServiceName: "z1"},
+		{Group: testGroupMediaMovies, ServiceName: testNameRadarr},
+		{Group: "Alpha", ServiceName: "a1"},
+	}, Site{})
+	tree := nestGroups(flat, Site{})
+
+	if len(tree) != 3 || tree[0].Path != testGroupMedia || tree[1].Path != "Zeta" || tree[2].Path != "Alpha" {
+		t.Fatalf("nestGroups() root order = %v, want [Media Zeta Alpha]", groupPaths(tree))
+	}
+	media := tree[0]
+	if len(media.Subgroups) != 2 || media.Subgroups[0].Name != "TV" || media.Subgroups[1].Name != testNameMovies {
+		t.Fatalf("Media.Subgroups order = %v, want [TV Movies] (first-seen)", groupPaths(media.Subgroups))
+	}
+}
+
+// TestNestGroupsDepth3 verifies a 3-level path (testGroupABC, the CRD's own
+// maximum depth) nests two levels deep under its root.
+func TestNestGroupsDepth3(t *testing.T) {
+	flat := groupCards([]Card{{Group: testGroupABC, ServiceName: testSvcName}}, Site{})
+	tree := nestGroups(flat, Site{})
+
+	if len(tree) != 1 || tree[0].Path != "A" {
+		t.Fatalf("nestGroups() = %+v, want one root A", tree)
+	}
+	b := tree[0]
+	if len(b.Subgroups) != 1 || b.Subgroups[0].Path != "A/B" || b.Subgroups[0].Name != "B" {
+		t.Fatalf("A.Subgroups = %+v, want one subgroup A/B", b.Subgroups)
+	}
+	c := b.Subgroups[0]
+	if len(c.Subgroups) != 1 || c.Subgroups[0].Path != testGroupABC || c.Subgroups[0].Name != "C" {
+		t.Fatalf("A/B.Subgroups = %+v, want one subgroup A/B/C", c.Subgroups)
+	}
+	if len(c.Subgroups[0].Cards) != 1 || c.Subgroups[0].Cards[0].ServiceName != testSvcName {
+		t.Errorf("A/B/C.Cards = %+v, want [svc]", c.Subgroups[0].Cards)
+	}
+}
+
+// groupPaths collects each group's Path, for asserting on order/shape
+// without repeating the full struct in a failure message.
+func groupPaths(groups []cardGroup) []string {
+	out := make([]string, len(groups))
+	for i, g := range groups {
+		out[i] = g.Path
+	}
+	return out
+}
+
+// TestLayoutTabsPlacesRootWithWholeSubtree verifies tab placement keys on
+// root paths only: a tab listing just testGroupMedia (no path entry at all) still
+// places Media's whole nested subtree, unstyled.
+func TestLayoutTabsPlacesRootWithWholeSubtree(t *testing.T) {
+	cards := []Card{{Group: testGroupMediaMovies, ServiceName: testNameRadarr}}
+	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{{Name: testGroupMedia}}}}
+	tabs := layoutTabs(cards, Site{Layout: layout})
+
+	if len(tabs) != 1 || tabs[0].Name != testTab1 || len(tabs[0].Groups) != 1 {
+		t.Fatalf("layoutTabs() = %+v, want 1 tab with Media placed", tabs)
+	}
+	root := tabs[0].Groups[0]
+	if root.Path != testGroupMedia || len(root.Subgroups) != 1 || root.Subgroups[0].Path != testGroupMediaMovies {
+		t.Fatalf("tabs[0].Groups[0] = %+v, want Media with its Movies subtree intact", root)
+	}
+}
+
+// TestLayoutTabsStylesSubgroupByPathEntry verifies a tab's path-named
+// LayoutGroupSpec entry (e.g. testGroupMediaMovies) styles that subgroup in place
+// once its root has been placed by its own root-named entry in the same tab.
+func TestLayoutTabsStylesSubgroupByPathEntry(t *testing.T) {
+	cards := []Card{{Group: testGroupMediaMovies, ServiceName: testNameRadarr}}
+	cols := int32(2)
+	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{
+		{Name: testGroupMedia},
+		{Name: testGroupMediaMovies, Columns: &cols, Style: testStyleRow},
+	}}}
+	tabs := layoutTabs(cards, Site{Layout: layout})
+
+	if len(tabs) != 1 || len(tabs[0].Groups) != 1 {
+		t.Fatalf("layoutTabs() = %+v, want 1 tab with Media placed once", tabs)
+	}
+	root := tabs[0].Groups[0]
+	if len(root.Subgroups) != 1 {
+		t.Fatalf("root.Subgroups = %+v, want 1 subgroup", root.Subgroups)
+	}
+	movies := root.Subgroups[0]
+	if movies.Columns == nil || *movies.Columns != cols || movies.Style != testStyleRow {
+		t.Errorf("Media/Movies style = %+v, want columns=2 style=row (from the path-named layout entry)", movies)
+	}
+}
+
+// TestLayoutTabsUnreferencedRootKeepsSubtreeUnderOther verifies a root group
+// not placed by any tab is appended to the trailing "Other" tab with its
+// whole nested subtree, not just its own direct cards.
+func TestLayoutTabsUnreferencedRootKeepsSubtreeUnderOther(t *testing.T) {
+	cards := []Card{
+		{Group: "A", ServiceName: "a1"},
+		{Group: testGroupMediaMovies, ServiceName: testNameRadarr},
+	}
+	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{{Name: "A"}}}}
+	tabs := layoutTabs(cards, Site{Layout: layout})
+
+	if len(tabs) != 2 || tabs[1].Name != testOtherGroup || len(tabs[1].Groups) != 1 {
+		t.Fatalf("layoutTabs() = %+v, want Media appended to Other", tabs)
+	}
+	other := tabs[1].Groups[0]
+	if other.Path != testGroupMedia || len(other.Subgroups) != 1 || other.Subgroups[0].Path != testGroupMediaMovies {
+		t.Fatalf("Other tab's Media group = %+v, want its Movies subtree intact", other)
+	}
+}
+
 func TestServerHealthzRoute(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -1419,6 +1582,43 @@ func TestServerFragmentRendersTabs(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestServerFragmentRendersNestedGroup verifies a card at "Media/Movies"
+// renders a "Media" parent <details> containing a nested "Movies" <details>
+// inside a "subgroups" wrapper, with the leaf's data-group-name carrying the
+// full path (not just "Movies") so index.templ's collapse-state capture/
+// restore keys on a value unique across same-named subgroups under
+// different parents.
+func TestServerFragmentRendersNestedGroup(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: "ns/radarr/0", Group: "Media/Movies", ServiceName: "Radarr"})
+
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<details class="group" data-group-name="Media"`,
+		`class="subgroups"`,
+		`<details class="group" data-group-name="Media/Movies"`,
+		"Movies", "Radarr",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	// The parent's <details> must open before its nested Movies <details>,
+	// and the "subgroups" wrapper must sit inside the parent's block (not a
+	// sibling of it), for the collapse-hides-children behavior to hold.
+	parentIdx := strings.Index(body, `data-group-name="Media"`)
+	subgroupsIdx := strings.Index(body, `class="subgroups"`)
+	childIdx := strings.Index(body, `data-group-name="Media/Movies"`)
+	if parentIdx < 0 || subgroupsIdx < 0 || childIdx < 0 || (parentIdx >= subgroupsIdx || subgroupsIdx >= childIdx) {
+		t.Errorf("fragment body ordering = parent@%d subgroups@%d child@%d, want parent < subgroups < child:\n%s", parentIdx, subgroupsIdx, childIdx, body)
 	}
 }
 

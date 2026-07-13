@@ -131,6 +131,16 @@ templ Index(data indexData) {
 				details.group summary::before { content: "▸"; display: inline-block; transition: transform .12s ease; font-size: 0.7em; }
 				details.group[open] summary::before { transform: rotate(90deg); }
 				details.group > .grid { margin-top: 0.5rem; }
+				/* Nested service groups (homepage parity, up to 3 levels deep — see
+				   docs/design/nested-groups.md): each level indents and steps its
+				   summary/h2 heading down the type scale, so a subgroup's heading
+				   reads visually subordinate to its parent's without a whole
+				   separate style. .subgroups (cards.templ's serviceSubgroups) is the
+				   wrapper a parent group's own <details>/plain block puts its
+				   children in, so collapsing the parent hides them for free. */
+				.subgroups { margin-left: 1.1rem; padding-left: 0.6rem; border-left: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+				.subgroups details.group summary, .subgroups h2 { font-size: 0.82rem; margin-top: 1rem; }
+				.subgroups .subgroups details.group summary, .subgroups .subgroups h2 { font-size: 0.76rem; }
 				.grid.grid-equal { align-items: stretch; }
 				.grid.grid-equal .card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 				.tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
