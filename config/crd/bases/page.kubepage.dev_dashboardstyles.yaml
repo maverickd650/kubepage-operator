@@ -262,7 +262,12 @@ spec:
                     LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
                     Groups not referenced by any tab still render, appended to an implicit
                     trailing "Other" tab; a Group referenced by more than one tab is shown
-                    under the first tab that lists it.
+                    under the first tab that lists it. Tab placement is root-only: a nested
+                    subgroup always renders in whatever tab its root group is placed in, so a
+                    path-named LayoutGroupSpec entry (e.g. "Media/Movies", only styling that
+                    subgroup) must not appear in a tab unless that path's root ("Media") is
+                    also listed in this same tab's groups — otherwise which tab the subgroup
+                    would render under is ambiguous.
                   properties:
                     groups:
                       description: groups lists, in display order, the Groups shown
@@ -311,10 +316,16 @@ spec:
                             - Expanded
                             type: string
                           name:
-                            description: name is the ServiceCard Group this entry
-                              places and styles.
+                            description: |-
+                              name is the ServiceCard Group this entry places and styles, or a
+                              "/"-separated path (e.g. "Media/Movies") naming a nested subgroup to
+                              style (see ServiceEntry.Group). A root name (no "/") also places the
+                              whole group — and everything nested under it — into this tab; a path
+                              entry only styles the subgroup it names and must not place it into a
+                              different tab than its root (see LayoutTabSpec's validation rule).
                             maxLength: 256
                             minLength: 1
+                            pattern: ^[^/]+(/[^/]+){0,2}$
                             type: string
                           style:
                             description: style lays the group's cards out in a single
@@ -347,6 +358,11 @@ spec:
                   - groups
                   - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: a nested group entry's root group must be listed in the
+                      same tab
+                    rule: self.groups.all(g, !g.name.contains('/') || self.groups.exists(r,
+                      r.name == g.name.split('/')[0]))
                 maxItems: 32
                 minItems: 1
                 type: array

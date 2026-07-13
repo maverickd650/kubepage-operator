@@ -200,7 +200,7 @@
         "layout": {
           "description": "layout arranges ServiceCard Groups into tabs, mirroring homepage's\nsettings.yaml `layout:` map (group -\u003e style) with tabs added on top.\nOmitted/empty renders every group flat with no tab UI, as before.",
           "items": {
-            "description": "LayoutTabSpec is one tab: a named, ordered set of Groups shown together.\nGroups not referenced by any tab still render, appended to an implicit\ntrailing \"Other\" tab; a Group referenced by more than one tab is shown\nunder the first tab that lists it.",
+            "description": "LayoutTabSpec is one tab: a named, ordered set of Groups shown together.\nGroups not referenced by any tab still render, appended to an implicit\ntrailing \"Other\" tab; a Group referenced by more than one tab is shown\nunder the first tab that lists it. Tab placement is root-only: a nested\nsubgroup always renders in whatever tab its root group is placed in, so a\npath-named LayoutGroupSpec entry (e.g. \"Media/Movies\", only styling that\nsubgroup) must not appear in a tab unless that path's root (\"Media\") is\nalso listed in this same tab's groups — otherwise which tab the subgroup\nwould render under is ambiguous.",
             "properties": {
               "groups": {
                 "description": "groups lists, in display order, the Groups shown under this tab.",
@@ -237,9 +237,10 @@
                       "type": "string"
                     },
                     "name": {
-                      "description": "name is the ServiceCard Group this entry places and styles.",
+                      "description": "name is the ServiceCard Group this entry places and styles, or a\n\"/\"-separated path (e.g. \"Media/Movies\") naming a nested subgroup to\nstyle (see ServiceEntry.Group). A root name (no \"/\") also places the\nwhole group — and everything nested under it — into this tab; a path\nentry only styles the subgroup it names and must not place it into a\ndifferent tab than its root (see LayoutTabSpec's validation rule).",
                       "maxLength": 256,
                       "minLength": 1,
+                      "pattern": "^[^/]+(/[^/]+){0,2}$",
                       "type": "string"
                     },
                     "style": {
@@ -280,7 +281,13 @@
               "groups",
               "name"
             ],
-            "type": "object"
+            "type": "object",
+            "x-kubernetes-validations": [
+              {
+                "message": "a nested group entry's root group must be listed in the same tab",
+                "rule": "self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, r.name == g.name.split('/')[0]))"
+              }
+            ]
           },
           "maxItems": 32,
           "minItems": 1,

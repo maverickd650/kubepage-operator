@@ -1494,7 +1494,9 @@ spec:
                     description: |-
                       annotationPrefix is the annotation key prefix a source resource must
                       carry to be discovered, e.g. "<prefix>enabled", "<prefix>name",
-                      "<prefix>group". Defaults to "kubepage.io/".
+                      "<prefix>group" ("<prefix>group"'s value may itself be a "/"-separated
+                      path, e.g. "Media/Movies", nesting the discovered card the same way a
+                      ServiceEntry.Group path does). Defaults to "kubepage.io/".
                     maxLength: 253
                     minLength: 1
                     type: string
@@ -5481,7 +5483,12 @@ spec:
                     LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
                     Groups not referenced by any tab still render, appended to an implicit
                     trailing "Other" tab; a Group referenced by more than one tab is shown
-                    under the first tab that lists it.
+                    under the first tab that lists it. Tab placement is root-only: a nested
+                    subgroup always renders in whatever tab its root group is placed in, so a
+                    path-named LayoutGroupSpec entry (e.g. "Media/Movies", only styling that
+                    subgroup) must not appear in a tab unless that path's root ("Media") is
+                    also listed in this same tab's groups — otherwise which tab the subgroup
+                    would render under is ambiguous.
                   properties:
                     groups:
                       description: groups lists, in display order, the Groups shown
@@ -5530,10 +5537,16 @@ spec:
                             - Expanded
                             type: string
                           name:
-                            description: name is the ServiceCard Group this entry
-                              places and styles.
+                            description: |-
+                              name is the ServiceCard Group this entry places and styles, or a
+                              "/"-separated path (e.g. "Media/Movies") naming a nested subgroup to
+                              style (see ServiceEntry.Group). A root name (no "/") also places the
+                              whole group — and everything nested under it — into this tab; a path
+                              entry only styles the subgroup it names and must not place it into a
+                              different tab than its root (see LayoutTabSpec's validation rule).
                             maxLength: 256
                             minLength: 1
+                            pattern: ^[^/]+(/[^/]+){0,2}$
                             type: string
                           style:
                             description: style lays the group's cards out in a single
@@ -5566,6 +5579,11 @@ spec:
                   - groups
                   - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: a nested group entry's root group must be listed in the
+                      same tab
+                    rule: self.groups.all(g, !g.name.contains('/') || self.groups.exists(r,
+                      r.name == g.name.split('/')[0]))
                 maxItems: 32
                 minItems: 1
                 type: array
@@ -6236,11 +6254,13 @@ spec:
                 type: object
               group:
                 description: |-
-                  group is the name of the (top-level) group this ServiceCard belongs
-                  to, used as the default group for any Services entry that doesn't set
-                  its own group.
+                  group is the name of the group this ServiceCard belongs to, or a
+                  "/"-separated path nesting it inside one or more parent groups (see
+                  ServiceEntry.Group), used as the default group for any Services entry
+                  that doesn't set its own group.
                 maxLength: 256
                 minLength: 1
+                pattern: ^[^/]+(/[^/]+){0,2}$
                 type: string
               services:
                 description: |-
@@ -6255,8 +6275,10 @@ spec:
                     source, and widgets. A ServiceCardSpec holds a list of these in Services,
                     one ServiceCard object per group, or per whole dashboard.
 
-                    Nested groups (a group inside another group) are not supported in this
-                    version of the operator; Group always names a top-level group.
+                    Nested groups (homepage parity, https://gethomepage.dev/configs/services/#nested-groups)
+                    are expressed as a "/"-separated path in Group, e.g. "Media/Movies" nests
+                    group "Movies" inside group "Media", up to 3 levels deep. See
+                    docs/design/nested-groups.md.
                   properties:
                     description:
                       description: description overrides the default description shown
@@ -6275,12 +6297,15 @@ spec:
                       type: string
                     group:
                       description: |-
-                        group is the name of the (top-level) group this entry belongs to.
-                        Entries sharing a Group are rendered together. An entry that omits
-                        group falls back to ServiceCardSpec.Group as a shared default (see
-                        ServiceCardSpec.Entries).
+                        group is the name of the group this entry belongs to, or a
+                        "/"-separated path (e.g. "Media/Movies", up to 3 levels) nesting it
+                        inside one or more parent groups (homepage parity: nested service
+                        groups). Entries sharing a Group are rendered together. An entry that
+                        omits group falls back to ServiceCardSpec.Group as a shared default
+                        (see ServiceCardSpec.Entries).
                       maxLength: 256
                       minLength: 1
+                      pattern: ^[^/]+(/[^/]+){0,2}$
                       type: string
                     href:
                       description: href makes the card's title a link to the service.
