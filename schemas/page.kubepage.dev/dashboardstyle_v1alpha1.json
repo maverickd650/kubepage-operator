@@ -203,7 +203,7 @@
             "description": "LayoutTabSpec is one tab: a named, ordered set of Groups shown together.\nGroups not referenced by any tab still render, appended to an implicit\ntrailing \"Other\" tab; a Group referenced by more than one tab is shown\nunder the first tab that lists it. Tab placement is root-only: a nested\nsubgroup always renders in whatever tab its root group is placed in, so a\npath-named LayoutGroupSpec entry (e.g. \"Media/Movies\", only styling that\nsubgroup) must not appear in a tab unless that path's root (\"Media\") is\nalso listed in this same tab's groups — otherwise which tab the subgroup\nwould render under is ambiguous.",
             "properties": {
               "groups": {
-                "description": "groups lists, in display order, the Groups shown under this tab.",
+                "description": "groups lists, in display order, the Groups shown under this tab.\nMaxItems is 32 (down from 64 pre-nesting) to keep the tab's\nparent-listed CEL rule within the apiserver's static cost budget —\nthe rule's estimated cost is quadratic in this bound.",
                 "items": {
                   "description": "LayoutGroupSpec configures one Group's placement and style within a\nLayoutTabSpec, mirroring homepage's settings.yaml `layout:` per-group\nstyle keys (style/columns/icon).\nSee https://gethomepage.dev/configs/settings/#layout",
                   "properties": {
@@ -265,7 +265,7 @@
                   ],
                   "type": "object"
                 },
-                "maxItems": 64,
+                "maxItems": 32,
                 "minItems": 1,
                 "type": "array",
                 "x-kubernetes-list-type": "atomic"
@@ -284,8 +284,8 @@
             "type": "object",
             "x-kubernetes-validations": [
               {
-                "message": "a nested group entry's root group must be listed in the same tab",
-                "rule": "self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, r.name == g.name.split('/')[0]))"
+                "message": "a nested group entry's parent group must be listed in the same tab",
+                "rule": "self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, g.name.startsWith(r.name + '/')))"
               }
             ]
           },

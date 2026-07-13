@@ -112,10 +112,16 @@ root-only: a subgroup always lives in whatever tab its root group is in.
 
   ```go
   // on LayoutTabSpec:
-  // +kubebuilder:validation:XValidation:rule="self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, r.name == g.name.split('/')[0]))",message="a nested group entry's root group must be listed in the same tab"
+  // +kubebuilder:validation:XValidation:rule="self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, g.name.startsWith(r.name + '/')))",message="a nested group entry's parent group must be listed in the same tab"
   ```
 
-  (`split`/`contains` are in the CEL strings extension the apiserver has
+  The rule checks for an ancestor *prefix* entry rather than splitting out
+  the root segment: `split()` plus the original MaxItems=64 on a tab's
+  `groups` blew the apiserver's static CEL cost budget by 2.8x (found by
+  envtest in CI). `startsWith` + capping `groups` at MaxItems=32 brings the
+  quadratic scan back under budget, and applied to every path entry the
+  prefix check still makes the root required transitively.
+  (`contains`/`startsWith` are in the CEL environment the apiserver has
   always shipped for CRD validation; well below the repo's effective 1.31
   floor.) Ordering of subgroups within a parent follows the tab's `groups`
   list order when placed there, else entry `Order`/name as today.

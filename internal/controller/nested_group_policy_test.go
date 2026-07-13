@@ -86,6 +86,14 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 			Expect(k8sClient.Delete(ctx, ds)).To(Succeed())
 		})
 
+		It("admits a depth-3 path entry whose root alone is listed (ancestor prefix suffices)", func() {
+			ds := dashboardStyleWithLayout("style-deep-rooted-path", []pagev1alpha1.LayoutTabSpec{
+				{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testMultiFormGroupMedia}, {Name: nestedGroupMediaMovies + "/4K"}}},
+			})
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, ds)).To(Succeed())
+		})
+
 		It("rejects a path entry whose root is only listed in a different tab", func() {
 			ds := dashboardStyleWithLayout("style-cross-tab-orphan", []pagev1alpha1.LayoutTabSpec{
 				{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testMultiFormGroupMedia}}},

@@ -270,8 +270,11 @@ spec:
                     would render under is ambiguous.
                   properties:
                     groups:
-                      description: groups lists, in display order, the Groups shown
-                        under this tab.
+                      description: |-
+                        groups lists, in display order, the Groups shown under this tab.
+                        MaxItems is 32 (down from 64 pre-nesting) to keep the tab's
+                        parent-listed CEL rule within the apiserver's static cost budget —
+                        the rule's estimated cost is quadratic in this bound.
                       items:
                         description: |-
                           LayoutGroupSpec configures one Group's placement and style within a
@@ -345,7 +348,7 @@ spec:
                         required:
                         - name
                         type: object
-                      maxItems: 64
+                      maxItems: 32
                       minItems: 1
                       type: array
                       x-kubernetes-list-type: atomic
@@ -359,10 +362,10 @@ spec:
                   - name
                   type: object
                   x-kubernetes-validations:
-                  - message: a nested group entry's root group must be listed in the
-                      same tab
+                  - message: a nested group entry's parent group must be listed in
+                      the same tab
                     rule: self.groups.all(g, !g.name.contains('/') || self.groups.exists(r,
-                      r.name == g.name.split('/')[0]))
+                      g.name.startsWith(r.name + '/')))
                 maxItems: 32
                 minItems: 1
                 type: array

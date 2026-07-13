@@ -280,8 +280,8 @@ Rules to know:
   is placed in. A path-named `groups[].name` entry (like `Media/Movies`
   above) only styles that subgroup — it never places anything on its own, and
   the apiserver rejects a tab that lists a path entry without also listing
-  its root in the same tab (there'd be no unambiguous way to say which tab a
-  dangling subgroup belongs to).
+  its parent — and so, transitively, its root — in the same tab (there'd be
+  no unambiguous way to say which tab a dangling subgroup belongs to).
 - **Direct cards render before subgroups.** A parent group's own cards (e.g.
   a card whose `group` is exactly `Media`, not `Media/Movies`) always render
   above its nested subgroups — there's no ordering field spanning cards and

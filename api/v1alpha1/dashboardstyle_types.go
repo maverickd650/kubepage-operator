@@ -199,10 +199,14 @@ type LayoutGroupSpec struct {
 // under the first tab that lists it. Tab placement is root-only: a nested
 // subgroup always renders in whatever tab its root group is placed in, so a
 // path-named LayoutGroupSpec entry (e.g. "Media/Movies", only styling that
-// subgroup) must not appear in a tab unless that path's root ("Media") is
-// also listed in this same tab's groups — otherwise which tab the subgroup
-// would render under is ambiguous.
-// +kubebuilder:validation:XValidation:rule="self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, r.name == g.name.split('/')[0]))",message="a nested group entry's root group must be listed in the same tab"
+// subgroup) must not appear in a tab unless an ancestor prefix of that path
+// ("Media", or "Media/Movies" for a "Media/Movies/4K" entry) is also listed
+// in this same tab's groups — applied to every path entry, this makes the
+// root itself required transitively; otherwise which tab the subgroup would
+// render under is ambiguous. (The rule checks the immediate prefix rather
+// than splitting out the root segment to stay within the apiserver's static
+// CEL cost budget.)
+// +kubebuilder:validation:XValidation:rule="self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, g.name.startsWith(r.name + '/')))",message="a nested group entry's parent group must be listed in the same tab"
 type LayoutTabSpec struct {
 	// name is the tab's label.
 	// +kubebuilder:validation:MinLength=1
@@ -211,8 +215,11 @@ type LayoutTabSpec struct {
 	Name string `json:"name"`
 
 	// groups lists, in display order, the Groups shown under this tab.
+	// MaxItems is 32 (down from 64 pre-nesting) to keep the tab's
+	// parent-listed CEL rule within the apiserver's static cost budget —
+	// the rule's estimated cost is quadratic in this bound.
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:MaxItems=32
 	// +listType=atomic
 	// +required
 	Groups []LayoutGroupSpec `json:"groups"`
