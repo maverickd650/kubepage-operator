@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/a-h/templ v0.3.1020
-	github.com/chromedp/cdproto v0.0.0-20260704091341-6ca7914c3938
+	github.com/chromedp/cdproto v0.0.0-20260714002449-7ad0ec4e4115
 	github.com/chromedp/chromedp v0.15.1
 	github.com/cli/browser v1.3.0
 	github.com/coder/websocket v1.8.15
