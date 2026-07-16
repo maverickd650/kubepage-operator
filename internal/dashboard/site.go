@@ -150,7 +150,13 @@ type HeaderWidget struct {
 // values (nil pointers replaced with homepage's documented defaults where
 // one exists, so the template never has to know about absence).
 type Background struct {
-	Image      string
+	Image string
+	// Blur is a CSS length (e.g. "24px") already resolved from the
+	// BackgroundSpec's Tailwind keyword via blurPx — "" when the spec leaves
+	// blur unset (no blur), "8px" for an explicit "" keyword (the documented
+	// default blur), per that field's doc comment. Resolving here rather
+	// than in backgroundStyle keeps the raw-keyword/absent distinction out
+	// of the render path.
 	Blur       string
 	Saturate   *int32
 	Brightness *int32
@@ -403,7 +409,7 @@ func applyLookFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 			bg.Image = *spec.Background.Image
 		}
 		if spec.Background.Blur != nil {
-			bg.Blur = *spec.Background.Blur
+			bg.Blur = blurPx(*spec.Background.Blur)
 		}
 		site.Background = bg
 	}
@@ -512,6 +518,13 @@ func stringOrEmpty(s *string) string {
 	return *s
 }
 
+// Tailwind blur-scale pixel values also referenced by tests, hence named
+// constants rather than inline string literals (goconst).
+const (
+	blurPxSM = "4px"
+	blurPxXL = "24px"
+)
+
 // blurPx maps a Tailwind backdrop-blur size keyword to its CSS pixel value
 // (the Tailwind blur scale). An unknown or empty keyword yields "" (no blur);
 // a bare "" keyword from the user means "default blur" → Tailwind's base 8px.
@@ -522,13 +535,13 @@ func blurPx(keyword string) string {
 	case "":
 		return "8px"
 	case "sm":
-		return "4px"
+		return blurPxSM
 	case "md":
 		return "12px"
 	case "lg":
 		return "16px"
 	case "xl":
-		return "24px"
+		return blurPxXL
 	case "2xl":
 		return "40px"
 	case "3xl":

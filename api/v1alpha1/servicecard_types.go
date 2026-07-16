@@ -140,8 +140,13 @@ type ServiceWidget struct {
 	Config *apiextensionsv1.JSON `json:"config,omitempty"`
 
 	// fields restricts which of the widget's returned fields are rendered,
-	// by label (e.g. "queued", "wanted"). Unset (the default) renders every
-	// field the widget returns.
+	// by label (e.g. "queued", "wanted"). Matching is case- and
+	// punctuation-insensitive (letters/digits only, lowercased), so a
+	// homepage-vocabulary entry like "sceneSize" matches this operator's
+	// human-readable label "Scene Size", and "scene_count" matches "Scenes"
+	// only if that's the widget's actual label — check the widget's Field
+	// labels (its Go source under internal/dashboard) when in doubt. Unset
+	// (the default) renders every field the widget returns.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=32
 	// +kubebuilder:validation:items:MinLength=1

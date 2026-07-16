@@ -18,6 +18,11 @@ spec:
   target: _blank
   background:
     image: https://raw.githubusercontent.com/MaverickD650/home-operations/main/.docs/assets/background.png
+    # brightness/saturate render as a CSS filter on the fixed background
+    # layer (see internal/dashboard's backgroundStyle); percentages on the
+    # Tailwind backdrop-brightness/-saturate scales.
+    brightness: 55
+    saturate: 80
   layout:
     - name: Infrastructure
       groups:
