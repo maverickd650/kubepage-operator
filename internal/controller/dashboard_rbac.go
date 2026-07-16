@@ -36,6 +36,11 @@ const (
 	// secretAllowWidgetsValue is the value SecretAllowWidgetsLabel must be
 	// set to for filterLabeledSecrets to treat a Secret as widget-readable.
 	secretAllowWidgetsValue = "true"
+
+	// clusterRoleKind is the RoleRef.Kind every cluster-scoped RBAC binding
+	// this reconciler creates uses (kubemetrics, discovery, monitor) —
+	// pulled into a constant alongside the verbs above for the same reason.
+	clusterRoleKind = "ClusterRole"
 )
 
 // clusterMetricsRules are the cluster-scoped permissions the dashboard pod
@@ -307,7 +312,10 @@ func (r *DashboardReconciler) reconcileAllDashboardRBAC(ctx context.Context, ins
 	if err := r.reconcileClusterMetricsRBAC(ctx, instance); err != nil {
 		return err
 	}
-	return r.reconcileDiscoveryRBAC(ctx, instance)
+	if err := r.reconcileDiscoveryRBAC(ctx, instance); err != nil {
+		return err
+	}
+	return r.reconcileMonitorRBAC(ctx, instance)
 }
 
 // reconcileDashboardRBAC ensures the per-Dashboard ServiceAccount, Role, and
@@ -562,7 +570,7 @@ func (r *DashboardReconciler) reconcileClusterRoleBinding(ctx context.Context, i
 		ObjectMeta: metav1.ObjectMeta{Name: clusterRBACName(instance)},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
+			Kind:     clusterRoleKind,
 			Name:     clusterRBACName(instance),
 		},
 		Subjects: []rbacv1.Subject{{
@@ -784,7 +792,7 @@ func (r *DashboardReconciler) reconcileDiscoveryRoleBinding(ctx context.Context,
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
+			Kind:     clusterRoleKind,
 			Name:     name,
 		},
 		Subjects: []rbacv1.Subject{{
@@ -834,6 +842,173 @@ func unionSortedDeduped(a, b []string) []string {
 	out = append(out, b...)
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+// monitorRBACName is discoveryRBACName's counterpart for the cross-namespace
+// pod-monitor ClusterRole (and, reused, for the per-target-namespace
+// RoleBinding name — see reconcileMonitorRBAC) — a "mon-" prefix keeps it
+// from ever colliding with clusterRBACName's/discoveryRBACName's own names
+// for the same Dashboard, since a Dashboard can need all three RBAC sets at
+// once.
+func monitorRBACName(instance *pagev1alpha1.Dashboard) string {
+	full := fmt.Sprintf("kubepage-mon-%d-%s-%s", len(instance.Namespace), instance.Namespace, instance.Name)
+	if len(full) <= clusterRBACNameMaxLength {
+		return full
+	}
+
+	sum := sha256.Sum256([]byte("mon/" + instance.Namespace + "/" + instance.Name))
+	suffix := fmt.Sprintf("-%x", sum[:8])
+	return full[:clusterRBACNameMaxLength-len(suffix)] + suffix
+}
+
+// monitorClusterRoleRules are the read-only permissions the cross-namespace
+// pod-monitor ClusterRole grants — the same dashboardPodsRule already granted
+// in-namespace unconditionally, just packaged as a ClusterRole so a
+// RoleBinding in each target namespace (reconcileMonitorRoleBinding) can
+// reference it without duplicating the rule set per namespace.
+var monitorClusterRoleRules = []rbacv1.PolicyRule{dashboardPodsRule}
+
+// monitorNamespaces returns instance's desired cross-namespace pod-monitor
+// target namespaces: spec.monitorNamespaces, sorted, de-duplicated, and with
+// instance's own namespace filtered out (it's already covered by the
+// per-Dashboard Role — see dashboardRoles — so a redundant RoleBinding there
+// would just be noise). Mirrors discoveryNamespaces exactly.
+func monitorNamespaces(instance *pagev1alpha1.Dashboard) []string {
+	out := make([]string, 0, len(instance.Spec.MonitorNamespaces))
+	for _, ns := range instance.Spec.MonitorNamespaces {
+		if ns != instance.Namespace {
+			out = append(out, ns)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// reconcileMonitorRBAC ensures the cross-namespace pod-monitor RBAC —
+// ClusterRole plus a RoleBinding in each of instance's monitorNamespaces —
+// matches instance's current spec, and cleans up any RoleBinding left over
+// in a namespace that's since been dropped from spec.monitorNamespaces.
+// Mirrors reconcileDiscoveryRBAC exactly — see its doc comment for the
+// persist-superset-before-create rationale and why status (not a live List)
+// is used to find RoleBindings to remove.
+func (r *DashboardReconciler) reconcileMonitorRBAC(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	desired := monitorNamespaces(instance)
+	previous := instance.Status.MonitorNamespaces
+
+	if len(desired) == 0 {
+		if err := r.deleteMonitorRoleBindings(ctx, instance, previous); err != nil {
+			return err
+		}
+		instance.Status.MonitorNamespaces = nil
+		return r.deleteMonitorClusterRole(ctx, instance)
+	}
+
+	if err := r.reconcileMonitorClusterRole(ctx, instance); err != nil {
+		return fmt.Errorf("reconciling monitor ClusterRole: %w", err)
+	}
+
+	instance.Status.MonitorNamespaces = unionSortedDeduped(previous, desired)
+	if err := r.Status().Update(ctx, instance); err != nil {
+		return fmt.Errorf("persisting monitor namespaces before creating RoleBindings: %w", err)
+	}
+
+	for _, ns := range desired {
+		if err := r.reconcileMonitorRoleBinding(ctx, instance, ns); err != nil {
+			return fmt.Errorf("reconciling monitor RoleBinding in namespace %s: %w", ns, err)
+		}
+	}
+
+	removed := make([]string, 0, len(previous))
+	for _, ns := range previous {
+		if !slices.Contains(desired, ns) {
+			removed = append(removed, ns)
+		}
+	}
+	if err := r.deleteMonitorRoleBindings(ctx, instance, removed); err != nil {
+		return err
+	}
+
+	instance.Status.MonitorNamespaces = desired
+	return nil
+}
+
+// deleteMonitorClusterRole removes the cross-namespace pod-monitor
+// ClusterRole for instance, tolerating an already-absent object.
+func (r *DashboardReconciler) deleteMonitorClusterRole(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: monitorRBACName(instance)}}
+	if err := r.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting monitor ClusterRole: %w", err)
+	}
+	return nil
+}
+
+func (r *DashboardReconciler) reconcileMonitorClusterRole(ctx context.Context, instance *pagev1alpha1.Dashboard) error {
+	log := logf.FromContext(ctx)
+
+	desired := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: monitorRBACName(instance)},
+		Rules:      monitorClusterRoleRules,
+	}
+
+	found := &rbacv1.ClusterRole{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name}, found)
+	switch {
+	case apierrors.IsNotFound(err):
+		log.Info("Creating a new monitor ClusterRole", "ClusterRole.Name", desired.Name)
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	case !policyRulesEqual(found.Rules, desired.Rules):
+		found.Rules = desired.Rules
+		return r.Update(ctx, found)
+	}
+	return nil
+}
+
+// reconcileMonitorRoleBinding ensures the RoleBinding in namespace ns that
+// grants instance's dashboard ServiceAccount the monitor ClusterRole. Mirrors
+// reconcileDiscoveryRoleBinding exactly.
+func (r *DashboardReconciler) reconcileMonitorRoleBinding(ctx context.Context, instance *pagev1alpha1.Dashboard, ns string) error {
+	log := logf.FromContext(ctx)
+
+	name := monitorRBACName(instance)
+	desired := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     clusterRoleKind,
+			Name:     name,
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		}},
+	}
+
+	found := &rbacv1.RoleBinding{}
+	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: ns}, found)
+	if apierrors.IsNotFound(err) {
+		log.Info("Creating a new monitor RoleBinding", "RoleBinding.Namespace", ns, "RoleBinding.Name", desired.Name)
+		return r.Create(ctx, desired)
+	}
+	// RoleRef is immutable and the Subject never changes for a given
+	// Dashboard name/namespace, so there's nothing to reconcile beyond creation.
+	return err
+}
+
+// deleteMonitorRoleBindings removes the monitor RoleBinding named for
+// instance's identity from every namespace in namespaces, tolerating
+// already-absent objects. Mirrors deleteDiscoveryRoleBindings exactly.
+func (r *DashboardReconciler) deleteMonitorRoleBindings(ctx context.Context, instance *pagev1alpha1.Dashboard, namespaces []string) error {
+	name := monitorRBACName(instance)
+	for _, ns := range namespaces {
+		rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}}
+		if err := r.Delete(ctx, rb); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting monitor RoleBinding in namespace %s: %w", ns, err)
+		}
+	}
+	return nil
 }
 
 func stringSlicesEqualSorted(a, b []string) bool {
