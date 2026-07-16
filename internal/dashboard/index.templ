@@ -387,6 +387,25 @@ templ Index(data indexData) {
 					});
 				}
 
+				// Refocus catch-up: the hx-trigger interval polls above are
+				// gated to `document.visibilityState === 'visible'`, so their
+				// underlying setInterval keeps ticking on its own schedule
+				// while the tab is hidden — becoming visible again doesn't
+				// reset it, so the next poll can be up to a full
+				// RefreshSeconds away. EventSource itself isn't
+				// visibility-gated, but a background tab can still have its
+				// SSE connection suspended or dropped (mobile tab
+				// suspension, an idle-timing-out proxy) without this page
+				// finding out until the browser's own reconnect logic gets
+				// around to it. Either way, the fix is the same: the instant
+				// the tab becomes visible again, fetch both routes directly
+				// rather than waiting on the interval or the SSE reconnect.
+				document.addEventListener("visibilitychange", function () {
+					if (document.visibilityState !== "visible") return;
+					htmx.ajax("GET", "/fragment", { target: "#cards", swap: "morph:innerHTML" });
+					htmx.ajax("GET", "/header", { target: "#header", swap: "morph:innerHTML" });
+				});
+
 				// datetime header widget: tick every second, re-selecting each tick so it
 				// keeps working across htmx swaps of the header strip. data-format, when
 				// present, is a JSON-encoded Intl.DateTimeFormat options object (e.g.
