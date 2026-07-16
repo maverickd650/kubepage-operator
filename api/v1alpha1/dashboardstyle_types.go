@@ -355,10 +355,12 @@ type DashboardStyleSpec struct {
 	CustomJS *string `json:"customJS,omitempty"`
 
 	// statusStyle is the site-wide default for how a ServiceCard's Ping/
-	// SiteMonitor/PodSelector status renders ("dot" or "basic"), used when a
-	// ServiceCard doesn't set its own StatusStyle. Defaults to "dot" when
-	// unset here too. Kept as an enum rather than a bool: a third rendering
-	// style is plausible here, unlike this file's other converted fields.
+	// SiteMonitor/PodSelector status renders ("dot" a colored status dot,
+	// "basic" a colored status pill with status word plus latency/
+	// ready-count detail), used when a ServiceCard doesn't set its own
+	// StatusStyle. Defaults to "dot" when unset here too. Kept as an enum
+	// rather than a bool: a third rendering style is plausible here, unlike
+	// this file's other converted fields.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`

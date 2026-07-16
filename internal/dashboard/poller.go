@@ -31,8 +31,8 @@ var pollerLog = ctrl.Log.WithName("dashboard-poller")
 const maxConcurrentPolls = 8
 
 // statusStyleDot is the default ServiceCard.Spec.StatusStyle, rendered by
-// cards.templ as a colored dot rather than a text pill; statusStyleBasic
-// (StatusStyle: true) renders up/down text instead.
+// cards.templ as a bare colored dot; statusStyleBasic renders a colored
+// status pill instead: the status word plus latency/ready-count detail.
 const (
 	statusStyleDot   = "dot"
 	statusStyleBasic = "basic"

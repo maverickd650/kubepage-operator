@@ -53,7 +53,23 @@ templ serviceCardView(c Card, siteTarget string) {
 			}
 			if c.Status != "" || c.PodStatus != "" {
 				switch c.StatusStyle {
-					case "dot":
+					case "basic":
+						<span class="status-indicators">
+							if c.Status != "" {
+								<span class={ "status-pill", "status-" + c.Status } title={ statusWithLatency(c.Status, c.Latency) }>
+									{ c.Status }
+									if c.Latency != "" {
+										<span class="detail">{ " · " + c.Latency }</span>
+									}
+								</span>
+							}
+							if c.PodStatus != "" {
+								<span class={ "status-pill", "status-" + c.PodStatus } title={ statusWithReadyText(c.PodStatus, c.PodReadyText) }>
+									{ podPillText(c) }
+								</span>
+							}
+						</span>
+					default:
 						<span class="status-indicators">
 							if c.Status != "" {
 								<span
@@ -72,23 +88,10 @@ templ serviceCardView(c Card, siteTarget string) {
 								></span>
 							}
 						</span>
-					case "basic":
-					default:
-						<span class="status-indicators">
-							if c.Status != "" {
-								<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
-							}
-							if c.PodStatus != "" {
-								<span class={ "status-pill", "status-" + c.PodStatus } title={ c.PodStatus }>{ c.PodReadyText }</span>
-							}
-						</span>
 				}
 			}
 		</h3>
 		@desc(c.Description)
-		if (c.Status != "" || c.PodStatus != "") && c.StatusStyle == "basic" {
-			<div class="field"><span class="label">Status</span><span>{ statusLine(c) }</span></div>
-		}
 		if c.Err != "" {
 			<div class="err">{ c.Err }</div>
 		} else if c.WidgetType == widgetTypeIframe && len(c.Fields) > 0 {

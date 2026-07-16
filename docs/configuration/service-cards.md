@@ -66,7 +66,7 @@ Everything you can set on a single tile (an entry under `services:`):
 | `ping` / `siteMonitor` | An HTTP up/down status light. Pick **one** — see [Status lights](#status-lights). |
 | `app` / `podSelector` | A Kubernetes pod-readiness status light, shown alongside `ping`/`siteMonitor` if both are set — see [Status lights](#status-lights). |
 | `namespace` | Which namespace `app`/`podSelector` list pods in, if not this ServiceCard's own — see [Status lights](#status-lights). |
-| `statusStyle` | `dot` (a coloured dot, the default) or `basic` (up/down text). |
+| `statusStyle` | `dot` (a coloured dot, the default) or `basic` (a coloured status pill with status word plus latency/ready-count detail). |
 | `showStats` | Set `false` to hide widget numbers but keep the tile. Default `true`. |
 | `errorDisplay` | Set `false` to hide a widget's error text on a service you know is flaky. Default `true`. |
 | `widgets` | Live stats pulled from the service. Its own big topic — see [Widgets](widgets.md). |
@@ -157,9 +157,9 @@ rendered amber), or **Down** (none Ready, or nothing matched):
 With several matching pods, the pod light's tooltip/text shows `2/3 ready`.
 
 The look is controlled by `statusStyle` (`dot` — up to two dots — or `basic`
-— a combined status line, e.g. `Up (12ms) · 2/3 ready`), which you can also
-set site-wide in [DashboardStyle](appearance.md). It applies to both lights
-when both are configured.
+— a coloured status pill per light, e.g. `Up · 12ms` and `2/3 ready`), which
+you can also set site-wide in [DashboardStyle](appearance.md). It applies to
+both lights when both are configured.
 
 > A status light needs **no credentials** — it only checks reachability/pod
 > readiness. To show real numbers *from inside* a service (streams, disk,

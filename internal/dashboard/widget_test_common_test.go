@@ -39,6 +39,7 @@ const (
 	testOpenMeteoType  = "openmeteo"
 	testClockName      = "clock"
 	testInfraGroup     = "Infra"
+	testReadyText      = "2/3 ready"
 
 	// Shared literals across customapi/discovery fixtures.
 	testLabelFirst        = "First"
