@@ -12,6 +12,7 @@ import (
 	"hash/fnv"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -570,12 +571,153 @@ func (s *Server) buildFragmentData(site Site) fragmentData {
 // Server to hang the method off of).
 func buildFragmentData(cards []Card, site Site) fragmentData {
 	return fragmentData{
-		Tabs:               layoutTabs(serviceCards(cards), site),
+		Tabs:               layoutTabs(mergeServiceCards(serviceCards(cards)), site),
 		BookmarkGroups:     site.BookmarkGroups,
 		SiteTarget:         site.Target,
 		DisableCollapse:    site.DisableCollapse,
 		BookmarksIconsOnly: site.BookmarksIconsOnly,
 	}
+}
+
+// mergeCardGroupKey returns the key mergeServiceCards groups cards by: for a
+// poller-produced widget-instance key (namespace/crName/entryIdx/widgetIdx,
+// see poller.go's pollOnce, or its .../monitor variant for a monitor-only
+// entry with no widgets), it's the key with the trailing widget-index (or
+// "monitor") segment stripped — every widget belonging to the same
+// ServiceCard entry shares that prefix. Any other key shape (notably a
+// discovery-sourced card's "discovery/..." Key, see discovery.go) is returned
+// unchanged, so it never accidentally merges with an unrelated card: it's
+// only safe to strip the last segment when that segment is recognizably a
+// widget index or "monitor", since a discovery Key's last segment is a
+// resource name that could coincidentally look like anything.
+func mergeCardGroupKey(key string) string {
+	// Discovery cards ("discovery/<ns>/<name>" or
+	// "discovery/httproute/<ns>/<name>", see discovery.go) are never merged:
+	// their trailing segment is a Kubernetes resource name, which is a valid
+	// DNS-1123 label and so can be all-digits (e.g. an Ingress named "123")
+	// or literally "monitor". Stripping it would collapse two unrelated
+	// discovered services into one card, corrupting what renders. The poller's
+	// own widget-instance keys never carry this prefix.
+	if strings.HasPrefix(key, "discovery/") {
+		return key
+	}
+	i := strings.LastIndex(key, "/")
+	if i < 0 {
+		return key
+	}
+	last := key[i+1:]
+	if last == "monitor" || isDecimalDigits(last) {
+		return key[:i]
+	}
+	return key
+}
+
+// isDecimalDigits reports whether s is non-empty and consists only of ASCII
+// digits (a widget index, as formatted by fmt.Sprintf("%d", ...)).
+func isDecimalDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// mergeWidgetIndex parses the trailing widget-index segment of a poller key
+// ("<namespace>/<crName>/<entryIdx>/<widgetIdx>") as an int, so mergeCards can
+// order a merged entry's Fields by real widget index rather than by the
+// lexicographic Key order Store.Snapshot leaves them in (which sorts "10"
+// before "2"). A key without a numeric trailing segment yields 0.
+func mergeWidgetIndex(key string) int {
+	i := strings.LastIndex(key, "/")
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(key[i+1:])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// mergeServiceCards merges the poller's one-Card-per-widget storage (see
+// poller.go's pollOnce) back into one rendered card per ServiceCard entry —
+// homepage parity: a service with several widgets (e.g. three
+// prometheusmetric widgets) is one card showing every widget's Fields, not
+// one near-identical card per widget. Cards are grouped by
+// mergeCardGroupKey, preserving input order (cards arrives already sorted by
+// Store.Snapshot) for both the groups themselves and, within a merged card,
+// no reordering of the identity fields (only Fields/Err are concatenated). A
+// group with exactly one card — the common case for a single-widget entry,
+// a monitor-only entry, or any non-poller (e.g. discovery) card — passes
+// through unchanged.
+func mergeServiceCards(cards []Card) []Card {
+	type group struct {
+		key   string
+		cards []Card
+	}
+	groups := make(map[string]*group, len(cards))
+	var order []*group
+	for _, c := range cards {
+		k := mergeCardGroupKey(c.Key)
+		g, ok := groups[k]
+		if !ok {
+			g = &group{key: k}
+			groups[k] = g
+			order = append(order, g)
+		}
+		g.cards = append(g.cards, c)
+	}
+
+	out := make([]Card, 0, len(order))
+	for _, g := range order {
+		if len(g.cards) == 1 {
+			out = append(out, g.cards[0])
+			continue
+		}
+		out = append(out, mergeCards(g.cards))
+	}
+	return out
+}
+
+// mergeCards combines several widget-instance Cards belonging to the same
+// ServiceCard entry into the one Card mergeServiceCards renders: identity
+// fields (Group, ServiceName, Order, IconURL, Description, Href, Target,
+// Status, StatusStyle, Latency, ShowStats, HideErrors, WidgetType, Header) and
+// Key come from the lowest-widget-index card, so the DOM id stays stable
+// across polls; Fields are concatenated in widget-index order; non-empty Errs
+// are joined with "; "; UpdatedAt is the latest of the group.
+//
+// The cards are (re-)sorted by numeric trailing widget index first: they
+// arrive in Store.Snapshot order, whose final tiebreaker is a plain string
+// compare of the Key, which puts ".../10" before ".../2" — so an entry with
+// ten or more widgets would otherwise concatenate its Fields (and pick its
+// identity card) out of order.
+func mergeCards(cards []Card) Card {
+	slices.SortStableFunc(cards, func(a, b Card) int {
+		return mergeWidgetIndex(a.Key) - mergeWidgetIndex(b.Key)
+	})
+	merged := cards[0]
+
+	var fields []Field
+	var errs []string
+	latest := merged.UpdatedAt
+	for _, c := range cards {
+		fields = append(fields, c.Fields...)
+		if c.Err != "" {
+			errs = append(errs, c.Err)
+		}
+		if c.UpdatedAt.After(latest) {
+			latest = c.UpdatedAt
+		}
+	}
+	merged.Fields = fields
+	merged.Err = strings.Join(errs, "; ")
+	merged.UpdatedAt = latest
+	return merged
 }
 
 func (s *Server) handleHeader(w http.ResponseWriter, r *http.Request) {
@@ -1101,6 +1243,35 @@ func applyLayoutStyles(g cardGroup, styleByPath map[string]LayoutGroup) cardGrou
 	return g
 }
 
+// orderSubgroups recursively reorders g's Subgroups (and each descendant's
+// own Subgroups) to follow orderByPath — built by layoutTabs from a tab's
+// LayoutGroupSpec entries (t.Groups), keyed by full path — so a path-named
+// layout entry (e.g. "Media/Video Services" listed before "Media/E-Book and
+// File Management") controls sibling order, not just style
+// (applyLayoutStyles). A subgroup whose Path has no entry in orderByPath
+// keeps its existing relative order and sorts after every listed subgroup —
+// nothing silently reorders or disappears just because a tab's layout
+// doesn't mention it. The sort is stable, so unlisted siblings (and equally-
+// unlisted or equally-ranked ones) don't get shuffled relative to each
+// other.
+func orderSubgroups(g cardGroup, orderByPath map[string]int) cardGroup {
+	if len(g.Subgroups) > 1 {
+		rank := func(path string) int {
+			if i, ok := orderByPath[path]; ok {
+				return i
+			}
+			return len(orderByPath)
+		}
+		slices.SortStableFunc(g.Subgroups, func(a, b cardGroup) int {
+			return rank(a.Path) - rank(b.Path)
+		})
+	}
+	for i := range g.Subgroups {
+		g.Subgroups[i] = orderSubgroups(g.Subgroups[i], orderByPath)
+	}
+	return g
+}
+
 // layoutTabs arranges groupCards'/nestGroups' output into tabs per the
 // DashboardStyle's Layout. An empty layout returns the (nested) groups
 // unchanged in a single unnamed tab, so the dashboard renders exactly as it
@@ -1133,6 +1304,11 @@ func layoutTabs(cards []Card, site Site) []layoutTab {
 			styleByPath[lg.Name] = lg
 		}
 
+		orderByPath := make(map[string]int, len(t.Groups))
+		for i, lg := range t.Groups {
+			orderByPath[lg.Name] = i
+		}
+
 		tab := layoutTab{Name: t.Name}
 		for _, lg := range t.Groups {
 			if strings.Contains(lg.Name, "/") {
@@ -1145,7 +1321,9 @@ func layoutTabs(cards []Card, site Site) []layoutTab {
 				continue
 			}
 			used[lg.Name] = true
-			tab.Groups = append(tab.Groups, applyLayoutStyles(g, styleByPath))
+			g = applyLayoutStyles(g, styleByPath)
+			g = orderSubgroups(g, orderByPath)
+			tab.Groups = append(tab.Groups, g)
 		}
 		tabs = append(tabs, tab)
 	}

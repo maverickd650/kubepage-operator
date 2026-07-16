@@ -228,7 +228,7 @@
                       "x-kubernetes-preserve-unknown-fields": true
                     },
                     "fields": {
-                      "description": "fields restricts which of the widget's returned fields are rendered,\nby label (e.g. \"queued\", \"wanted\"). Unset (the default) renders every\nfield the widget returns.",
+                      "description": "fields restricts which of the widget's returned fields are rendered,\nby label (e.g. \"queued\", \"wanted\"). Matching is case- and\npunctuation-insensitive (letters/digits only, lowercased), so a\nhomepage-vocabulary entry like \"sceneSize\" matches this operator's\nhuman-readable label \"Scene Size\", and \"scene_count\" matches \"Scenes\"\nonly if that's the widget's actual label — check the widget's Field\nlabels (its Go source under internal/dashboard) when in doubt. Unset\n(the default) renders every field the widget returns.",
                       "items": {
                         "maxLength": 64,
                         "minLength": 1,
