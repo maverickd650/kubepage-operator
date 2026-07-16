@@ -197,7 +197,9 @@ func TestLoadSiteAppliesBackground(t *testing.T) {
 	if site.Background == nil {
 		t.Fatal("Background = nil, want non-nil")
 	}
-	if site.Background.Image != image || site.Background.Blur != blur ||
+	// Blur is resolved from the Tailwind keyword to its CSS px length at
+	// load time (see Background.Blur's doc comment): "xl" -> "24px".
+	if site.Background.Image != image || site.Background.Blur != blurPxXL ||
 		*site.Background.Saturate != saturate || *site.Background.Brightness != brightness || *site.Background.Opacity != opacity {
 		t.Errorf("Background = %+v", site.Background)
 	}
@@ -902,10 +904,10 @@ func TestBlurPx(t *testing.T) {
 	tests := map[string]struct{ keyword, want string }{
 		"keyword none":    {keyword: "none", want: ""},
 		"default":         {keyword: "", want: "8px"},
-		"keyword sm":      {keyword: "sm", want: "4px"},
+		"keyword sm":      {keyword: "sm", want: blurPxSM},
 		"keyword md":      {keyword: "md", want: "12px"},
 		"keyword lg":      {keyword: "lg", want: "16px"},
-		"keyword xl":      {keyword: "xl", want: "24px"},
+		"keyword xl":      {keyword: "xl", want: blurPxXL},
 		"keyword 2xl":     {keyword: "2xl", want: "40px"},
 		"keyword 3xl":     {keyword: "3xl", want: "64px"},
 		"unknown keyword": {keyword: "not-a-size", want: ""},

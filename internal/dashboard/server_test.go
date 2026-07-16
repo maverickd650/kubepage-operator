@@ -5,9 +5,11 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -391,10 +393,12 @@ func TestIndexEmbedsNonceOnInlineScriptTags(t *testing.T) {
 }
 
 // TestIndexPollingStopsInBackgroundTab verifies the #cards and #header
-// hx-trigger attributes carry a document.visibilityState guard, so a
-// backgrounded browser tab stops firing poll requests. The header's load
-// trigger is deliberately left unguarded (it must still fire once even in a
-// background tab), so only its "every Ns" half is checked.
+// hx-trigger attributes fire on a plain interval (no bracketed event filter —
+// htmx evaluates that via the Function constructor, which the page's
+// nonce-based CSP rejects; see the htmx:beforeRequest listener in
+// index.templ's inline script for the eval-free replacement), and that the
+// page ships the JS-side guard that stops those requests when the tab is
+// backgrounded.
 func TestIndexPollingStopsInBackgroundTab(t *testing.T) {
 	srv := newTestServer(t, NewStore())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -403,8 +407,10 @@ func TestIndexPollingStopsInBackgroundTab(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, want := range []string{
-		`id="cards" hx-ext="morph" hx-get="/fragment" hx-trigger="every 10s[document.visibilityState === &#39;visible&#39;]"`,
-		`hx-ext="morph" hx-get="/header" hx-trigger="load, every 10s[document.visibilityState === &#39;visible&#39;]"`,
+		`id="cards" hx-ext="morph" hx-get="/fragment" hx-trigger="every 10s"`,
+		`hx-ext="morph" hx-get="/header" hx-trigger="load, every 10s"`,
+		`htmx.config.allowEval = false;`,
+		`document.visibilityState !== "visible"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index body missing %q:\n%s", want, body)
@@ -477,6 +483,63 @@ func TestServerFragmentRendersBookmarks(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestServerFragmentBookmarkGroupsRenderSideBySide verifies multiple
+// bookmark groups render as siblings inside one ".bookmark-groups" grid
+// wrapper (homepage parity: bookmark groups sit side by side across the
+// page width, not stacked full-width) — see cards.templ's Cards templ and
+// index.templ's .bookmark-groups rule.
+func TestServerFragmentBookmarkGroupsRenderSideBySide(t *testing.T) {
+	bookmarks := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "multi", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "Entertainment",
+			Bookmarks:    []pagev1alpha1.BookmarkEntry{{Name: "Plex", Href: "https://example.invalid/plex"}},
+		},
+	}
+	bookmarks2 := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "multi2", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "News",
+			Bookmarks:    []pagev1alpha1.BookmarkEntry{{Name: "RSS", Href: "https://example.invalid/rss"}},
+		},
+	}
+	srv := newTestServer(t, NewStore(), bookmarks, bookmarks2)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`class="bookmark-groups"`, `class="bookmark-group-item"`, "Entertainment", "News", "Plex", "RSS"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	wrapperIdx := strings.Index(body, `class="bookmark-groups"`)
+	group1Idx := strings.Index(body, "Entertainment")
+	group2Idx := strings.Index(body, "News")
+	if wrapperIdx < 0 || group1Idx < wrapperIdx || group2Idx < wrapperIdx {
+		t.Errorf("fragment body: both bookmark groups must be nested inside .bookmark-groups (wrapper@%d, Entertainment@%d, News@%d):\n%s", wrapperIdx, group1Idx, group2Idx, body)
+	}
+}
+
+// TestServerFragmentNoBookmarksOmitsWrapper verifies the .bookmark-groups
+// wrapper div is only emitted when there's at least one bookmark group, so
+// a Dashboard with no Bookmark CRDs bound keeps identical markup to before
+// bookmark-groups-side-by-side existed.
+func TestServerFragmentNoBookmarksOmitsWrapper(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "bookmark-groups") {
+		t.Errorf("fragment body rendered .bookmark-groups wrapper with no bookmark groups:\n%s", body)
 	}
 }
 
@@ -1593,7 +1656,7 @@ func TestServerFragmentRendersTabs(t *testing.T) {
 // different parents.
 func TestServerFragmentRendersNestedGroup(t *testing.T) {
 	store := NewStore()
-	store.Set(Card{Key: "ns/radarr/0", Group: "Media/Movies", ServiceName: "Radarr"})
+	store.Set(Card{Key: "ns/radarr/0", Group: "Media/Movies", ServiceName: testNameRadarr})
 
 	srv := newTestServer(t, store)
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
@@ -1603,22 +1666,60 @@ func TestServerFragmentRendersNestedGroup(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`<details class="group" data-group-name="Media"`,
-		`class="subgroups"`,
+		`class="subgroups grid"`,
+		`class="subgroup-item"`,
 		`<details class="group" data-group-name="Media/Movies"`,
-		"Movies", "Radarr",
+		"Movies", testNameRadarr,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
 		}
 	}
+	// Media has no direct cards (only the materialized-ancestor subgroup
+	// Movies), so its own direct-cards grid must not render at all.
+	if strings.Contains(body, `<div class="grid"></div>`) {
+		t.Errorf("fragment body rendered an empty grid div for card-less parent group:\n%s", body)
+	}
 	// The parent's <details> must open before its nested Movies <details>,
 	// and the "subgroups" wrapper must sit inside the parent's block (not a
 	// sibling of it), for the collapse-hides-children behavior to hold.
 	parentIdx := strings.Index(body, `data-group-name="Media"`)
-	subgroupsIdx := strings.Index(body, `class="subgroups"`)
+	subgroupsIdx := strings.Index(body, `class="subgroups grid"`)
 	childIdx := strings.Index(body, `data-group-name="Media/Movies"`)
 	if parentIdx < 0 || subgroupsIdx < 0 || childIdx < 0 || (parentIdx >= subgroupsIdx || subgroupsIdx >= childIdx) {
 		t.Errorf("fragment body ordering = parent@%d subgroups@%d child@%d, want parent < subgroups < child:\n%s", parentIdx, subgroupsIdx, childIdx, body)
+	}
+}
+
+// TestServerFragmentNestedSubgroupsUseParentLayout verifies a parent group's
+// Columns/Style layout entry is applied to the "subgroups" grid wrapper
+// itself (not just its own direct-cards grid), so homepage-parity nested
+// groups flow side by side in the parent's column count rather than
+// stacking vertically — https://gethomepage.dev/configs/services/#nested-groups.
+func TestServerFragmentNestedSubgroupsUseParentLayout(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: "ns/radarr/0", Group: "Media/Video Services", ServiceName: testNameRadarr})
+	store.Set(Card{Key: "ns/paperless/0", Group: "Media/E-Book and File Management", ServiceName: "Paperless"})
+
+	var cols int32 = 2
+	cfg := &pagev1alpha1.DashboardStyle{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardStyleSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Layout: []pagev1alpha1.LayoutTabSpec{
+				{Name: testInfraTab, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Media", Columns: &cols}}},
+			},
+		},
+	}
+	srv := newTestServer(t, store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	want := `class="subgroups grid" style="grid-template-columns: repeat(2, 1fr);"`
+	if !strings.Contains(body, want) {
+		t.Errorf("fragment body missing %q:\n%s", want, body)
 	}
 }
 
@@ -1808,8 +1909,11 @@ func TestServerFragmentBookmarkAbbrWithoutIconAndDisableCollapse(t *testing.T) {
 // TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup is the
 // end-to-end version of TestGroupBookmarksAppliesMatchingLayoutGroup: a
 // LayoutGroupSpec sharing a bookmark group's name renders that group with
-// the matching grid-row/grid-template-columns styling, exactly like it
-// would a service group of the same name.
+// the matching grid-template-columns styling, exactly like it would a
+// service group of the same name. It also pins the homepage-semantics rule
+// that `style: row` + `columns: N` means a wrapping N-column grid — the
+// grid-row scroller class must NOT be emitted when columns are set (see
+// gridClasses), or the inline repeat(N, 1fr) never gets a row to wrap into.
 func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
 	bookmark := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "wiki3", Namespace: testNamespace},
@@ -1841,10 +1945,11 @@ func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{"grid-row", "grid-template-columns: repeat(3, 1fr)"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("fragment body missing %q, want it applied from the matching LayoutGroupSpec:\n%s", want, body)
-		}
+	if !strings.Contains(body, "grid-template-columns: repeat(3, 1fr)") {
+		t.Errorf("fragment body missing repeat(3, 1fr), want it applied from the matching LayoutGroupSpec:\n%s", body)
+	}
+	if strings.Contains(body, "grid-row") {
+		t.Errorf("fragment body has grid-row despite explicit columns — style:row + columns must render a wrapping grid, not the single-row scroller:\n%s", body)
 	}
 }
 
@@ -2653,5 +2758,241 @@ func TestServerEventsRejectsPastMaxSubscribers(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+// Key fixtures for the mergeServiceCards tests below: three widgets of one
+// ServiceCard entry (entryIdx 0), a second entry (entryIdx 1) that must never
+// merge with the first, and that entry's monitor-only variant.
+const (
+	testMergeKeyW0      = "ns/multi/0/0"
+	testMergeKeyW1      = "ns/multi/0/1"
+	testMergeKeyW2      = "ns/multi/0/2"
+	testMergeKeyEntry1  = "ns/multi/1/0"
+	testMergeKeyMonitor = "ns/multi/0/monitor"
+)
+
+// TestMergeServiceCardsCombinesMultiWidgetEntry verifies a ServiceCard entry
+// with several widgets (poller.go stores one Card per widget instance, key
+// namespace/crName/entryIdx/widgetIdx) renders as one merged card carrying
+// every widget's Fields, in widget-index order — the bug-1 fix (homepage
+// parity: one card per service, not one per widget).
+func TestMergeServiceCardsCombinesMultiWidgetEntry(t *testing.T) {
+	cards := []Card{
+		{Key: testMergeKeyW0, Group: testGroup, ServiceName: testServiceName, Fields: []Field{{Label: "A", Value: "1"}}},
+		{Key: testMergeKeyW1, Group: testGroup, ServiceName: testServiceName, Fields: []Field{{Label: "B", Value: "2"}}},
+		{Key: testMergeKeyW2, Group: testGroup, ServiceName: testServiceName, Fields: []Field{{Label: "C", Value: "3"}}},
+	}
+	got := mergeServiceCards(cards)
+	if len(got) != 1 {
+		t.Fatalf("mergeServiceCards() = %d cards, want 1", len(got))
+	}
+	merged := got[0]
+	if merged.Key != testMergeKeyW0 {
+		t.Errorf("merged.Key = %q, want %q (lowest widget index)", merged.Key, testMergeKeyW0)
+	}
+	if len(merged.Fields) != 3 {
+		t.Fatalf("merged.Fields = %+v, want 3 fields", merged.Fields)
+	}
+	for i, wantLabel := range []string{"A", "B", "C"} {
+		if merged.Fields[i].Label != wantLabel {
+			t.Errorf("merged.Fields[%d].Label = %q, want %q (widget-index order)", i, merged.Fields[i].Label, wantLabel)
+		}
+	}
+}
+
+// TestMergeServiceCardsLeavesSingleWidgetEntryUnchanged verifies a
+// single-widget entry passes through mergeServiceCards untouched.
+func TestMergeServiceCardsLeavesSingleWidgetEntryUnchanged(t *testing.T) {
+	cards := []Card{{Key: testMergeKeyW0, Group: testGroup, ServiceName: testServiceName, Fields: []Field{{Label: "A", Value: "1"}}}}
+	got := mergeServiceCards(cards)
+	if len(got) != 1 || got[0].Key != testMergeKeyW0 || len(got[0].Fields) != 1 {
+		t.Fatalf("mergeServiceCards() = %+v, want the single card unchanged", got)
+	}
+}
+
+// TestMergeServiceCardsLeavesMonitorOnlyEntryUnchanged verifies a
+// monitor-only entry (no widgets, key .../monitor — see poller.go's
+// pollOnce) passes through unchanged; it never merges with anything else
+// since it's the only card at its group key.
+func TestMergeServiceCardsLeavesMonitorOnlyEntryUnchanged(t *testing.T) {
+	cards := []Card{{Key: testMergeKeyMonitor, Group: testGroup, ServiceName: testServiceName, Status: "Up"}}
+	got := mergeServiceCards(cards)
+	if len(got) != 1 || got[0].Key != testMergeKeyMonitor || got[0].Status != "Up" {
+		t.Fatalf("mergeServiceCards() = %+v, want the monitor-only card unchanged", got)
+	}
+}
+
+// TestMergeServiceCardsNeverMergesDifferentEntries verifies two different
+// ServiceCard entries (different entryIdx, so different key prefixes) never
+// merge into one card, even though both entries share every identity field.
+func TestMergeServiceCardsNeverMergesDifferentEntries(t *testing.T) {
+	cards := []Card{
+		{Key: testMergeKeyW0, Group: testGroup, ServiceName: testServiceName},
+		{Key: testMergeKeyEntry1, Group: testGroup, ServiceName: testServiceName},
+	}
+	got := mergeServiceCards(cards)
+	if len(got) != 2 {
+		t.Fatalf("mergeServiceCards() = %d cards, want 2 (different entries never merge)", len(got))
+	}
+}
+
+// TestMergeServiceCardsJoinsErrs verifies each widget's non-empty Err is
+// joined with "; " in the merged card, and an empty Err from one widget
+// contributes nothing to the join.
+func TestMergeServiceCardsJoinsErrs(t *testing.T) {
+	cards := []Card{
+		{Key: testMergeKeyW0, Group: testGroup, ServiceName: testServiceName, Err: "widget A failed"},
+		{Key: testMergeKeyW1, Group: testGroup, ServiceName: testServiceName},
+		{Key: testMergeKeyW2, Group: testGroup, ServiceName: testServiceName, Err: "widget C failed"},
+	}
+	got := mergeServiceCards(cards)
+	if len(got) != 1 {
+		t.Fatalf("mergeServiceCards() = %d cards, want 1", len(got))
+	}
+	if want := "widget A failed; widget C failed"; got[0].Err != want {
+		t.Errorf("merged.Err = %q, want %q", got[0].Err, want)
+	}
+}
+
+// TestMergeServiceCardsLeavesDiscoveryCardsUnchanged verifies
+// discovery-sourced cards (see discovery.go, Key shaped "discovery/ns/name"
+// — not the poller's namespace/crName/entryIdx/widgetIdx shape) never merge
+// with each other just because they happen to share a namespace.
+func TestMergeServiceCardsLeavesDiscoveryCardsUnchanged(t *testing.T) {
+	cards := []Card{
+		{Key: "discovery/ns/svc-a", Group: testGroup, ServiceName: testSvcAName},
+		{Key: "discovery/ns/svc-b", Group: testGroup, ServiceName: "Svc D"},
+	}
+	got := mergeServiceCards(cards)
+	if len(got) != 2 {
+		t.Fatalf("mergeServiceCards() = %d cards, want 2 (discovery cards never merge on namespace alone)", len(got))
+	}
+}
+
+// TestMergeServiceCardsLeavesDigitNamedDiscoveryCardsUnchanged is the
+// regression guard for the discovery-name collision: a discovered resource's
+// name is a DNS-1123 label, which can be all-digits or literally "monitor" —
+// the exact trailing segments mergeCardGroupKey strips for poller keys. Two
+// such discovered services in one namespace must still render as separate
+// cards, not collapse into one.
+func TestMergeServiceCardsLeavesDigitNamedDiscoveryCardsUnchanged(t *testing.T) {
+	cards := []Card{
+		{Key: "discovery/ns/123", Group: testGroup, ServiceName: testSvcAName, Fields: []Field{{Label: "A", Value: "1"}}},
+		{Key: "discovery/ns/456", Group: testGroup, ServiceName: "Svc D", Fields: []Field{{Label: "B", Value: "2"}}},
+		{Key: "discovery/ns/monitor", Group: testGroup, ServiceName: "Svc M", Fields: []Field{{Label: "C", Value: "3"}}},
+	}
+	got := mergeServiceCards(cards)
+	if len(got) != 3 {
+		t.Fatalf("mergeServiceCards() = %d cards, want 3 (digit-/monitor-named discovery cards never merge)", len(got))
+	}
+}
+
+// TestMergeServiceCardsOrdersTenPlusWidgetsNumerically is the regression guard
+// for the ≥10-widget field-ordering bug: cards arrive in Store.Snapshot order,
+// whose final tiebreaker string-compares the Key and so puts ".../10" before
+// ".../2". A ten-plus-widget entry must still concatenate its Fields (and pick
+// its identity card) in numeric widget-index order.
+func TestMergeServiceCardsOrdersTenPlusWidgetsNumerically(t *testing.T) {
+	const n = 11
+	// Build cards in the lexicographic Key order Store.Snapshot yields, so a
+	// merge that trusts input order would emit them mis-sorted.
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("ns/multi/0/%d", i)
+	}
+	slices.Sort(keys) // "…/0", "…/1", "…/10", "…/2", …
+	cards := make([]Card, 0, n)
+	for _, k := range keys {
+		idx := k[strings.LastIndex(k, "/")+1:]
+		cards = append(cards, Card{Key: k, Group: testGroup, ServiceName: testServiceName, Fields: []Field{{Label: idx, Value: idx}}})
+	}
+
+	got := mergeServiceCards(cards)
+	if len(got) != 1 {
+		t.Fatalf("mergeServiceCards() = %d cards, want 1", len(got))
+	}
+	merged := got[0]
+	if merged.Key != "ns/multi/0/0" {
+		t.Errorf("merged.Key = %q, want %q (lowest widget index)", merged.Key, "ns/multi/0/0")
+	}
+	if len(merged.Fields) != n {
+		t.Fatalf("merged.Fields = %d, want %d", len(merged.Fields), n)
+	}
+	for i := range merged.Fields {
+		if want := fmt.Sprintf("%d", i); merged.Fields[i].Label != want {
+			t.Errorf("merged.Fields[%d].Label = %q, want %q (numeric widget-index order)", i, merged.Fields[i].Label, want)
+		}
+	}
+}
+
+// TestOrderSubgroupsFollowsLayoutOrder verifies layoutTabs reorders a tab's
+// path-named subgroup entries to match their order in the DashboardStyle's
+// layout (bug-2 fix), not nestGroups' first-seen/alphabetical order — repro:
+// a tab listing "Media/TV" before "Media/Movies" (reverse of first-seen
+// order below) renders TV first.
+func TestOrderSubgroupsFollowsLayoutOrder(t *testing.T) {
+	cards := []Card{
+		{Group: testGroupMediaMovies, ServiceName: testNameRadarr},
+		{Group: testGroupMediaTV, ServiceName: testNameSonarr},
+	}
+	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{
+		{Name: testGroupMedia},
+		{Name: testGroupMediaTV},
+		{Name: testGroupMediaMovies},
+	}}}
+	tabs := layoutTabs(cards, Site{Layout: layout})
+	if len(tabs) != 1 || len(tabs[0].Groups) != 1 {
+		t.Fatalf("layoutTabs() = %+v, want 1 tab with Media placed", tabs)
+	}
+	root := tabs[0].Groups[0]
+	if len(root.Subgroups) != 2 || root.Subgroups[0].Path != testGroupMediaTV || root.Subgroups[1].Path != testGroupMediaMovies {
+		t.Fatalf("root.Subgroups = %v, want [Media/TV Media/Movies] (layout order)", groupPaths(root.Subgroups))
+	}
+}
+
+// TestOrderSubgroupsUnlistedSubgroupSortsAfterListed verifies a subgroup with
+// no path entry in the tab's layout keeps its place after every listed
+// subgroup, rather than disappearing or reordering unpredictably.
+func TestOrderSubgroupsUnlistedSubgroupSortsAfterListed(t *testing.T) {
+	cards := []Card{
+		{Group: testGroupMediaMovies, ServiceName: testNameRadarr},
+		{Group: testGroupMediaTV, ServiceName: testNameSonarr},
+		{Group: "Media/Music", ServiceName: "Lidarr"},
+	}
+	layout := []LayoutTab{{Name: testTab1, Groups: []LayoutGroup{
+		{Name: testGroupMedia},
+		{Name: testGroupMediaTV},
+	}}}
+	tabs := layoutTabs(cards, Site{Layout: layout})
+	root := tabs[0].Groups[0]
+	if len(root.Subgroups) != 3 {
+		t.Fatalf("root.Subgroups = %+v, want 3 subgroups", root.Subgroups)
+	}
+	if root.Subgroups[0].Path != testGroupMediaTV {
+		t.Errorf("root.Subgroups[0].Path = %q, want %q (listed first)", root.Subgroups[0].Path, testGroupMediaTV)
+	}
+	// Movies and Music are both unlisted: they keep first-seen order,
+	// after TV.
+	if root.Subgroups[1].Path != testGroupMediaMovies || root.Subgroups[2].Path != "Media/Music" {
+		t.Fatalf("root.Subgroups[1:] = %v, want [Media/Movies Media/Music] (unlisted, first-seen order, after listed)", groupPaths(root.Subgroups[1:]))
+	}
+}
+
+// TestOrderSubgroupsUntouchedWhenNoLayout verifies the no-layout fallback
+// path (layoutTabs' single unnamed tab) never calls orderSubgroups — nested
+// groups keep nestGroups' first-seen order exactly as before this fix.
+func TestOrderSubgroupsUntouchedWhenNoLayout(t *testing.T) {
+	cards := []Card{
+		{Group: testGroupMediaTV, ServiceName: testNameSonarr},
+		{Group: testGroupMediaMovies, ServiceName: testNameRadarr},
+	}
+	tabs := layoutTabs(cards, Site{})
+	if len(tabs) != 1 || len(tabs[0].Groups) != 1 {
+		t.Fatalf("layoutTabs() = %+v, want 1 unnamed tab with Media", tabs)
+	}
+	root := tabs[0].Groups[0]
+	if len(root.Subgroups) != 2 || root.Subgroups[0].Path != testGroupMediaTV || root.Subgroups[1].Path != testGroupMediaMovies {
+		t.Fatalf("root.Subgroups = %v, want first-seen order [Media/TV Media/Movies]", groupPaths(root.Subgroups))
 	}
 }

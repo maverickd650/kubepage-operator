@@ -25,6 +25,39 @@ func gridStyle(columns *int32) string {
 	return fmt.Sprintf("grid-template-columns: repeat(%d, 1fr);", *columns)
 }
 
+// styleRow is LayoutGroupSpec.Style's "row" enum value (the other, "column",
+// is the default grid and needs no branch anywhere).
+const styleRow = "row"
+
+// gridClasses builds a group grid's class list — the single place that
+// decides how a LayoutGroupSpec's style/columns combine, shared by every
+// grid in cards.templ (serviceCardGrid, bookmarkCardGrid, and
+// serviceSubgroups' wrapper, which passes extra="subgroups").
+//
+// homepage's layout vocabulary treats `style: row` + `columns: N` as "a
+// full-width group whose cards wrap into N columns"
+// (https://gethomepage.dev/configs/settings/#layout), so the "grid-row"
+// horizontal scroller (grid-auto-flow: column + overflow-x, see index.templ)
+// applies ONLY when style is "row" AND no explicit columns are set — an
+// explicit column count always means a normal wrapping grid, since column
+// auto-flow would otherwise put every card in its own implicit column on
+// one scrolling line and the inline repeat(N, 1fr) could never wrap
+// anything, making `columns` visually a no-op.
+func gridClasses(extra, style string, columns *int32, equalHeights bool) string {
+	classes := make([]string, 0, 4)
+	if extra != "" {
+		classes = append(classes, extra)
+	}
+	classes = append(classes, "grid")
+	if style == styleRow && columns == nil {
+		classes = append(classes, "grid-row")
+	}
+	if equalHeights {
+		classes = append(classes, "grid-equal")
+	}
+	return strings.Join(classes, " ")
+}
+
 // isHTTPURL reports whether s has an http(s) scheme. Used to defensively
 // re-check DashboardStyle.Spec.Search.URL before it's passed into a
 // client-side window.open()/href — see the call site in site.go.
@@ -179,6 +212,15 @@ func rootVarsCSS(accentHex string, ramp Ramp, cardBlur string, background *Backg
 	if cardBlur != "" {
 		fmt.Fprintf(&b, "--card-blur: %s;", cardBlur)
 	}
+	// A card's backdrop-filter has something to blur when a background image
+	// is configured (it blurs the image showing through a translucent card),
+	// or when the user explicitly asked for a card blur. Emit --card-backdrop
+	// in either case; skip it entirely otherwise so browsers don't pay for a
+	// no-op blur compositing layer on every card (see docs on .card in
+	// index.templ).
+	if background != nil || cardBlur != "" {
+		b.WriteString("--card-backdrop: blur(var(--card-blur, 8px));")
+	}
 	if background != nil && background.Opacity != nil {
 		fmt.Fprintf(&b, "--card-opacity: %d%%;", *background.Opacity)
 	}
@@ -238,6 +280,14 @@ func cssStringEscape(s string) string {
 // once (none, since this is explicitly Raw), so it's the correct place for
 // a value containing literal quote characters.
 //
+// will-change: transform promotes body::before to its own GPU-composited
+// layer: without it, a page with many other composited layers (every .card's
+// backdrop-filter — see index.templ) can hit a Chromium compositing bug
+// where the fixed background falls out of its layer on scroll and repaints
+// as solid --bg instead of the image (observed directly: scrolling any
+// distance blanks the background to solid navy). Isolating it up front
+// avoids depending on how many backdrop-filter siblings happen to exist.
+//
 // nonce is the per-request CSP nonce (see server.go's securityHeaders):
 // with script-src/style-src locked to 'nonce-...' instead of
 // 'unsafe-inline', every inline <style>/<script> — including this
@@ -250,8 +300,45 @@ func backgroundStyle(nonce string, bg *Background) string {
 	if bg == nil {
 		return ""
 	}
-	return fmt.Sprintf(`<style nonce="%s">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("%s"); background-size: cover; background-position: center; }</style>`,
-		nonce, cssStringEscape(bg.Image))
+	return fmt.Sprintf(`<style nonce="%s">body::before { content: ""; position: fixed; %sz-index: -1; background-image: url("%s"); background-size: cover; background-position: center; will-change: transform;%s }</style>`,
+		nonce, backgroundInsetCSS(bg), cssStringEscape(bg.Image), backgroundFilterCSS(bg))
+}
+
+// backgroundFilterCSS builds body::before's "filter:" declaration from the
+// Background's blur/brightness/saturate (BackgroundSpec's documented image
+// filters), or "" when none is set — keeping the no-filter output identical
+// to what backgroundStyle emitted before these fields were wired up. Every
+// interpolated value is a blurPx lookup result or a CRD-validated integer,
+// never free text, so no CSS escaping is needed (unlike Image — see
+// cssStringEscape).
+func backgroundFilterCSS(bg *Background) string {
+	var parts []string
+	if bg.Blur != "" {
+		parts = append(parts, "blur("+bg.Blur+")")
+	}
+	if bg.Brightness != nil {
+		parts = append(parts, fmt.Sprintf("brightness(%d%%)", *bg.Brightness))
+	}
+	if bg.Saturate != nil {
+		parts = append(parts, fmt.Sprintf("saturate(%d%%)", *bg.Saturate))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " filter: " + strings.Join(parts, " ") + ";"
+}
+
+// backgroundInsetCSS returns body::before's inset declaration: "inset: 0;"
+// normally, but oversized by twice the blur radius when a blur filter is
+// active — a blur samples past the element's own edges, so a viewport-sized
+// element shows a lighter, washed-out fringe at every border where the
+// filter runs out of pixels; bleeding the (fixed-position, overflow-clipped)
+// pseudo-element past the viewport hides that fringe offscreen.
+func backgroundInsetCSS(bg *Background) string {
+	if bg.Blur != "" {
+		return fmt.Sprintf("inset: calc(-2 * %s); ", bg.Blur)
+	}
+	return "inset: 0; "
 }
 
 // customStyle returns a complete "<style>...</style>" element wrapping the

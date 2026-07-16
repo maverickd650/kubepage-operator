@@ -29,42 +29,72 @@ const (
 	whenRegex      = "regex"
 )
 
-// filterFields restricts fields to those whose Label appears in allowlist,
-// preserving the widget's original field order. An empty allowlist (the
-// default: a ServiceWidget with no Fields set) returns fields unchanged.
+// filterFields restricts fields to those whose Label matches an allowlist
+// entry, preserving the widget's original field order. An empty allowlist
+// (the default: a ServiceWidget with no Fields set) returns fields
+// unchanged. Matching is case/punctuation-insensitive via normalizeFieldKey
+// so a homepage-vocabulary allowlist (e.g. "sceneSize", "scene_count") lines
+// up with this package's human-readable Field.Label strings ("Scene Size")
+// without every widget having to special-case its own label spelling.
 func filterFields(fields []Field, allowlist []string) []Field {
 	if len(allowlist) == 0 {
 		return fields
 	}
 	keep := make(map[string]bool, len(allowlist))
 	for _, label := range allowlist {
-		keep[label] = true
+		keep[normalizeFieldKey(label)] = true
 	}
 	out := make([]Field, 0, len(fields))
 	for _, f := range fields {
-		if keep[f.Label] {
+		if keep[normalizeFieldKey(f.Label)] {
 			out = append(out, f)
 		}
 	}
 	return out
 }
 
-// applyHighlights evaluates rules (keyed by Field.Label, from a
-// ServiceWidget's Highlight map) against fields, setting Field.Highlight on
-// the first matching rule per field. A field that already carries a
-// widget-set Highlight (e.g. kubemetrics' own CPU/memory thresholds) is left
-// untouched: this generic engine only fills in what the widget itself didn't
-// already decide.
+// normalizeFieldKey lowercases s and strips every non-alphanumeric rune, so
+// "Scene Size", "sceneSize", and "scene_size" all normalize to "scenesize"
+// and compare equal in filterFields.
+func normalizeFieldKey(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r - 'A' + 'a')
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// applyHighlights evaluates rules (keyed by field name, from a ServiceWidget's
+// Highlight map) against fields, setting Field.Highlight on the first matching
+// rule per field. Rule keys are matched against Field.Label the same
+// case/punctuation-insensitive way filterFields matches its allowlist (via
+// normalizeFieldKey), so a homepage-vocabulary rule key (e.g. "sceneSize")
+// lines up with this package's human-readable labels ("Scene Size") — without
+// this, a highlight rule written with the same key that the fields allowlist
+// accepts would silently never fire. A field that already carries a widget-set
+// Highlight (e.g. kubemetrics' own CPU/memory thresholds) is left untouched:
+// this generic engine only fills in what the widget itself didn't already
+// decide.
 func applyHighlights(fields []Field, rules map[string]pagev1alpha1.FieldHighlight) []Field {
 	if len(rules) == 0 {
 		return fields
+	}
+	byKey := make(map[string]pagev1alpha1.FieldHighlight, len(rules))
+	for label, fh := range rules {
+		byKey[normalizeFieldKey(label)] = fh
 	}
 	for i := range fields {
 		f := &fields[i]
 		if f.Highlight != "" {
 			continue
 		}
-		fh, ok := rules[f.Label]
+		fh, ok := byKey[normalizeFieldKey(f.Label)]
 		if !ok {
 			continue
 		}

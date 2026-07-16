@@ -133,7 +133,11 @@ type LayoutGroupSpec struct {
 	// +optional
 	Columns *int32 `json:"columns,omitempty"`
 
-	// style lays the group's cards out in a single row instead of a grid.
+	// style lays the group's cards out in a single horizontally-scrolling
+	// row instead of a grid. Setting columns alongside "row" follows
+	// homepage's layout semantics: the group renders as a normal wrapping
+	// grid of that many columns (the single-row scroller applies only when
+	// no columns are set).
 	// +kubebuilder:validation:Enum=row;column
 	// +optional
 	Style *string `json:"style,omitempty"`

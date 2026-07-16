@@ -12,6 +12,9 @@ const (
 	testFieldStatus = "status"
 	testNotANumber  = "n/a"
 	testBogusWhen   = "bogus"
+	// testKeySceneSize is a homepage-vocabulary field key (camelCase) whose
+	// normalized form matches this package's "Scene Size" label.
+	testKeySceneSize = "sceneSize"
 )
 
 func TestFilterFields(t *testing.T) {
@@ -25,6 +28,72 @@ func TestFilterFields(t *testing.T) {
 	want := []Field{{Label: testFieldQueued, Value: "1"}, {Label: testFieldStatus, Value: "ok"}}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("filterFields(...) = %+v, want %+v (original order preserved)", got, want)
+	}
+}
+
+// TestFilterFieldsNormalizedMatch verifies allowlist matching is
+// case/punctuation-insensitive, so a homepage-vocabulary `fields` entry
+// (camelCase or snake_case) matches this package's human-readable
+// Field.Label without dropping every field silently.
+func TestFilterFieldsNormalizedMatch(t *testing.T) {
+	fields := []Field{
+		{Label: labelScenes, Value: "1"},
+		{Label: labelSceneSize, Value: "2"},
+		{Label: labelOCount, Value: "3"},
+		{Label: labelImages, Value: "4"},
+	}
+
+	tests := map[string]struct {
+		allowlist []string
+		want      []Field
+	}{
+		"camelCase homepage keys": {
+			allowlist: []string{testKeySceneSize, "oCount"},
+			want:      []Field{{Label: labelSceneSize, Value: "2"}, {Label: labelOCount, Value: "3"}},
+		},
+		"snake_case keys": {
+			allowlist: []string{"scene_size"},
+			want:      []Field{{Label: labelSceneSize, Value: "2"}},
+		},
+		"exact-case label still matches": {
+			allowlist: []string{labelScenes},
+			want:      []Field{{Label: labelScenes, Value: "1"}},
+		},
+		"different case entirely": {
+			allowlist: []string{"IMAGES"},
+			want:      []Field{{Label: labelImages, Value: "4"}},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := filterFields(fields, tc.allowlist)
+			if len(got) != len(tc.want) {
+				t.Fatalf("filterFields(%v) = %+v, want %+v", tc.allowlist, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("filterFields(%v)[%d] = %+v, want %+v", tc.allowlist, i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestNormalizeFieldKey(t *testing.T) {
+	const wantSceneSize = "scenesize"
+	tests := map[string]string{
+		"Scene Size":     wantSceneSize,
+		testKeySceneSize: wantSceneSize,
+		"scene_size":     wantSceneSize,
+		"O Count":        "ocount",
+		"oCount":         "ocount",
+		"":               "",
+		"ABC-123_def":    "abc123def",
+	}
+	for in, want := range tests {
+		if got := normalizeFieldKey(in); got != want {
+			t.Errorf("normalizeFieldKey(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -52,6 +121,24 @@ func TestApplyHighlightsFirstMatchWins(t *testing.T) {
 		if got[0].Highlight != tc.want {
 			t.Errorf("applyHighlights(value=%q) = %q, want %q", tc.value, got[0].Highlight, tc.want)
 		}
+	}
+}
+
+// TestApplyHighlightsNormalizedKey is the regression guard for the
+// highlight/fields vocabulary split: a highlight rule keyed with the same
+// homepage-style vocabulary that filterFields accepts (e.g. "sceneSize") must
+// fire against this package's human-readable label ("Scene Size"), matched the
+// same normalized way filterFields matches its allowlist.
+func TestApplyHighlightsNormalizedKey(t *testing.T) {
+	rules := map[string]pagev1alpha1.FieldHighlight{
+		testKeySceneSize: {Rules: []pagev1alpha1.HighlightRuleSpec{
+			{Level: HighlightDanger, When: whenGTE, Value: "100"},
+		}},
+	}
+	fields := []Field{{Label: "Scene Size", Value: "120"}}
+	got := applyHighlights(fields, rules)
+	if got[0].Highlight != HighlightDanger {
+		t.Errorf("applyHighlights() = %q, want %q for homepage-vocabulary rule key matching normalized label", got[0].Highlight, HighlightDanger)
 	}
 }
 

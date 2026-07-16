@@ -5543,8 +5543,12 @@ spec:
                             pattern: ^[^/]+(/[^/]+){0,2}$
                             type: string
                           style:
-                            description: style lays the group's cards out in a single
-                              row instead of a grid.
+                            description: |-
+                              style lays the group's cards out in a single horizontally-scrolling
+                              row instead of a grid. Setting columns alongside "row" follows
+                              homepage's layout semantics: the group renders as a normal wrapping
+                              grid of that many columns (the single-row scroller applies only when
+                              no columns are set).
                             enum:
                             - row
                             - column
@@ -6514,8 +6518,13 @@ spec:
                           fields:
                             description: |-
                               fields restricts which of the widget's returned fields are rendered,
-                              by label (e.g. "queued", "wanted"). Unset (the default) renders every
-                              field the widget returns.
+                              by label (e.g. "queued", "wanted"). Matching is case- and
+                              punctuation-insensitive (letters/digits only, lowercased), so a
+                              homepage-vocabulary entry like "sceneSize" matches this operator's
+                              human-readable label "Scene Size", and "scene_count" matches "Scenes"
+                              only if that's the widget's actual label — check the widget's Field
+                              labels (its Go source under internal/dashboard) when in doubt. Unset
+                              (the default) renders every field the widget returns.
                             items:
                               maxLength: 64
                               minLength: 1
