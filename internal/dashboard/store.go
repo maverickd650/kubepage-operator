@@ -32,11 +32,18 @@ type Card struct {
 	ShowStats  bool
 	HideErrors bool
 
-	// Monitor (ping/siteMonitor) result. Status is "" when no monitor is
-	// configured, otherwise "Up"/"Down". StatusStyle is "dot"/"basic".
+	// HTTP monitor (ping/siteMonitor) result. Status is "" when no HTTP
+	// monitor is configured, otherwise "Up"/"Down". StatusStyle is
+	// "dot"/"basic", shared with the pod monitor below.
 	Status      string
 	StatusStyle string
 	Latency     string
+
+	// Pod monitor (app/podSelector) result. PodStatus is "" when no pod
+	// monitor is configured, otherwise "Up"/"Partial"/"Down". PodReadyText
+	// is e.g. "2/3 ready" ("0/0 ready" when no pods matched).
+	PodStatus    string
+	PodReadyText string
 
 	Fields    []Field
 	Err       string

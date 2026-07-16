@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,22 @@ const maxConcurrentPolls = 8
 const (
 	statusStyleDot   = "dot"
 	statusStyleBasic = "basic"
+)
+
+// statusPartial is the pod monitor's three-valued status a ping/siteMonitor
+// probe never reports: some, but not all, of a PodSelector/App's matched
+// pods are Ready. Renders amber, between statusUp's green and statusDown's
+// red — see cards.templ's status-Partial CSS class.
+const statusPartial = "Partial"
+
+// monitorSourceHTTP and monitorSourcePods are the monitorUp gauge's "source"
+// label values, distinguishing a ServiceEntry's HTTP monitor
+// (Ping/SiteMonitor) from its pod monitor (App/PodSelector) — the two can
+// now be configured at once (see docs/design/combined-monitor.md), so they
+// must not share one label series.
+const (
+	monitorSourceHTTP = "http"
+	monitorSourcePods = "pods"
 )
 
 // Poller periodically lists the ServiceCards bound to one Dashboard,
@@ -96,14 +113,15 @@ type Poller struct {
 	// metrics as if a real poll succeeded.
 	SampleData bool
 
-	// monitorLabels is the set of monitorUp labels reported on the previous
-	// poll cycle — "namespace/name/entryName" for a services entry (see
-	// monitor's doc comment). pollOnce diffs the
-	// current cycle's set against this to delete a label series for an
-	// entry that's since been deleted or had its monitor removed —
-	// monitorUp has no other pruning path, unlike Store's per-cycle Prune.
-	// Only ever read/written from pollOnce, which Run never calls
-	// concurrently with itself, so this needs no lock of its own.
+	// monitorLabels is the set of monitorUp (service, source) label pairs
+	// reported on the previous poll cycle, keyed by
+	// "namespace/name/entryName\x1f<source>" (see monitor's doc comment and
+	// monitorLabelKey). pollOnce diffs the current cycle's set against this
+	// to delete a label series for an entry — or one source of it — that's
+	// since been deleted or had that monitor removed — monitorUp has no
+	// other pruning path, unlike Store's per-cycle Prune. Only ever read/
+	// written from pollOnce, which Run never calls concurrently with itself,
+	// so this needs no lock of its own.
 	monitorLabels map[string]bool
 
 	// widgetLastPolled tracks the last time a widget with its own
@@ -157,9 +175,9 @@ func (p *Poller) pollOnce(ctx context.Context) {
 
 	var monitorLabelsMu sync.Mutex
 	monitorLabels := map[string]bool{}
-	recordMonitorLabel := func(label string) {
+	recordMonitorLabel := func(label, source string) {
 		monitorLabelsMu.Lock()
-		monitorLabels[label] = true
+		monitorLabels[monitorLabelKey(label, source)] = true
 		monitorLabelsMu.Unlock()
 	}
 
@@ -177,6 +195,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 
 	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
 	widgetDefaults := p.widgetDefaults(ctx)
+	allowedMonitorNamespaces := p.monitorNamespaces(ctx)
 
 	var entries pagev1alpha1.ServiceCardList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
@@ -199,17 +218,17 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			// unreachable monitor delayed every other card in the cycle by
 			// up to its full HTTP timeout.
 			run(func() {
-				status, statusStyle, latency := p.monitor(ctx, namespace, crName, se, defaultStatusStyle, recordMonitorLabel)
+				m := p.monitor(ctx, namespace, crName, se, defaultStatusStyle, allowedMonitorNamespaces, recordMonitorLabel)
 
 				if len(se.Widgets) == 0 {
 					// A service with a monitor but no widget still gets one
 					// card so its up/down status is visible.
-					if status == "" {
+					if m.status == "" && m.podStatus == "" {
 						return
 					}
 					key := fmt.Sprintf("%s/%s/%d/monitor", namespace, crName, entryIdx)
 					markKeep(key)
-					p.pollWidget(ctx, key, namespace, se, nil, status, statusStyle, latency, defaultHideErrors, widgetDefaults)
+					p.pollWidget(ctx, key, namespace, se, nil, m, defaultHideErrors, widgetDefaults)
 					return
 				}
 
@@ -218,7 +237,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 					markKeep(key)
 					widget := &se.Widgets[i]
 					run(func() {
-						p.pollWidget(ctx, key, namespace, se, widget, status, statusStyle, latency, defaultHideErrors, widgetDefaults)
+						p.pollWidget(ctx, key, namespace, se, widget, m, defaultHideErrors, widgetDefaults)
 					})
 				}
 			})
@@ -367,72 +386,181 @@ func (p *Poller) pruneCAClientCache() {
 
 // pruneMonitorMetrics deletes any monitorUp label series from the previous
 // cycle that current (this cycle's labels) no longer reports, so a deleted
-// ServiceCard — or one that's had its Ping/SiteMonitor/PodSelector removed —
-// doesn't leave a stale gauge value exported forever.
+// ServiceCard — or one that's had its Ping/SiteMonitor/App/PodSelector
+// removed — doesn't leave a stale gauge value exported forever.
 func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
-	for label := range p.monitorLabels {
-		if !current[label] {
-			monitorUp.DeleteLabelValues(label)
+	for key := range p.monitorLabels {
+		if !current[key] {
+			label, source := splitMonitorLabelKey(key)
+			monitorUp.DeleteLabelValues(label, source)
 		}
 	}
 	p.monitorLabels = current
 }
 
-// monitor probes se's monitor source — Ping, SiteMonitor, or PodSelector,
-// mutually exclusive by ServiceEntry's own CEL validation — returning the
-// resolved status/style/latency, or empty strings when none is configured.
-// record is called with the monitorUp label this probe reported under, so
-// the caller can track which labels are still live this cycle (see
-// pruneMonitorMetrics). The label is "namespace/crName/entryName", so two
-// entries defined in the same ServiceCard don't collide on one label series.
-func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, defaultStatusStyle string, record func(label string)) (status, statusStyle, latency string) {
+// monitorLabelKeySep separates a monitorUp "service" label from its "source"
+// label in monitorLabels' bookkeeping keys — see monitorLabelKey.
+const monitorLabelKeySep = "\x1f"
+
+// monitorLabelKey and splitMonitorLabelKey encode/decode a (label, source)
+// pair into monitorLabels' single-string map key. \x1f (ASCII unit
+// separator) is used rather than "/" since label already contains "/"
+// (namespace/crName/entryName).
+func monitorLabelKey(label, source string) string {
+	return label + monitorLabelKeySep + source
+}
+
+func splitMonitorLabelKey(key string) (label, source string) {
+	label, source, _ = strings.Cut(key, monitorLabelKeySep)
+	return label, source
+}
+
+// monitorProbeResult is monitor's combined result: the HTTP monitor
+// (Ping/SiteMonitor) result in status/statusStyle/latency, and the pod
+// monitor (App/PodSelector) result in podStatus/podReadyText — either half
+// may be empty when that source isn't configured for the entry. err, when
+// non-empty, is a card-facing error message (e.g. a disallowed foreign
+// namespace) that the caller should surface as the card's Err field, subject
+// to the entry's own HideErrors setting.
+type monitorProbeResult struct {
+	status      string
+	statusStyle string
+	latency     string
+
+	podStatus    string
+	podReadyText string
+
+	err string
+}
+
+// monitor probes se's configured monitor sources: the HTTP monitor (Ping or
+// SiteMonitor, mutually exclusive by ServiceEntry's own CEL validation) and
+// the pod monitor (App and/or PodSelector, freely combinable with the HTTP
+// monitor — see docs/design/combined-monitor.md), returning both results at
+// once. record is called once per configured source with the monitorUp
+// label/source pair this probe reported under, so the caller can track which
+// series are still live this cycle (see pruneMonitorMetrics). The label is
+// "namespace/crName/entryName", so two entries defined in the same
+// ServiceCard don't collide on one label series.
+func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, defaultStatusStyle string, allowedMonitorNamespaces []string, record func(label, source string)) monitorProbeResult {
+	var result monitorProbeResult
+
 	switch {
-	case se.PodSelector != nil:
-		status, latency = p.probePodSelector(ctx, namespace, se)
 	case se.SiteMonitor != nil && *se.SiteMonitor != "":
-		status, latency = p.probeURL(ctx, *se.SiteMonitor)
+		result.status, result.latency = p.probeURL(ctx, *se.SiteMonitor)
 	case se.Ping != nil && *se.Ping != "":
-		status, latency = p.probeURL(ctx, *se.Ping)
-	default:
-		return "", "", ""
+		result.status, result.latency = p.probeURL(ctx, *se.Ping)
+	}
+
+	if selector := podMonitorSelector(se); selector != nil {
+		result.podStatus, result.podReadyText, result.err = p.probePodMonitor(ctx, namespace, se, selector, allowedMonitorNamespaces)
+	}
+
+	if result.status == "" && result.podStatus == "" {
+		return result
 	}
 
 	style := defaultStatusStyle
 	if se.StatusStyle != nil {
 		style = *se.StatusStyle
 	}
+	result.statusStyle = style
+
 	// Sample-mode monitor results are fabricated, not observed, so they
 	// don't get recorded into the monitorUp Prometheus gauge either — see
 	// SampleData's doc comment.
 	if p.SampleData {
-		return status, style, latency
+		return result
 	}
-	up := 0.0
-	if status == "Up" {
-		up = 1
-	}
+
 	label := namespace + "/" + crName + "/" + se.Name
-	monitorUp.WithLabelValues(label).Set(up)
-	record(label)
-	return status, style, latency
+	if result.status != "" {
+		up := 0.0
+		if result.status == "Up" {
+			up = 1
+		}
+		monitorUp.WithLabelValues(label, monitorSourceHTTP).Set(up)
+		record(label, monitorSourceHTTP)
+	}
+	if result.podStatus != "" {
+		// Partial counts as up in the gauge: the ready fraction is visible
+		// on the card (PodReadyText), not in the metric.
+		up := 0.0
+		if result.podStatus == "Up" || result.podStatus == statusPartial {
+			up = 1
+		}
+		monitorUp.WithLabelValues(label, monitorSourcePods).Set(up)
+		record(label, monitorSourcePods)
+	}
+	return result
 }
 
 // sampleMonitorLatency and sampleMonitorReadyText are the canned monitor
-// results SampleData mode reports for a configured ping/siteMonitor/
-// podSelector, respectively — see probeURL/probePodSelector.
+// results SampleData mode reports for a configured ping/siteMonitor and
+// app/podSelector, respectively — see probeURL/probePodMonitor.
 const (
 	sampleMonitorLatency   = "12 ms"
 	sampleMonitorReadyText = "2/2 ready"
 )
 
-// probePodSelector returns a fabricated "Up" status in SampleData mode
-// instead of actually listing pods, so preview mode never needs pod RBAC to
-// render a populated status.
-func (p *Poller) probePodSelector(ctx context.Context, namespace string, se pagev1alpha1.ServiceEntry) (status, text string) {
-	if p.SampleData {
-		return "Up", sampleMonitorReadyText
+// podMonitorLabel is the standard label app.kubernetes.io/name=<app> derives
+// its selector from — homepage parity, see ServiceEntry.App's doc comment.
+const podMonitorLabel = "app.kubernetes.io/name"
+
+// noMatchedPodsReadyText is the ready-count text podStatus/probePodMonitor
+// report when nothing matched the pod monitor's selector at all (namespace
+// disallowed, or a selector that simply matches no pods) — "0/0 ready" makes
+// that "not found" case legible rather than blank.
+const noMatchedPodsReadyText = "0/0 ready"
+
+// podMonitorSelector resolves se's pod monitor selector: se.PodSelector wins
+// when set (homepage's documented override semantics); otherwise se.App, if
+// set, derives the standard app.kubernetes.io/name=<app> selector; nil when
+// neither is set (no pod monitor configured for this entry).
+func podMonitorSelector(se pagev1alpha1.ServiceEntry) *metav1.LabelSelector {
+	if se.PodSelector != nil {
+		return se.PodSelector
 	}
-	return p.podStatus(ctx, namespace, se)
+	if se.App != nil {
+		return &metav1.LabelSelector{MatchLabels: map[string]string{podMonitorLabel: *se.App}}
+	}
+	return nil
+}
+
+// probePodMonitor returns a fabricated "Up" status in SampleData mode
+// instead of actually listing pods, so preview mode never needs pod RBAC to
+// render a populated status. Otherwise resolves se's pod-list namespace
+// (se.Namespace, defaulting to the ServiceCard's own namespace) and lists
+// through podStatus.
+func (p *Poller) probePodMonitor(ctx context.Context, namespace string, se pagev1alpha1.ServiceEntry, selector *metav1.LabelSelector, allowedMonitorNamespaces []string) (status, text, cardErr string) {
+	if p.SampleData {
+		return "Up", sampleMonitorReadyText, ""
+	}
+
+	podNamespace := namespace
+	if se.Namespace != nil && *se.Namespace != "" {
+		podNamespace = *se.Namespace
+	}
+
+	reader := p.Reader
+	if podNamespace != namespace {
+		// A foreign namespace isn't served by the namespace-scoped cached
+		// Reader — and isn't allowed at all unless the Dashboard's
+		// spec.monitorNamespaces explicitly names it (see
+		// DashboardSpec.MonitorNamespaces' doc comment). A disallowed
+		// namespace short-circuits to Down with a card error naming the
+		// fix, rather than surfacing a raw RBAC-forbidden error from an
+		// uncached List that was never actually attempted.
+		if !slices.Contains(allowedMonitorNamespaces, podNamespace) {
+			return statusDown, noMatchedPodsReadyText, fmt.Sprintf(
+				"pod monitor namespace %q is not allowed: add it to this Dashboard's spec.monitorNamespaces",
+				podNamespace)
+		}
+		reader = p.KubeReader
+	}
+
+	status, text = p.podStatus(ctx, reader, podNamespace, selector, se.Name)
+	return status, text, ""
 }
 
 // probeURL returns a fabricated "Up" status in SampleData mode instead of
@@ -444,24 +572,26 @@ func (p *Poller) probeURL(ctx context.Context, url string) (status, latency stri
 	return monitorResult(ctx, p.HTTPClient, url)
 }
 
-// podStatus computes an up/down status from se's PodSelector: pods are
-// listed in namespace through the same namespace-scoped, cache-backed Reader
-// as ServiceCard itself (RBAC granted by
-// internal/controller/instance_rbac.go's dashboardPodsRule — namespaced and
-// owner-referenced, unlike the cluster-scoped KubeReader used by
-// ClusterWidget types). Any matching pod with a Ready condition of True
-// renders "Up"; the monitor's latency slot is repurposed to show
-// "<ready>/<total> ready" in place of a network latency figure.
-func (p *Poller) podStatus(ctx context.Context, namespace string, se pagev1alpha1.ServiceEntry) (status, readyText string) {
-	selector, err := metav1.LabelSelectorAsSelector(se.PodSelector)
+// podStatus computes a three-valued pod monitor status from selector: pods
+// matching it are listed in namespace through reader (the namespace-scoped
+// cached Reader for the ServiceCard's own namespace, RBAC granted
+// unconditionally by internal/controller/dashboard_rbac.go's
+// dashboardPodsRule; the cluster-scoped, uncached KubeReader for an allowed
+// foreign namespace, RBAC granted by reconcileMonitorRBAC — see
+// probePodMonitor). All matched pods Ready renders "Up"; some (but not all)
+// renders "Partial" (homepage parity, see docs/design/combined-monitor.md);
+// none Ready, or no pods matched, renders "Down". The status's ready text
+// slot shows "<ready>/<total> ready" ("0/0 ready" when nothing matched).
+func (p *Poller) podStatus(ctx context.Context, reader client.Reader, namespace string, selector *metav1.LabelSelector, entryName string) (status, readyText string) {
+	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		pollerLog.Error(err, "invalid PodSelector", "serviceEntry", se.Name)
+		pollerLog.Error(err, "invalid pod monitor selector", "serviceEntry", entryName)
 		return statusDown, ""
 	}
 
 	var pods corev1.PodList
-	if err := p.Reader.List(ctx, &pods, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-		pollerLog.Error(err, "listing pods for PodSelector", "serviceEntry", se.Name)
+	if err := reader.List(ctx, &pods, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: sel}); err != nil {
+		pollerLog.Error(err, "listing pods for pod monitor", "serviceEntry", entryName)
 		return statusDown, ""
 	}
 
@@ -471,9 +601,15 @@ func (p *Poller) podStatus(ctx context.Context, namespace string, se pagev1alpha
 			ready++
 		}
 	}
-	status = statusDown
-	if ready > 0 {
+	switch {
+	case len(pods.Items) == 0:
+		status = statusDown
+	case ready == len(pods.Items):
 		status = "Up"
+	case ready > 0:
+		status = statusPartial
+	default:
+		status = statusDown
 	}
 	return status, fmt.Sprintf("%d/%d ready", ready, len(pods.Items))
 }
@@ -490,13 +626,13 @@ func podReady(pod *corev1.Pod) bool {
 }
 
 // pollWidget builds and stores the Card for one of an entry's widgets, with
-// the entry's already-probed monitor status attached. A nil widget means the
+// the entry's already-probed monitor result attached. A nil widget means the
 // entry has a monitor but no widget: the card shows only title/icon/monitor.
 // When widget sets its own PollIntervalSeconds and this cycle isn't due yet,
 // pollWidget returns immediately without touching Store, leaving the
 // previous cycle's card (monitor status included) in place — key is already
 // in this cycle's keep set from the caller, so it survives Store.Prune.
-func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, se pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, status, statusStyle, latency string, defaultHideErrors bool, widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry) {
+func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, se pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, m monitorProbeResult, defaultHideErrors bool, widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry) {
 	if widget != nil && !p.duePoll(key, widget.PollIntervalSeconds) {
 		return
 	}
@@ -506,17 +642,22 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		hideErrors = !*se.ErrorDisplay
 	}
 	card := Card{
-		Key:         key,
-		Group:       se.Group,
-		ServiceName: se.Name,
-		Order:       se.Order,
-		IconURL:     IconURL(se.Icon),
-		ShowStats:   se.ShowStats == nil || *se.ShowStats,
-		HideErrors:  hideErrors,
-		Status:      status,
-		StatusStyle: statusStyle,
-		Latency:     latency,
-		UpdatedAt:   time.Now(),
+		Key:          key,
+		Group:        se.Group,
+		ServiceName:  se.Name,
+		Order:        se.Order,
+		IconURL:      IconURL(se.Icon),
+		ShowStats:    se.ShowStats == nil || *se.ShowStats,
+		HideErrors:   hideErrors,
+		Status:       m.status,
+		StatusStyle:  m.statusStyle,
+		Latency:      m.latency,
+		PodStatus:    m.podStatus,
+		PodReadyText: m.podReadyText,
+		UpdatedAt:    time.Now(),
+	}
+	if m.err != "" && !hideErrors {
+		card.Err = m.err
 	}
 	if se.Description != nil {
 		card.Description = *se.Description
@@ -882,12 +1023,28 @@ func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.Wid
 	return instance.Spec.WidgetDefaults
 }
 
+// monitorNamespaces returns the Dashboard's Spec.MonitorNamespaces — the
+// namespaces (beyond the Dashboard's own, which a pod monitor entry never
+// needs to name explicitly) a ServiceEntry's pod monitor may list pods in —
+// or nil when unset or the Dashboard can't be read, mirroring
+// widgetDefaults'/discoverySpec's tolerance of a transient Get failure: a
+// foreign-namespace pod monitor simply renders Down with a card error for
+// this cycle rather than failing every other card too.
+func (p *Poller) monitorNamespaces(ctx context.Context) []string {
+	var instance pagev1alpha1.Dashboard
+	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
+		pollerLog.Error(err, "getting Dashboard for monitorNamespaces")
+		return nil
+	}
+	return instance.Spec.MonitorNamespaces
+}
+
 // pollDiscoveredService builds and stores the Card for one Ingress-derived
 // discoveredService: title/icon/description/href only, plus an optional Ping
 // probe — never a polled widget, since annotations are world-readable to
 // anyone who can read the Ingress and so can't safely carry secrets (see
 // DiscoverySpec's doc comment).
-func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredService, record func(label string)) {
+func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredService, record func(label, source string)) {
 	card := Card{
 		Key:         svc.Key,
 		Group:       svc.Group,
@@ -909,8 +1066,8 @@ func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredServic
 			if card.Status == "Up" {
 				up = 1
 			}
-			monitorUp.WithLabelValues(label).Set(up)
-			record(label)
+			monitorUp.WithLabelValues(label, monitorSourceHTTP).Set(up)
+			record(label, monitorSourceHTTP)
 		}
 	}
 	p.Store.Set(card)
