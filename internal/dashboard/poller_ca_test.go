@@ -186,7 +186,7 @@ func TestPollWidgetPollIntervalOverrideSkipsCAKeyTracking(t *testing.T) {
 	// First poll of key is always due: resolves the CA bundle and marks its
 	// key used, so pruneCAClientCache (as pollOnce would call it at the end
 	// of this cycle) keeps the cached client.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first (due) poll, upstream hit %d times, want 1", n)
 	}
@@ -204,7 +204,7 @@ func TestPollWidgetPollIntervalOverrideSkipsCAKeyTracking(t *testing.T) {
 	p.caKeysUsedMu.Lock()
 	p.caKeysUsed = map[string]bool{}
 	p.caKeysUsedMu.Unlock()
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
 	}
@@ -222,7 +222,7 @@ func TestPollWidgetPollIntervalOverrideSkipsCAKeyTracking(t *testing.T) {
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[testCardKeyA] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
 	}

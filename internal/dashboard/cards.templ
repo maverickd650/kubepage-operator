@@ -51,24 +51,43 @@ templ serviceCardView(c Card, siteTarget string) {
 			} else {
 				{ c.ServiceName }
 			}
-			if c.Status != "" {
+			if c.Status != "" || c.PodStatus != "" {
 				switch c.StatusStyle {
 					case "dot":
-						<span
-							class={ "status-dot", "status-" + c.Status }
-							role="img"
-							aria-label={ statusWithLatency(c.Status, c.Latency) }
-							title={ statusWithLatency(c.Status, c.Latency) }
-						></span>
+						<span class="status-indicators">
+							if c.Status != "" {
+								<span
+									class={ "status-dot", "status-" + c.Status }
+									role="img"
+									aria-label={ statusWithLatency(c.Status, c.Latency) }
+									title={ statusWithLatency(c.Status, c.Latency) }
+								></span>
+							}
+							if c.PodStatus != "" {
+								<span
+									class={ "status-dot", "status-" + c.PodStatus }
+									role="img"
+									aria-label={ statusWithReadyText(c.PodStatus, c.PodReadyText) }
+									title={ statusWithReadyText(c.PodStatus, c.PodReadyText) }
+								></span>
+							}
+						</span>
 					case "basic":
 					default:
-						<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
+						<span class="status-indicators">
+							if c.Status != "" {
+								<span class={ "status-pill", "status-" + c.Status } title={ c.Status }>{ statusPillText(c) }</span>
+							}
+							if c.PodStatus != "" {
+								<span class={ "status-pill", "status-" + c.PodStatus } title={ c.PodStatus }>{ c.PodReadyText }</span>
+							}
+						</span>
 				}
 			}
 		</h3>
 		@desc(c.Description)
-		if c.Status != "" && c.StatusStyle == "basic" {
-			<div class="field"><span class="label">Status</span><span>{ statusWithLatency(c.Status, c.Latency) }</span></div>
+		if (c.Status != "" || c.PodStatus != "") && c.StatusStyle == "basic" {
+			<div class="field"><span class="label">Status</span><span>{ statusLine(c) }</span></div>
 		}
 		if c.Err != "" {
 			<div class="err">{ c.Err }</div>

@@ -1454,6 +1454,18 @@
           },
           "type": "object"
         },
+        "monitorNamespaces": {
+          "description": "monitorNamespaces lists the namespaces (beyond the Dashboard's own,\nwhich is always allowed) that a bound ServiceCard's pod monitor may\nname via its entries' namespace field. Each listed namespace gets a\nRoleBinding granting this Dashboard's ServiceAccount read-only pod\naccess there.\n\nAn explicit allowlist rather than auto-granting whatever namespaces\nServiceCards happen to name: the existing trust model (see\ndashboardRoles' note in internal/controller/dashboard_rbac.go) trusts\na ServiceCard author with their own namespace's secrets — it does not\nextend to reading pod metadata anywhere in the cluster, so the\ncross-namespace grant must come from whoever controls the Dashboard,\nexactly like spec.discovery.namespaces.",
+          "items": {
+            "maxLength": 63,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "type": "array",
+          "x-kubernetes-list-type": "set"
+        },
         "networkPolicy": {
           "description": "networkPolicy optionally creates an owner-referenced NetworkPolicy\nscoping which pods may reach this Dashboard's dashboard/metrics ports\nand, when egressCIDRs is set, which addresses its pods may reach. Off\nby default: dashboard pods otherwise accept ingress from anywhere in\nthe cluster and have unrestricted egress, same as any Pod with no\nNetworkPolicy selecting it.",
           "properties": {
@@ -3837,6 +3849,13 @@
         },
         "discoveryNamespaces": {
           "description": "discoveryNamespaces is the set of namespaces (beyond this Dashboard's\nown) discovery RBAC currently applies to, i.e. the last value of\nspec.discovery.namespaces the controller successfully reconciled a\nRoleBinding for in each named namespace. Tracked so the controller can\nclean up a RoleBinding in a namespace that's since been removed from\nspec.discovery.namespaces without needing cluster-wide list/watch on\nRoleBindings (which this operator deliberately never requests — see\nSECURITY.md).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "monitorNamespaces": {
+          "description": "monitorNamespaces is the set of namespaces (beyond this Dashboard's\nown) pod-monitor RBAC currently applies to, i.e. the last value of\nspec.monitorNamespaces the controller successfully reconciled a\nRoleBinding for in each named namespace. Tracked so the controller can\nclean up a RoleBinding in a namespace that's since been removed from\nspec.monitorNamespaces without needing cluster-wide list/watch on\nRoleBindings (which this operator deliberately never requests — see\nSECURITY.md).",
           "items": {
             "type": "string"
           },

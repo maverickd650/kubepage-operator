@@ -67,6 +67,13 @@ const (
 	// testEphemeralAddr requests an OS-assigned port, for tests that don't
 	// care which one they get.
 	testEphemeralAddr = "127.0.0.1:0"
+
+	// Combined HTTP + pod monitor test fixtures (docs/design/combined-monitor.md).
+	testMyAppLabelValue        = "myapp"
+	testCombinedServiceName    = "Combined"
+	testCustomSelectorLabelKey = "custom-selector"
+	testCustomSelectorValue    = "custom-value"
+	testPodReadyOneOfOne       = "1/1 ready"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -552,14 +559,14 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	status, style, latency := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], statusStyleDot, func(string) {})
-	if status != "Up" {
-		t.Errorf("monitor(Ping) status = %q, want Up", status)
+	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], statusStyleDot, nil, func(string, string) {})
+	if m.status != "Up" {
+		t.Errorf("monitor(Ping) status = %q, want Up", m.status)
 	}
-	if style != statusStyleDot {
-		t.Errorf("monitor(Ping) style = %q, want default dot", style)
+	if m.statusStyle != statusStyleDot {
+		t.Errorf("monitor(Ping) style = %q, want default dot", m.statusStyle)
 	}
-	if latency == "" {
+	if m.latency == "" {
 		t.Errorf("monitor(Ping) latency = empty, want non-empty")
 	}
 }
@@ -583,7 +590,8 @@ func TestPollerPodStatusInvalidSelector(t *testing.T) {
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
-	status, text := p.podStatus(t.Context(), entry.Namespace, entry.Spec.Entries()[0])
+	se := entry.Spec.Entries()[0]
+	status, text := p.podStatus(t.Context(), p.Reader, entry.Namespace, se.PodSelector, se.Name)
 	if status != statusDown || text != "" {
 		t.Errorf("podStatus(invalid selector) = (%q, %q), want (%q, \"\")", status, text, statusDown)
 	}
@@ -613,7 +621,8 @@ func TestPollerPodStatusListPodsError(t *testing.T) {
 		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: NewStore(),
 	}
 
-	status, text := p.podStatus(t.Context(), entry.Namespace, entry.Spec.Entries()[0])
+	se := entry.Spec.Entries()[0]
+	status, text := p.podStatus(t.Context(), p.Reader, entry.Namespace, se.PodSelector, se.Name)
 	if status != statusDown || text != "" {
 		t.Errorf("podStatus(List error) = (%q, %q), want (%q, \"\")", status, text, statusDown)
 	}
@@ -646,10 +655,10 @@ func TestPollerPodSelector(t *testing.T) {
 		wantStatus string
 		wantText   string
 	}{
-		{"no matching pods", nil, statusDown, "0/0 ready"},
-		{"one ready pod", []client.Object{readyPod("p1", true)}, "Up", "1/1 ready"},
+		{"no matching pods", nil, statusDown, noMatchedPodsReadyText},
+		{"one ready pod", []client.Object{readyPod("p1", true)}, "Up", testPodReadyOneOfOne},
 		{"one not-ready pod", []client.Object{readyPod("p1", false)}, statusDown, "0/1 ready"},
-		{"mixed readiness reports any-ready as Up", []client.Object{readyPod("p1", false), readyPod("p2", true)}, "Up", "1/2 ready"},
+		{"mixed readiness reports Partial", []client.Object{readyPod("p1", false), readyPod("p2", true)}, statusPartial, "1/2 ready"},
 		{"pod with no Ready condition at all", []client.Object{noReadyConditionPod("p1")}, statusDown, "0/1 ready"},
 	}
 	for _, tc := range cases {
@@ -683,11 +692,11 @@ func TestPollerPodSelector(t *testing.T) {
 			if len(cards) != 1 {
 				t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
 			}
-			if cards[0].Status != tc.wantStatus {
-				t.Errorf("card.Status = %q, want %q", cards[0].Status, tc.wantStatus)
+			if cards[0].PodStatus != tc.wantStatus {
+				t.Errorf("card.PodStatus = %q, want %q", cards[0].PodStatus, tc.wantStatus)
 			}
-			if cards[0].Latency != tc.wantText {
-				t.Errorf("card.Latency = %q, want %q", cards[0].Latency, tc.wantText)
+			if cards[0].PodReadyText != tc.wantText {
+				t.Errorf("card.PodReadyText = %q, want %q", cards[0].PodReadyText, tc.wantText)
 			}
 		})
 	}
@@ -1012,7 +1021,7 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 {
@@ -1059,7 +1068,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
 
 	// First poll of key is always due, regardless of override.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
 	}
@@ -1068,7 +1077,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	}
 
 	// Immediately polling again is within the 100s override: skipped.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
 	}
@@ -1077,7 +1086,7 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[testCardKeyA] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
 	}
@@ -1641,9 +1650,9 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 		},
 	}
 	p := &Poller{HTTPClient: srv.Client()}
-	_, style, _ := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], testStatusBasic, func(string) {})
-	if style != testStatusBasic {
-		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceCard.StatusStyle is unset", style, testStatusBasic)
+	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], testStatusBasic, nil, func(string, string) {})
+	if m.statusStyle != testStatusBasic {
+		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceCard.StatusStyle is unset", m.statusStyle, testStatusBasic)
 	}
 }
 
@@ -1658,7 +1667,7 @@ func TestPollerPollWidgetUsesSiteDefaultHideErrors(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", true, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, true, nil)
 
 	card := store.Snapshot()[0]
 	if card.Err != "" {
@@ -1752,7 +1761,7 @@ func TestPollerPollDiscoveredServiceStoresCard(t *testing.T) {
 	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: "https://app.invalid"}
 	store := NewStore()
 	p := &Poller{HTTPClient: http.DefaultClient, Store: store}
-	p.pollDiscoveredService(t.Context(), svc, func(string) {})
+	p.pollDiscoveredService(t.Context(), svc, func(string, string) {})
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].ServiceName != testDiscoveredAppName || cards[0].Group != testDiscoveryGroup || cards[0].Status != "" {
@@ -1769,7 +1778,7 @@ func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
 
 	var recorded string
-	p.pollDiscoveredService(t.Context(), svc, func(label string) { recorded = label })
+	p.pollDiscoveredService(t.Context(), svc, func(label, _ string) { recorded = label })
 
 	card := store.Snapshot()[0]
 	if card.Status != "Up" || card.StatusStyle != statusStyleDot {
@@ -1875,11 +1884,11 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 	}
 }
 
-// TestPollerProbePodSelectorSampleData verifies probePodSelector's
-// SampleData branch: a fabricated "Up" status with no Reader/pod list at
-// all, proving preview mode never needs pod RBAC for a PodSelector-monitored
+// TestPollerProbePodMonitorSampleData verifies probePodMonitor's SampleData
+// branch: a fabricated "Up" status with no Reader/pod list at all, proving
+// preview mode never needs pod RBAC for a PodSelector/App-monitored
 // ServiceCard.
-func TestPollerProbePodSelectorSampleData(t *testing.T) {
+func TestPollerProbePodMonitorSampleData(t *testing.T) {
 	entry := pagev1alpha1.ServiceCard{
 		Spec: pagev1alpha1.ServiceCardSpec{
 			Services: []pagev1alpha1.ServiceEntry{{
@@ -1888,10 +1897,11 @@ func TestPollerProbePodSelectorSampleData(t *testing.T) {
 		},
 	}
 	p := &Poller{SampleData: true}
+	se := entry.Spec.Entries()[0]
 
-	status, text := p.probePodSelector(t.Context(), entry.Namespace, entry.Spec.Entries()[0])
-	if status != "Up" || text != sampleMonitorReadyText {
-		t.Errorf("probePodSelector() = (%q, %q), want (Up, %q)", status, text, sampleMonitorReadyText)
+	status, text, cardErr := p.probePodMonitor(t.Context(), entry.Namespace, se, podMonitorSelector(se), nil)
+	if status != "Up" || text != sampleMonitorReadyText || cardErr != "" {
+		t.Errorf("probePodMonitor() = (%q, %q, %q), want (Up, %q, \"\")", status, text, cardErr, sampleMonitorReadyText)
 	}
 }
 
@@ -1917,7 +1927,7 @@ func TestPollerPollWidgetSampleUnsupportedType(t *testing.T) {
 
 	store := NewStore()
 	p := &Poller{Store: store, SampleData: true}
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, "", "", "", false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].Err == "" {
@@ -2144,5 +2154,196 @@ func TestPollerPollOnceSkipsHTTPRoutesWhenSourcesUnset(t *testing.T) {
 		if c.ServiceName == testDiscoveredRouteCardName {
 			t.Fatalf("Snapshot() = %+v, want no HTTPRoute card when discovery.sources is unset", store.Snapshot())
 		}
+	}
+}
+
+// --- Combined HTTP + pod monitor tests (docs/design/combined-monitor.md) ---
+
+// TestPollerCombinedMonitorFillsBothSlots verifies a services entry
+// configuring both an HTTP monitor (siteMonitor) and a pod monitor (app)
+// populates Card.Status/Latency from the HTTP probe and Card.PodStatus/
+// PodReadyText from the pod probe independently, in one poll cycle.
+func TestPollerCombinedMonitorFillsBothSlots(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p1", Namespace: testNamespace, Labels: map[string]string{podMonitorLabel: testAppLabelValue}},
+		Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+	}
+	app := testAppLabelValue
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: "combined", Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testGroup,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        testCombinedServiceName,
+				SiteMonitor: &srv.URL,
+				App:         &app,
+			}},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, pod).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+	}
+	c := cards[0]
+	if c.Status != "Up" || c.Latency == "" {
+		t.Errorf("card.Status/Latency = %q/%q, want Up/non-empty", c.Status, c.Latency)
+	}
+	if c.PodStatus != "Up" || c.PodReadyText != testPodReadyOneOfOne {
+		t.Errorf("card.PodStatus/PodReadyText = %q/%q, want Up/%q", c.PodStatus, c.PodReadyText, testPodReadyOneOfOne)
+	}
+}
+
+// TestPollerAppSelectorDerivation verifies podMonitorSelector derives the
+// standard app.kubernetes.io/name=<app> selector from se.App when
+// se.PodSelector is unset.
+func TestPollerAppSelectorDerivation(t *testing.T) {
+	app := testMyAppLabelValue
+	se := pagev1alpha1.ServiceEntry{App: &app}
+	sel := podMonitorSelector(se)
+	if sel == nil {
+		t.Fatal("podMonitorSelector(App set) = nil, want a derived selector")
+	}
+	if sel.MatchLabels[podMonitorLabel] != testMyAppLabelValue {
+		t.Errorf("podMonitorSelector(App) = %+v, want app.kubernetes.io/name=%s", sel, testMyAppLabelValue)
+	}
+}
+
+// TestPollerPodSelectorOverridesApp verifies podMonitorSelector prefers
+// se.PodSelector over se.App when both are set (homepage's documented
+// override semantics).
+func TestPollerPodSelectorOverridesApp(t *testing.T) {
+	app := testMyAppLabelValue
+	explicit := &metav1.LabelSelector{MatchLabels: map[string]string{testCustomSelectorLabelKey: testCustomSelectorValue}}
+	se := pagev1alpha1.ServiceEntry{App: &app, PodSelector: explicit}
+	sel := podMonitorSelector(se)
+	if sel != explicit {
+		t.Errorf("podMonitorSelector(App+PodSelector) = %+v, want the explicit PodSelector to win", sel)
+	}
+}
+
+// TestPollerPodMonitorForeignNamespaceAllowed verifies a pod monitor entry
+// naming a namespace other than the ServiceCard's own succeeds, reading
+// through KubeReader, when that namespace is listed in the Dashboard's
+// spec.monitorNamespaces.
+func TestPollerPodMonitorForeignNamespaceAllowed(t *testing.T) {
+	const foreignNS = "other-ns"
+	app := testAppLabelValue
+	foreignNamespace := foreignNS
+	se := pagev1alpha1.ServiceEntry{Name: "Foreign", App: &app, Namespace: &foreignNamespace}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p1", Namespace: foreignNS, Labels: map[string]string{podMonitorLabel: testAppLabelValue}},
+		Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+	}
+	scheme := testScheme(t)
+	kubeCl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pod).Build()
+	p := &Poller{KubeReader: kubeCl}
+
+	status, text, cardErr := p.probePodMonitor(t.Context(), testNamespace, se, podMonitorSelector(se), []string{foreignNS})
+	if cardErr != "" {
+		t.Errorf("probePodMonitor(allowed foreign namespace) cardErr = %q, want empty", cardErr)
+	}
+	if status != "Up" || text != testPodReadyOneOfOne {
+		t.Errorf("probePodMonitor(allowed foreign namespace) = (%q, %q), want (Up, %q)", status, text, testPodReadyOneOfOne)
+	}
+}
+
+// TestPollerPodMonitorForeignNamespaceDisallowed verifies a pod monitor
+// entry naming a namespace not present in spec.monitorNamespaces
+// short-circuits to Down with a card error naming the fix, never attempting
+// an uncached List (and never surfacing a raw RBAC-forbidden error).
+func TestPollerPodMonitorForeignNamespaceDisallowed(t *testing.T) {
+	const foreignNS = "other-ns"
+	app := testAppLabelValue
+	foreignNamespace := foreignNS
+	se := pagev1alpha1.ServiceEntry{Name: "Foreign", App: &app, Namespace: &foreignNamespace}
+
+	p := &Poller{KubeReader: nil} // proves probePodMonitor never touches KubeReader here
+
+	status, text, cardErr := p.probePodMonitor(t.Context(), testNamespace, se, podMonitorSelector(se), nil)
+	if status != statusDown {
+		t.Errorf("probePodMonitor(disallowed foreign namespace) status = %q, want %q", status, statusDown)
+	}
+	if text != noMatchedPodsReadyText {
+		t.Errorf("probePodMonitor(disallowed foreign namespace) text = %q, want %q", text, noMatchedPodsReadyText)
+	}
+	if cardErr == "" || !strings.Contains(cardErr, foreignNS) || !strings.Contains(cardErr, "monitorNamespaces") {
+		t.Errorf("probePodMonitor(disallowed foreign namespace) cardErr = %q, want it to name the namespace and spec.monitorNamespaces", cardErr)
+	}
+}
+
+// TestPollerMonitorMetricsPerSourceAndPruning verifies monitor() records a
+// distinct monitorUp series per (label, source) pair for a combined entry,
+// and pruneMonitorMetrics deletes only the series a source that's since been
+// removed reported, leaving the other source's series intact.
+func TestPollerMonitorMetricsPerSourceAndPruning(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "p1", Namespace: testNamespace, Labels: map[string]string{podMonitorLabel: testAppLabelValue}},
+		Status:     corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+	}
+	app := testAppLabelValue
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: "combined", Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testGroup,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        testCombinedServiceName,
+				SiteMonitor: &srv.URL,
+				App:         &app,
+			}},
+		},
+	}
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, pod).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	label := testNamespace + "/combined/Combined"
+	wantKeys := []string{monitorLabelKey(label, monitorSourceHTTP), monitorLabelKey(label, monitorSourcePods)}
+	for _, k := range wantKeys {
+		if !p.monitorLabels[k] {
+			t.Errorf("monitorLabels[%q] = false after combined poll, want true", k)
+		}
+	}
+
+	// Remove the pod monitor (App) from the entry, leaving only siteMonitor,
+	// and re-fetch it from the fake client so the update actually persists.
+	var updated pagev1alpha1.ServiceCard
+	if err := cl.Get(t.Context(), client.ObjectKeyFromObject(entry), &updated); err != nil {
+		t.Fatalf("Get() updated ServiceCard: %v", err)
+	}
+	updated.Spec.Services[0].App = nil
+	if err := cl.Update(t.Context(), &updated); err != nil {
+		t.Fatalf("Update() ServiceCard: %v", err)
+	}
+	p.pollOnce(t.Context())
+
+	if p.monitorLabels[monitorLabelKey(label, monitorSourcePods)] {
+		t.Error("monitorLabels still tracks the pods source after App was removed, want it pruned")
+	}
+	if !p.monitorLabels[monitorLabelKey(label, monitorSourceHTTP)] {
+		t.Error("monitorLabels dropped the http source, want it to remain tracked")
 	}
 }

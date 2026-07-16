@@ -98,7 +98,7 @@ credential leaks to any dashboard viewer the moment that request fails. See
 |------|---------|
 | `Dashboard` (`pdash`) | The dashboard Deployment, Service, optional Ingress, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `dashboardRef`. |
 | `DashboardStyle` (`pstyle`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. Exactly one per Dashboard — the object's name must match the Dashboard's name. |
-| `ServiceCard` (`pcard`) | One or many service cards (`services`) in a named group, each with optional widgets polling that service's API. Supports an HTTP `ping`/`siteMonitor` up/down status, per-card link `target`, and `showStats`/`errorDisplay` toggles. |
+| `ServiceCard` (`pcard`) | One or many service cards (`services`) in a named group, each with optional widgets polling that service's API. Supports an HTTP `ping`/`siteMonitor` up/down status *and*, independently, a Kubernetes pod-readiness status (`app`/`podSelector`, homepage parity) — both may be set at once for two status lights on one card. Also supports per-card link `target` and `showStats`/`errorDisplay` toggles. |
 | `Bookmark` (`pbmk`) | One or many static bookmark links (`bookmarks`) in a named group, each with an optional per-bookmark link `target`. |
 | `InfoWidget` (`piw`) | One or many header-strip widgets (`widgets`): `datetime` (client-side clock), `greeting` (static text), `logo` (static header logo image), `openmeteo` (current weather, keyless), `openweathermap` (current weather via OpenWeatherMap), `glances` (host CPU/memory usage), `longhorn` (aggregate Longhorn cluster storage usage), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
@@ -111,7 +111,8 @@ namespace-matching is implicit: they must live in the same namespace as that
 
 Cross-field invariants — every secret-bearing field (`SecretValueSource`)
 sets exactly one of `value` or `secretKeyRef`, a `ServiceCard` sets at most
-one of `ping`/`siteMonitor`/`podSelector`, widget `type` is one of the
+one of `ping`/`siteMonitor` (the pod monitor `app`/`podSelector` is freely
+combinable with either), widget `type` is one of the
 supported set — are enforced by CEL rules baked directly into the CRD
 schemas (**Kubernetes v1.31+** — most rules only need v1.29, but the
 `egressCIDRs` rule uses the `isCIDR()` CEL function added in 1.31, and an

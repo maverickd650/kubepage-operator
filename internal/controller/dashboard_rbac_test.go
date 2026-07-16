@@ -11,13 +11,26 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
+// testAmbiguousJoinNamespace/Name and testAmbiguousJoinOtherNamespace/Name
+// are the classic "hyphen-join ambiguity" fixture — namespace "a"/name
+// "b-c" vs. namespace "a-b"/name "c" collide under a bare
+// "<namespace>-<name>" join — shared by every *RBACNameNoCollision test
+// (cluster/discovery/monitor) so they don't each repeat the same literals
+// (goconst).
+const (
+	testAmbiguousJoinNamespace      = "a"
+	testAmbiguousJoinName           = "b-c"
+	testAmbiguousJoinOtherNamespace = "a-b"
+	testAmbiguousJoinOtherName      = "c"
+)
+
 // TestClusterRBACNameNoCollision guards against a bare hyphen-join of
 // namespace and name producing the same cluster-scoped RBAC name for two
 // different Dashboards, since both namespace and name are valid DNS-1123
 // labels that may themselves contain hyphens.
 func TestClusterRBACNameNoCollision(t *testing.T) {
-	a := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "a", Name: "b-c"}}
-	b := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "a-b", Name: "c"}}
+	a := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testAmbiguousJoinNamespace, Name: testAmbiguousJoinName}}
+	b := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testAmbiguousJoinOtherNamespace, Name: testAmbiguousJoinOtherName}}
 
 	if clusterRBACName(a) == clusterRBACName(b) {
 		t.Fatalf("clusterRBACName collided for distinct Dashboards: %q", clusterRBACName(a))
@@ -61,8 +74,8 @@ func TestClusterRBACNameStaysWithinKubernetesLimit(t *testing.T) {
 // clusterRBACName for the same Dashboard — a Dashboard using both kubemetrics
 // and cross-namespace discovery needs two distinct cluster-scoped RBAC names.
 func TestDiscoveryRBACNameNoCollision(t *testing.T) {
-	a := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "a", Name: "b-c"}}
-	b := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "a-b", Name: "c"}}
+	a := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testAmbiguousJoinNamespace, Name: testAmbiguousJoinName}}
+	b := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testAmbiguousJoinOtherNamespace, Name: testAmbiguousJoinOtherName}}
 
 	if discoveryRBACName(a) == discoveryRBACName(b) {
 		t.Fatalf("discoveryRBACName collided for distinct Dashboards: %q", discoveryRBACName(a))
@@ -88,29 +101,40 @@ func TestDiscoveryRBACNameStaysWithinKubernetesLimit(t *testing.T) {
 	}
 }
 
+// testCrossNSTargetNamespace, testOwnDashNamespace, and
+// testSharedThirdNamespace are shared by
+// TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled and
+// TestMonitorNamespacesFiltersOwnNamespace (their spec.discovery.namespaces/
+// spec.monitorNamespaces filtering logic is otherwise identical), pulled out
+// to package scope so the two tests share one literal each instead of
+// tripping goconst on near-duplicate string constants.
+const (
+	testCrossNSTargetNamespace = "cross-ns-target"
+	testOwnDashNamespace       = "dash-ns"
+	testSharedThirdNamespace   = "monitoring"
+)
+
 // TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled verifies
 // discoveryNamespaces returns nil when discovery is off/unset, and filters
 // the Dashboard's own namespace out of spec.discovery.namespaces (it's
 // already covered by the per-Dashboard Role — see dashboardRoles — so a
 // redundant cross-namespace RoleBinding there would just be noise).
 func TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled(t *testing.T) {
-	const testDiscoveryTargetNamespace = "cross-ns-target"
-
-	base := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: "dash-ns", Name: "d"}}
+	base := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testOwnDashNamespace, Name: "d"}}
 
 	if got := discoveryNamespaces(base); got != nil {
 		t.Fatalf("discoveryNamespaces() with no Discovery = %v, want nil", got)
 	}
 
-	base.Spec.Discovery = &pagev1alpha1.DiscoverySpec{Namespaces: []string{testDiscoveryTargetNamespace}}
+	base.Spec.Discovery = &pagev1alpha1.DiscoverySpec{Namespaces: []string{testCrossNSTargetNamespace}}
 	if got := discoveryNamespaces(base); got != nil {
 		t.Fatalf("discoveryNamespaces() with Discovery not Enabled = %v, want nil", got)
 	}
 
 	base.Spec.Discovery.Enabled = true
-	base.Spec.Discovery.Namespaces = []string{testDiscoveryTargetNamespace, "dash-ns", "monitoring", testDiscoveryTargetNamespace}
+	base.Spec.Discovery.Namespaces = []string{testCrossNSTargetNamespace, testOwnDashNamespace, testSharedThirdNamespace, testCrossNSTargetNamespace}
 	got := discoveryNamespaces(base)
-	want := []string{testDiscoveryTargetNamespace, "monitoring"}
+	want := []string{testCrossNSTargetNamespace, testSharedThirdNamespace}
 	if !slices.Equal(got, want) {
 		t.Fatalf("discoveryNamespaces() = %v, want %v (own namespace filtered, de-duplicated, sorted)", got, want)
 	}
@@ -147,6 +171,61 @@ func TestDiscoveryClusterRoleRules(t *testing.T) {
 	rules = discoveryClusterRoleRules(both, false)
 	if len(rules) != 1 {
 		t.Fatalf("discoveryClusterRoleRules() with HTTPRoute source but Gateway API disabled = %+v, want just the Ingress rule", rules)
+	}
+}
+
+// TestMonitorRBACNameNoCollision mirrors TestDiscoveryRBACNameNoCollision for
+// monitorRBACName, and additionally guards against it colliding with
+// clusterRBACName/discoveryRBACName for the same Dashboard — a Dashboard
+// using kubemetrics, discovery, and cross-namespace pod monitoring at once
+// needs three distinct cluster-scoped RBAC names.
+func TestMonitorRBACNameNoCollision(t *testing.T) {
+	a := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testAmbiguousJoinNamespace, Name: testAmbiguousJoinName}}
+	b := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testAmbiguousJoinOtherNamespace, Name: testAmbiguousJoinOtherName}}
+
+	if monitorRBACName(a) == monitorRBACName(b) {
+		t.Fatalf("monitorRBACName collided for distinct Dashboards: %q", monitorRBACName(a))
+	}
+	if monitorRBACName(a) == clusterRBACName(a) {
+		t.Fatalf("monitorRBACName collided with clusterRBACName for the same Dashboard: %q", monitorRBACName(a))
+	}
+	if monitorRBACName(a) == discoveryRBACName(a) {
+		t.Fatalf("monitorRBACName collided with discoveryRBACName for the same Dashboard: %q", monitorRBACName(a))
+	}
+}
+
+// TestMonitorRBACNameStaysWithinKubernetesLimit mirrors
+// TestDiscoveryRBACNameStaysWithinKubernetesLimit for monitorRBACName.
+func TestMonitorRBACNameStaysWithinKubernetesLimit(t *testing.T) {
+	longNamespace := strings.Repeat("a", 63)
+	longName := strings.Repeat("b", 253)
+	instance := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: longNamespace, Name: longName}}
+
+	name := monitorRBACName(instance)
+	if len(name) > clusterRBACNameMaxLength {
+		t.Fatalf("monitorRBACName(%q/%q) = %q (%d chars), want <= %d", longNamespace, longName, name, len(name), clusterRBACNameMaxLength)
+	}
+	if monitorRBACName(instance) != name {
+		t.Fatalf("monitorRBACName is not deterministic: got %q and %q for the same Dashboard", name, monitorRBACName(instance))
+	}
+}
+
+// TestMonitorNamespacesFiltersOwnNamespace mirrors
+// TestDiscoveryNamespacesFiltersOwnNamespaceAndDisabled for monitorNamespaces
+// — spec.monitorNamespaces has no separate "enabled" toggle (unlike
+// DiscoverySpec), so this only needs to check the own-namespace filter,
+// de-duplication, and sorting.
+func TestMonitorNamespacesFiltersOwnNamespace(t *testing.T) {
+	base := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Namespace: testOwnDashNamespace, Name: "d"}}
+	if got := monitorNamespaces(base); len(got) != 0 {
+		t.Fatalf("monitorNamespaces() with no MonitorNamespaces = %v, want empty", got)
+	}
+
+	base.Spec.MonitorNamespaces = []string{testCrossNSTargetNamespace, testOwnDashNamespace, testSharedThirdNamespace, testCrossNSTargetNamespace}
+	got := monitorNamespaces(base)
+	want := []string{testCrossNSTargetNamespace, testSharedThirdNamespace}
+	if !slices.Equal(got, want) {
+		t.Fatalf("monitorNamespaces() = %v, want %v (own namespace filtered, de-duplicated, sorted)", got, want)
 	}
 }
 

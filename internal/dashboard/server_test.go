@@ -1663,6 +1663,82 @@ func TestServerFragmentRendersStatusPillAndHrefLessCard(t *testing.T) {
 	}
 }
 
+// TestServerFragmentRendersCombinedDotIndicators verifies a card with both
+// an HTTP monitor (Status) and a pod monitor (PodStatus) renders two
+// status-dot spans inside one status-indicators wrapper, each with its own
+// class/tooltip — docs/design/combined-monitor.md's "two independent
+// indicators" requirement.
+func TestServerFragmentRendersCombinedDotIndicators(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/combined/0", Group: testGroup, ServiceName: testCombinedServiceName,
+		Status: "Up", StatusStyle: statusStyleDot, Latency: "12ms",
+		PodStatus: statusPartial, PodReadyText: "2/3 ready",
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`class="status-indicators"`,
+		`class="status-dot status-Up"`,
+		`class="status-dot status-Partial"`,
+		`title="Up · 12ms"`,
+		`title="Partial (2/3 ready)"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestServerFragmentRendersCombinedBasicStatusLine verifies a card with both
+// monitors and StatusStyle "basic" renders one combined status line
+// including both the HTTP latency and the pod ready text.
+func TestServerFragmentRendersCombinedBasicStatusLine(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/combined-basic/0", Group: testGroup, ServiceName: "CombinedBasic",
+		Status: "Up", StatusStyle: statusStyleBasic, Latency: "12ms",
+		PodStatus: "Up", PodReadyText: "2/2 ready",
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Up (12ms) · 2/2 ready") {
+		t.Errorf("fragment body missing combined basic status line:\n%s", body)
+	}
+}
+
+// TestServerFragmentRendersPodOnlyStatus verifies a card with only a pod
+// monitor (no HTTP monitor configured) still renders its single dot/pill —
+// entries that today use podSelector alone move their result to the new
+// PodStatus/PodReadyText fields (see Card's doc comment).
+func TestServerFragmentRendersPodOnlyStatus(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/pod-only/0", Group: testGroup, ServiceName: "PodOnly",
+		StatusStyle: statusStyleDot, PodStatus: "Up", PodReadyText: "1/1 ready",
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="status-dot status-Up"`) {
+		t.Errorf("fragment body missing pod-only status dot:\n%s", body)
+	}
+	if strings.Count(body, `class="status-dot`) != 1 {
+		t.Errorf("fragment body = %d status-dot spans, want exactly 1 for a pod-only card:\n%s", strings.Count(body, `class="status-dot`), body)
+	}
+}
+
 func TestServerFragmentHeaderlessGroupRendersGridWithoutHeader(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{Key: testCardKeyA, Group: testInfraGroup, ServiceName: testSvcAName})

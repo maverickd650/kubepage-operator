@@ -450,11 +450,12 @@ func (r *DashboardReconciler) failAvailable(ctx context.Context, instance *pagev
 // garbage collection can't: the cluster-scoped RBAC for the kubemetrics
 // InfoWidget (reconcileClusterMetricsRBAC) carries no owner reference, since a
 // namespaced Dashboard can't own cluster-scoped objects, so it must be deleted
-// explicitly here — likewise the cross-namespace discovery ClusterRole and
-// its per-target-namespace RoleBindings (reconcileDiscoveryRBAC), which can't
-// be owned either (a RoleBinding in another namespace can't be owned by this
-// namespaced Dashboard, and the ClusterRole is cluster-scoped like the
-// kubemetrics one). Everything else the Dashboard creates is namespace-scoped
+// explicitly here — likewise the cross-namespace discovery and pod-monitor
+// ClusterRoles and their per-target-namespace RoleBindings
+// (reconcileDiscoveryRBAC, reconcileMonitorRBAC), which can't be owned either
+// (a RoleBinding in another namespace can't be owned by this namespaced
+// Dashboard, and the ClusterRoles are cluster-scoped like the kubemetrics
+// one). Everything else the Dashboard creates is namespace-scoped
 // and owned via ctrl.SetControllerReference, so the API server cascades it.
 func (r *DashboardReconciler) doFinalizerOperationsForDashboard(ctx context.Context, cr *pagev1alpha1.Dashboard) error {
 	// The following implementation will raise an event
@@ -467,6 +468,12 @@ func (r *DashboardReconciler) doFinalizerOperationsForDashboard(ctx context.Cont
 		return err
 	}
 	if err := r.deleteDiscoveryClusterRole(ctx, cr); err != nil {
+		return err
+	}
+	if err := r.deleteMonitorRoleBindings(ctx, cr, cr.Status.MonitorNamespaces); err != nil {
+		return err
+	}
+	if err := r.deleteMonitorClusterRole(ctx, cr); err != nil {
 		return err
 	}
 	return r.deleteClusterMetricsRBAC(ctx, cr)

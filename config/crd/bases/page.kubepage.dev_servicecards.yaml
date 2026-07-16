@@ -97,6 +97,14 @@ spec:
                     group "Movies" inside group "Media", up to 3 levels deep. See
                     docs/design/nested-groups.md.
                   properties:
+                    app:
+                      description: |-
+                        app locates this service's pods by the standard
+                        app.kubernetes.io/name=<app> label (homepage parity), a shorthand for
+                        the equivalent podSelector. podSelector, when also set, wins.
+                      maxLength: 63
+                      minLength: 1
+                      type: string
                     description:
                       description: description overrides the default description shown
                         on the card.
@@ -145,6 +153,16 @@ spec:
                       maxLength: 256
                       minLength: 1
                       type: string
+                    namespace:
+                      description: |-
+                        namespace is the namespace the pod monitor (app/podSelector) lists
+                        pods in, defaulting to this ServiceCard's own namespace. A namespace
+                        other than the ServiceCard's requires the Dashboard to allow it via
+                        spec.monitorNamespaces (see DashboardSpec) — otherwise the entry's pod
+                        status renders Down with a card error explaining the missing grant.
+                      maxLength: 63
+                      minLength: 1
+                      type: string
                     order:
                       description: |-
                         order controls rendering position: groups and entries are sorted by
@@ -157,21 +175,23 @@ spec:
                       description: |-
                         ping is a URL probed over HTTP for reachability and latency, shown as
                         an up/down status on the card. (Raw ICMP is not used, so a pod needs
-                        no elevated capabilities.)
+                        no elevated capabilities.) Mutually exclusive with SiteMonitor, but
+                        freely combinable with the pod monitor (App/PodSelector) — a service
+                        can show both an HTTP status and a pod status at once.
                       maxLength: 2048
                       minLength: 1
                       pattern: ^https?://
                       type: string
                     podSelector:
                       description: |-
-                        podSelector selects pods in this ServiceCard's namespace whose
-                        readiness determines this service's up/down status — a
-                        Kubernetes-native alternative to Ping/SiteMonitor for services that
-                        run as pods in this cluster, needing no externally reachable URL.
-                        With multiple matches, any Ready pod renders "Up"; the card shows
-                        "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
-                        Mutually exclusive with Ping and SiteMonitor (enforced by this type's
-                        CEL validation rule).
+                        podSelector selects pods whose readiness determines this service's pod
+                        monitor status — a Kubernetes-native alternative (or addition) to
+                        Ping/SiteMonitor for services that run as pods in this cluster,
+                        needing no externally reachable URL. With multiple matches, some Ready
+                        pods render "Partial" and all Ready pods render "Up"; the card shows
+                        "<ready>/<total> ready" in place of Ping/SiteMonitor's latency. Freely
+                        combinable with Ping/SiteMonitor (each gets its own status indicator);
+                        when set, overrides the App-derived selector.
                       properties:
                         matchExpressions:
                           description: matchExpressions is a list of label selector
@@ -226,16 +246,20 @@ spec:
                     siteMonitor:
                       description: |-
                         siteMonitor is a URL probed over HTTP, shown as an up/down status with
-                        response latency on the card.
+                        response latency on the card. Mutually exclusive with Ping, but freely
+                        combinable with the pod monitor (App/PodSelector) — a service can show
+                        both an HTTP status and a pod status at once.
                       maxLength: 2048
                       minLength: 1
                       pattern: ^https?://
                       type: string
                     statusStyle:
                       description: |-
-                        statusStyle controls how the Ping/SiteMonitor/PodSelector status
-                        renders: "dot" a colored status dot, "basic" up/down text. Ignored
-                        unless one of Ping, SiteMonitor, or PodSelector is set.
+                        statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod
+                        monitor (App/PodSelector) statuses render: "dot" a colored status dot,
+                        "basic" up/down text. Applies to both indicators when both are
+                        configured. Ignored unless one of Ping, SiteMonitor, App, or
+                        PodSelector is set.
                       enum:
                       - dot
                       - basic
@@ -573,10 +597,11 @@ spec:
                   - name
                   type: object
                   x-kubernetes-validations:
-                  - message: at most one of ping, siteMonitor, or podSelector may
-                      be set
+                  - message: at most one of ping or siteMonitor may be set
                     rule: '(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 :
-                      0) + (has(self.podSelector) ? 1 : 0) <= 1'
+                      0) <= 1'
+                  - message: namespace requires app or podSelector to be set
+                    rule: '!has(self.namespace) || has(self.app) || has(self.podSelector)'
                 maxItems: 64
                 minItems: 1
                 type: array

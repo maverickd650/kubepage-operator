@@ -276,6 +276,27 @@ type DashboardSpec struct {
 	// +kubebuilder:validation:MinProperties=1
 	// +optional
 	WidgetDefaults map[string]WidgetDefaultsEntry `json:"widgetDefaults,omitempty"`
+
+	// monitorNamespaces lists the namespaces (beyond the Dashboard's own,
+	// which is always allowed) that a bound ServiceCard's pod monitor may
+	// name via its entries' namespace field. Each listed namespace gets a
+	// RoleBinding granting this Dashboard's ServiceAccount read-only pod
+	// access there.
+	//
+	// An explicit allowlist rather than auto-granting whatever namespaces
+	// ServiceCards happen to name: the existing trust model (see
+	// dashboardRoles' note in internal/controller/dashboard_rbac.go) trusts
+	// a ServiceCard author with their own namespace's secrets — it does not
+	// extend to reading pod metadata anywhere in the cluster, so the
+	// cross-namespace grant must come from whoever controls the Dashboard,
+	// exactly like spec.discovery.namespaces.
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=63
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=set
+	// +optional
+	MonitorNamespaces []string `json:"monitorNamespaces,omitempty"`
 }
 
 // WidgetDefaultsEntry supplies default secret-bearing values for one widget
@@ -645,6 +666,17 @@ type DashboardStatus struct {
 	// SECURITY.md).
 	// +optional
 	DiscoveryNamespaces []string `json:"discoveryNamespaces,omitempty"`
+
+	// monitorNamespaces is the set of namespaces (beyond this Dashboard's
+	// own) pod-monitor RBAC currently applies to, i.e. the last value of
+	// spec.monitorNamespaces the controller successfully reconciled a
+	// RoleBinding for in each named namespace. Tracked so the controller can
+	// clean up a RoleBinding in a namespace that's since been removed from
+	// spec.monitorNamespaces without needing cluster-wide list/watch on
+	// RoleBindings (which this operator deliberately never requests — see
+	// SECURITY.md).
+	// +optional
+	MonitorNamespaces []string `json:"monitorNamespaces,omitempty"`
 }
 
 // +kubebuilder:object:root=true
