@@ -522,15 +522,61 @@ templ Index(data indexData) {
 						if (Object.prototype.hasOwnProperty.call(groupOpenState, name)) d.open = groupOpenState[name];
 					});
 				}
-				document.getElementById("cards").addEventListener("htmx:beforeSwap", captureGroupState);
+				// The server always renders tab 0 active/visible (it has no idea
+				// which tab the client currently has selected) and every
+				// <details.group> open (ditto for collapse state), so an
+				// unmodified swap of its markup would momentarily show the wrong
+				// tab / re-expand a collapsed group before the afterSettle
+				// backstop below corrects it. htmx documents
+				// evt.detail.serverResponse as mutable in beforeSwap, so rewrite
+				// the incoming markup to already reflect client state — tab
+				// selection and group open/closed — before it ever reaches the
+				// DOM. That makes the morph (and the id-matching settle step
+				// that follows it) a no-op for these two bits of state instead
+				// of a change-then-revert, which is what was producing a
+				// one-frame flash of tab 0 / a re-opened group on every refresh.
+				document.getElementById("cards").addEventListener("htmx:beforeSwap", function (evt) {
+					captureGroupState();
+					// A detached <template> parses the incoming HTML without
+					// executing scripts or affecting the live document, and its
+					// .content is a DocumentFragment we can query/mutate exactly
+					// like a normal subtree before serializing it back out.
+					const tpl = document.createElement("template");
+					tpl.innerHTML = evt.detail.serverResponse;
 
-				// Restored on htmx:afterSettle, not htmx:afterSwap: the tab buttons
-				// and panels carry ids (for the ARIA tab wiring), and htmx's settle
-				// step id-matches them across the swap — it briefly keeps the old
-				// element's attributes, then re-applies the incoming markup's
-				// attributes (which always mark tab 0 active) shortly AFTER
-				// afterSwap fires. A restore run at afterSwap gets silently
-				// clobbered by that; afterSettle runs once settling is done.
+					const panels = tpl.content.querySelectorAll(".tab-panel");
+					const tab = panels.length > 0 && currentTab < panels.length ? currentTab : 0;
+					tpl.content.querySelectorAll(".tab-btn").forEach(function (b, idx) {
+						const selected = idx === tab;
+						b.classList.toggle("active", selected);
+						b.setAttribute("aria-selected", selected ? "true" : "false");
+						b.tabIndex = selected ? 0 : -1;
+					});
+					panels.forEach(function (p, idx) { p.classList.toggle("hidden", idx !== tab); });
+
+					tpl.content.querySelectorAll("details.group[data-group-name]").forEach(function (d) {
+						const name = d.dataset.groupName;
+						if (Object.prototype.hasOwnProperty.call(groupOpenState, name)) {
+							if (groupOpenState[name]) d.setAttribute("open", "");
+							else d.removeAttribute("open");
+						}
+					});
+
+					evt.detail.serverResponse = tpl.innerHTML;
+				});
+
+				// Backstop, not the primary defense: the beforeSwap rewrite above
+				// already makes the incoming markup match client state, so this
+				// should normally be a no-op. It stays as a safety net for
+				// anything the rewrite misses (e.g. markup shapes it doesn't
+				// anticipate) — restored on htmx:afterSettle rather than
+				// htmx:afterSwap because the tab buttons/panels carry ids (for
+				// the ARIA tab wiring), and htmx's settle step id-matches them
+				// across the swap — it briefly keeps the old element's
+				// attributes, then re-applies the incoming markup's attributes
+				// shortly AFTER afterSwap fires. A restore run at afterSwap gets
+				// silently clobbered by that; afterSettle runs once settling is
+				// done.
 				document.getElementById("cards").addEventListener("htmx:afterSettle", function () {
 					const panels = document.querySelectorAll(".tab-panel").length;
 					showTab(panels > 0 && currentTab < panels ? currentTab : 0);
