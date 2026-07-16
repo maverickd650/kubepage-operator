@@ -175,7 +175,8 @@ type ServiceWidget struct {
 // are expressed as a "/"-separated path in Group, e.g. "Media/Movies" nests
 // group "Movies" inside group "Media", up to 3 levels deep. See
 // docs/design/nested-groups.md.
-// +kubebuilder:validation:XValidation:rule="(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) + (has(self.podSelector) ? 1 : 0) <= 1",message="at most one of ping, siteMonitor, or podSelector may be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) <= 1",message="at most one of ping or siteMonitor may be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.namespace) || has(self.app) || has(self.podSelector)",message="namespace requires app or podSelector to be set"
 type ServiceEntry struct {
 	// group is the name of the group this entry belongs to, or a
 	// "/"-separated path (e.g. "Media/Movies", up to 3 levels) nesting it
@@ -249,7 +250,9 @@ type ServiceEntry struct {
 
 	// ping is a URL probed over HTTP for reachability and latency, shown as
 	// an up/down status on the card. (Raw ICMP is not used, so a pod needs
-	// no elevated capabilities.)
+	// no elevated capabilities.) Mutually exclusive with SiteMonitor, but
+	// freely combinable with the pod monitor (App/PodSelector) — a service
+	// can show both an HTTP status and a pod status at once.
 	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
@@ -257,27 +260,49 @@ type ServiceEntry struct {
 	Ping *string `json:"ping,omitempty"`
 
 	// siteMonitor is a URL probed over HTTP, shown as an up/down status with
-	// response latency on the card.
+	// response latency on the card. Mutually exclusive with Ping, but freely
+	// combinable with the pod monitor (App/PodSelector) — a service can show
+	// both an HTTP status and a pod status at once.
 	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	SiteMonitor *string `json:"siteMonitor,omitempty"`
 
-	// podSelector selects pods in this ServiceCard's namespace whose
-	// readiness determines this service's up/down status — a
-	// Kubernetes-native alternative to Ping/SiteMonitor for services that
-	// run as pods in this cluster, needing no externally reachable URL.
-	// With multiple matches, any Ready pod renders "Up"; the card shows
-	// "<ready>/<total> ready" in place of Ping/SiteMonitor's latency.
-	// Mutually exclusive with Ping and SiteMonitor (enforced by this type's
-	// CEL validation rule).
+	// app locates this service's pods by the standard
+	// app.kubernetes.io/name=<app> label (homepage parity), a shorthand for
+	// the equivalent podSelector. podSelector, when also set, wins.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +optional
+	App *string `json:"app,omitempty"`
+
+	// namespace is the namespace the pod monitor (app/podSelector) lists
+	// pods in, defaulting to this ServiceCard's own namespace. A namespace
+	// other than the ServiceCard's requires the Dashboard to allow it via
+	// spec.monitorNamespaces (see DashboardSpec) — otherwise the entry's pod
+	// status renders Down with a card error explaining the missing grant.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +optional
+	Namespace *string `json:"namespace,omitempty"`
+
+	// podSelector selects pods whose readiness determines this service's pod
+	// monitor status — a Kubernetes-native alternative (or addition) to
+	// Ping/SiteMonitor for services that run as pods in this cluster,
+	// needing no externally reachable URL. With multiple matches, some Ready
+	// pods render "Partial" and all Ready pods render "Up"; the card shows
+	// "<ready>/<total> ready" in place of Ping/SiteMonitor's latency. Freely
+	// combinable with Ping/SiteMonitor (each gets its own status indicator);
+	// when set, overrides the App-derived selector.
 	// +optional
 	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
 
-	// statusStyle controls how the Ping/SiteMonitor/PodSelector status
-	// renders: "dot" a colored status dot, "basic" up/down text. Ignored
-	// unless one of Ping, SiteMonitor, or PodSelector is set.
+	// statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod
+	// monitor (App/PodSelector) statuses render: "dot" a colored status dot,
+	// "basic" up/down text. Applies to both indicators when both are
+	// configured. Ignored unless one of Ping, SiteMonitor, App, or
+	// PodSelector is set.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`

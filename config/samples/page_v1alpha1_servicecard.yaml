@@ -17,6 +17,11 @@ spec:
       icon: plex
       description: Media server
       siteMonitor: http://plex.example.com
+      # app pairs an HTTP siteMonitor with a Kubernetes pod monitor: pods are
+      # located by the app.kubernetes.io/name=plex label in this ServiceCard's
+      # own namespace (homepage parity, see docs/design/combined-monitor.md),
+      # and the card shows both statuses independently.
+      app: plex
       statusStyle: dot
       widgets:
         - type: plex

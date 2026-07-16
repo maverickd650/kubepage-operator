@@ -43,6 +43,12 @@
           "items": {
             "description": "ServiceEntry is one service card's configuration: display fields, monitor\nsource, and widgets. A ServiceCardSpec holds a list of these in Services,\none ServiceCard object per group, or per whole dashboard.\n\nNested groups (homepage parity, https://gethomepage.dev/configs/services/#nested-groups)\nare expressed as a \"/\"-separated path in Group, e.g. \"Media/Movies\" nests\ngroup \"Movies\" inside group \"Media\", up to 3 levels deep. See\ndocs/design/nested-groups.md.",
             "properties": {
+              "app": {
+                "description": "app locates this service's pods by the standard\napp.kubernetes.io/name=\u003capp\u003e label (homepage parity), a shorthand for\nthe equivalent podSelector. podSelector, when also set, wins.",
+                "maxLength": 63,
+                "minLength": 1,
+                "type": "string"
+              },
               "description": {
                 "description": "description overrides the default description shown on the card.",
                 "maxLength": 1024,
@@ -80,20 +86,26 @@
                 "minLength": 1,
                 "type": "string"
               },
+              "namespace": {
+                "description": "namespace is the namespace the pod monitor (app/podSelector) lists\npods in, defaulting to this ServiceCard's own namespace. A namespace\nother than the ServiceCard's requires the Dashboard to allow it via\nspec.monitorNamespaces (see DashboardSpec) — otherwise the entry's pod\nstatus renders Down with a card error explaining the missing grant.",
+                "maxLength": 63,
+                "minLength": 1,
+                "type": "string"
+              },
               "order": {
                 "description": "order controls rendering position: groups and entries are sorted by\nOrder (nil sorts last), ties broken by Name, since CRDs have no\ninherent ordering but the dashboard's groups/entries are displayed in a\nfixed order.",
                 "format": "int32",
                 "type": "integer"
               },
               "ping": {
-                "description": "ping is a URL probed over HTTP for reachability and latency, shown as\nan up/down status on the card. (Raw ICMP is not used, so a pod needs\nno elevated capabilities.)",
+                "description": "ping is a URL probed over HTTP for reachability and latency, shown as\nan up/down status on the card. (Raw ICMP is not used, so a pod needs\nno elevated capabilities.) Mutually exclusive with SiteMonitor, but\nfreely combinable with the pod monitor (App/PodSelector) — a service\ncan show both an HTTP status and a pod status at once.",
                 "maxLength": 2048,
                 "minLength": 1,
                 "pattern": "^https?://",
                 "type": "string"
               },
               "podSelector": {
-                "description": "podSelector selects pods in this ServiceCard's namespace whose\nreadiness determines this service's up/down status — a\nKubernetes-native alternative to Ping/SiteMonitor for services that\nrun as pods in this cluster, needing no externally reachable URL.\nWith multiple matches, any Ready pod renders \"Up\"; the card shows\n\"\u003cready\u003e/\u003ctotal\u003e ready\" in place of Ping/SiteMonitor's latency.\nMutually exclusive with Ping and SiteMonitor (enforced by this type's\nCEL validation rule).",
+                "description": "podSelector selects pods whose readiness determines this service's pod\nmonitor status — a Kubernetes-native alternative (or addition) to\nPing/SiteMonitor for services that run as pods in this cluster,\nneeding no externally reachable URL. With multiple matches, some Ready\npods render \"Partial\" and all Ready pods render \"Up\"; the card shows\n\"\u003cready\u003e/\u003ctotal\u003e ready\" in place of Ping/SiteMonitor's latency. Freely\ncombinable with Ping/SiteMonitor (each gets its own status indicator);\nwhen set, overrides the App-derived selector.",
                 "properties": {
                   "matchExpressions": {
                     "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
@@ -143,14 +155,14 @@
                 "type": "boolean"
               },
               "siteMonitor": {
-                "description": "siteMonitor is a URL probed over HTTP, shown as an up/down status with\nresponse latency on the card.",
+                "description": "siteMonitor is a URL probed over HTTP, shown as an up/down status with\nresponse latency on the card. Mutually exclusive with Ping, but freely\ncombinable with the pod monitor (App/PodSelector) — a service can show\nboth an HTTP status and a pod status at once.",
                 "maxLength": 2048,
                 "minLength": 1,
                 "pattern": "^https?://",
                 "type": "string"
               },
               "statusStyle": {
-                "description": "statusStyle controls how the Ping/SiteMonitor/PodSelector status\nrenders: \"dot\" a colored status dot, \"basic\" up/down text. Ignored\nunless one of Ping, SiteMonitor, or PodSelector is set.",
+                "description": "statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod\nmonitor (App/PodSelector) statuses render: \"dot\" a colored status dot,\n\"basic\" up/down text. Applies to both indicators when both are\nconfigured. Ignored unless one of Ping, SiteMonitor, App, or\nPodSelector is set.",
                 "enum": [
                   "dot",
                   "basic"
@@ -437,8 +449,12 @@
             "type": "object",
             "x-kubernetes-validations": [
               {
-                "message": "at most one of ping, siteMonitor, or podSelector may be set",
-                "rule": "(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) + (has(self.podSelector) ? 1 : 0) \u003c= 1"
+                "message": "at most one of ping or siteMonitor may be set",
+                "rule": "(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) \u003c= 1"
+              },
+              {
+                "message": "namespace requires app or podSelector to be set",
+                "rule": "!has(self.namespace) || has(self.app) || has(self.podSelector)"
               }
             ]
           },
