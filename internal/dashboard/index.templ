@@ -177,11 +177,14 @@ templ Index(data indexData) {
 				.card h3 a:hover { color: var(--accent); }
 				img.icon { width: 1.2rem; height: 1.2rem; object-fit: contain; }
 				.card h3 img.icon { width: 2rem; height: 2rem; }
-				.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-left: auto; background: var(--muted); }
+				.status-indicators { display: flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+				.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); }
 				.status-dot.status-Up { background: var(--good); }
+				.status-dot.status-Partial { background: var(--warn); }
 				.status-dot.status-Down { background: var(--danger); }
-				.status-pill { margin-left: auto; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; font-weight: 600; background: color-mix(in srgb, var(--muted) 25%, transparent); color: var(--muted); }
+				.status-pill { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; font-weight: 600; background: color-mix(in srgb, var(--muted) 25%, transparent); color: var(--muted); }
 				.status-pill.status-Up { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+				.status-pill.status-Partial { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
 				.status-pill.status-Down { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger); }
 				.stats { display: flex; flex-direction: row; width: 100%; margin-top: 0.5rem; }
 				.grid.grid-equal .card .stats { margin-top: auto; }

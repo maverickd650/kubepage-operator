@@ -91,6 +91,38 @@ func statusPillText(c Card) string {
 	return c.Status
 }
 
+// statusWithReadyText formats a pod monitor status for display, e.g.
+// "Partial (2/3 ready)" — mirrors statusWithLatency's " · " join with
+// parens instead, so the pod monitor's ready-count detail reads distinctly
+// from the HTTP monitor's latency in a combined tooltip/basic-text line.
+func statusWithReadyText(status, readyText string) string {
+	if readyText != "" {
+		return status + " (" + readyText + ")"
+	}
+	return status
+}
+
+// statusLine renders c's "basic" style status field: both monitors when
+// both are configured (e.g. "Up (12ms) · 2/3 ready"), else whichever one is.
+func statusLine(c Card) string {
+	var parts []string
+	if c.Status != "" {
+		if c.Latency != "" {
+			parts = append(parts, c.Status+" ("+c.Latency+")")
+		} else {
+			parts = append(parts, c.Status)
+		}
+	}
+	if c.PodStatus != "" {
+		if c.PodReadyText != "" {
+			parts = append(parts, c.PodReadyText)
+		} else {
+			parts = append(parts, c.PodStatus)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
 // tabID and panelID derive stable, index-based ids for a tab button and its
 // associated panel (e.g. "tab-0"/"panel-0"), linked by aria-controls/
 // aria-labelledby per the WAI-ARIA tabs pattern. Index-based rather than
