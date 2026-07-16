@@ -305,9 +305,9 @@ type ServiceEntry struct {
 
 	// statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod
 	// monitor (App/PodSelector) statuses render: "dot" a colored status dot,
-	// "basic" up/down text. Applies to both indicators when both are
-	// configured. Ignored unless one of Ping, SiteMonitor, App, or
-	// PodSelector is set.
+	// "basic" a colored status pill (status word plus latency/ready-count
+	// detail). Applies to both indicators when both are configured. Ignored
+	// unless one of Ping, SiteMonitor, App, or PodSelector is set.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`

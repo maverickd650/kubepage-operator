@@ -163,18 +163,20 @@ func TestStatusWithLatency(t *testing.T) {
 	}
 }
 
-func TestStatusPillText(t *testing.T) {
+func TestPodPillText(t *testing.T) {
 	tests := map[string]struct {
 		card Card
 		want string
 	}{
-		"prefers latency":      {card: Card{Status: "Up", Latency: testLatency}, want: testLatency},
-		"falls back to status": {card: Card{Status: statusDown, Latency: ""}, want: statusDown},
+		"up renders Running":         {card: Card{PodStatus: "Up"}, want: podPillRunning},
+		"partial with ready text":    {card: Card{PodStatus: statusPartial, PodReadyText: testReadyText}, want: testReadyText},
+		"partial without ready text": {card: Card{PodStatus: statusPartial, PodReadyText: ""}, want: statusPartial},
+		"down renders raw status":    {card: Card{PodStatus: statusDown}, want: statusDown},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := statusPillText(tc.card); got != tc.want {
-				t.Errorf("statusPillText() = %q, want %q", got, tc.want)
+			if got := podPillText(tc.card); got != tc.want {
+				t.Errorf("podPillText() = %q, want %q", got, tc.want)
 			}
 		})
 	}

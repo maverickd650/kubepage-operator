@@ -115,15 +115,6 @@ func statusWithLatency(status, latency string) string {
 	return status
 }
 
-// statusPillText prefers latency over the bare status word, matching the
-// status-pill markup's previous {{if .Latency}}{{.Latency}}{{else}}{{.Status}}{{end}}.
-func statusPillText(c Card) string {
-	if c.Latency != "" {
-		return c.Latency
-	}
-	return c.Status
-}
-
 // statusWithReadyText formats a pod monitor status for display, e.g.
 // "Partial (2/3 ready)" — mirrors statusWithLatency's " · " join with
 // parens instead, so the pod monitor's ready-count detail reads distinctly
@@ -135,25 +126,27 @@ func statusWithReadyText(status, readyText string) string {
 	return status
 }
 
-// statusLine renders c's "basic" style status field: both monitors when
-// both are configured (e.g. "Up (12ms) · 2/3 ready"), else whichever one is.
-func statusLine(c Card) string {
-	var parts []string
-	if c.Status != "" {
-		if c.Latency != "" {
-			parts = append(parts, c.Status+" ("+c.Latency+")")
-		} else {
-			parts = append(parts, c.Status)
-		}
-	}
-	if c.PodStatus != "" {
+// podPillRunning is the pod monitor pill's fully-up label — pods "run"
+// rather than being "up", so the pill reads pod-flavoured while the
+// underlying status value (and its status-Up CSS class) stays "Up".
+const podPillRunning = "Running"
+
+// podPillText renders the pod monitor "basic" style pill's visible text:
+// "Running" for a fully-up pod monitor, the ready-count text (e.g.
+// "2/3 ready") for a partial one when available, else the raw PodStatus
+// word (covers "Partial" with no ready count, and any other value).
+func podPillText(c Card) string {
+	switch c.PodStatus {
+	case "Up":
+		return podPillRunning
+	case statusPartial:
 		if c.PodReadyText != "" {
-			parts = append(parts, c.PodReadyText)
-		} else {
-			parts = append(parts, c.PodStatus)
+			return c.PodReadyText
 		}
+		return c.PodStatus
+	default:
+		return c.PodStatus
 	}
-	return strings.Join(parts, " · ")
 }
 
 // tabID and panelID derive stable, index-based ids for a tab button and its

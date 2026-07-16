@@ -1748,7 +1748,7 @@ func TestServerFragmentRendersStatusPillAndHrefLessCard(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
 		Key: "ns/pill/0", Group: testGroup, ServiceName: "NoLink",
-		Status: "Down", StatusStyle: "pill",
+		Status: "Down", StatusStyle: statusStyleBasic,
 	})
 	srv := newTestServer(t, store)
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
@@ -1764,6 +1764,27 @@ func TestServerFragmentRendersStatusPillAndHrefLessCard(t *testing.T) {
 	}
 }
 
+// TestServerFragmentRendersUnknownStyleAsDotFallback verifies an unrecognized
+// StatusStyle value (e.g. a stale "pill" from before this field existed, or
+// any future addition the switch doesn't know about) falls back to the safe
+// "dot" rendering rather than the old legacy status-pill markup.
+func TestServerFragmentRendersUnknownStyleAsDotFallback(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/unknown-style/0", Group: testGroup, ServiceName: "UnknownStyle",
+		Status: "Down", StatusStyle: "pill",
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="status-dot status-Down"`) {
+		t.Errorf("fragment body missing dot fallback for unknown StatusStyle:\n%s", body)
+	}
+}
+
 // TestServerFragmentRendersCombinedDotIndicators verifies a card with both
 // an HTTP monitor (Status) and a pod monitor (PodStatus) renders two
 // status-dot spans inside one status-indicators wrapper, each with its own
@@ -1774,7 +1795,7 @@ func TestServerFragmentRendersCombinedDotIndicators(t *testing.T) {
 	store.Set(Card{
 		Key: "ns/combined/0", Group: testGroup, ServiceName: testCombinedServiceName,
 		Status: "Up", StatusStyle: statusStyleDot, Latency: "12ms",
-		PodStatus: statusPartial, PodReadyText: "2/3 ready",
+		PodStatus: statusPartial, PodReadyText: testReadyText,
 	})
 	srv := newTestServer(t, store)
 	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
@@ -1787,7 +1808,7 @@ func TestServerFragmentRendersCombinedDotIndicators(t *testing.T) {
 		`class="status-dot status-Up"`,
 		`class="status-dot status-Partial"`,
 		`title="Up · 12ms"`,
-		`title="Partial (2/3 ready)"`,
+		`title="Partial (` + testReadyText + `)"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment body missing %q:\n%s", want, body)
@@ -1795,10 +1816,12 @@ func TestServerFragmentRendersCombinedDotIndicators(t *testing.T) {
 	}
 }
 
-// TestServerFragmentRendersCombinedBasicStatusLine verifies a card with both
-// monitors and StatusStyle "basic" renders one combined status line
-// including both the HTTP latency and the pod ready text.
-func TestServerFragmentRendersCombinedBasicStatusLine(t *testing.T) {
+// TestServerFragmentRendersCombinedBasicStatusPills verifies a card with both
+// monitors and StatusStyle "basic" renders two status pills inline in the
+// h3 (mirroring the "dot" style's placement): the HTTP pill shows the status
+// word plus a latency detail, and the pod pill shows "Running" for a fully-up
+// pod monitor.
+func TestServerFragmentRendersCombinedBasicStatusPills(t *testing.T) {
 	store := NewStore()
 	store.Set(Card{
 		Key: "ns/combined-basic/0", Group: testGroup, ServiceName: "CombinedBasic",
@@ -1811,8 +1834,45 @@ func TestServerFragmentRendersCombinedBasicStatusLine(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "Up (12ms) · 2/2 ready") {
-		t.Errorf("fragment body missing combined basic status line:\n%s", body)
+	for _, want := range []string{
+		`class="status-pill status-Up"`,
+		`title="Up · 12ms"`,
+		`title="Up (2/2 ready)"`,
+		podPillRunning,
+		`<span class="detail"> · 12ms</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `<div class="field"><span class="label">Status</span>`) {
+		t.Errorf("fragment body still renders the old basic-style Status field row:\n%s", body)
+	}
+}
+
+// TestServerFragmentRendersBasicPartialPodPill verifies a Partial pod
+// monitor's "basic" style pill carries the ready-count text (e.g.
+// "2/3 ready") rather than the bare word "Partial".
+func TestServerFragmentRendersBasicPartialPodPill(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{
+		Key: "ns/partial-basic/0", Group: testGroup, ServiceName: "PartialBasic",
+		StatusStyle: statusStyleBasic, PodStatus: statusPartial, PodReadyText: testReadyText,
+	})
+	srv := newTestServer(t, store)
+	req := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`class="status-pill status-Partial"`,
+		`title="Partial (` + testReadyText + `)"`,
+		testReadyText,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment body missing %q:\n%s", want, body)
+		}
 	}
 }
 

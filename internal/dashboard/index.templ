@@ -166,25 +166,34 @@ templ Index(data indexData) {
 					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 					backdrop-filter: var(--card-backdrop, none); -webkit-backdrop-filter: var(--card-backdrop, none);
 					transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+					container-type: inline-size;
 				}
 				.card:hover {
 					transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
 					border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 				}
-				.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; gap: 0.6rem; }
+				.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; }
 				.card h3 a { color: inherit; text-decoration: none; }
 				.card h3 a:hover { color: var(--accent); }
 				img.icon { width: 1.2rem; height: 1.2rem; object-fit: contain; }
 				.card h3 img.icon { width: 2rem; height: 2rem; }
-				.status-indicators { display: flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+				.status-indicators { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem; margin-left: auto; min-width: 0; }
 				.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); }
 				.status-dot.status-Up { background: var(--good); }
 				.status-dot.status-Partial { background: var(--warn); }
 				.status-dot.status-Down { background: var(--danger); }
-				.status-pill { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; font-weight: 600; background: color-mix(in srgb, var(--muted) 25%, transparent); color: var(--muted); }
-				.status-pill.status-Up { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
-				.status-pill.status-Partial { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
-				.status-pill.status-Down { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger); }
+				/* Pill metrics are em-based off a container-query-scaled font-size:
+				   on a narrow card (.card is an inline-size container) the whole
+				   pill — dot, padding, text — shrinks smoothly down to a 0.55rem
+				   floor before .card h3's flex-wrap kicks in as the last resort.
+				   The clamp() cap also bounds the cqw unit's no-container
+				   (older-browser) viewport fallback. */
+				.status-pill { display: inline-flex; align-items: center; gap: 0.48em; font-size: clamp(0.55rem, 4cqw, 0.66rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.24em 0.83em 0.24em 0.76em; border-radius: 999px; white-space: nowrap; background: color-mix(in srgb, var(--muted) 14%, transparent); border: 1px solid color-mix(in srgb, var(--muted) 38%, transparent); color: var(--muted); }
+				.status-pill::before { content: ""; width: 0.64em; height: 0.64em; border-radius: 50%; background: currentColor; flex: none; }
+				.status-pill .detail { opacity: 0.72; font-weight: 600; white-space: pre; }
+				.status-pill.status-Up { background: color-mix(in srgb, var(--good) 14%, transparent); border-color: color-mix(in srgb, var(--good) 38%, transparent); color: var(--good); }
+				.status-pill.status-Partial { background: color-mix(in srgb, var(--warn) 14%, transparent); border-color: color-mix(in srgb, var(--warn) 38%, transparent); color: var(--warn); }
+				.status-pill.status-Down { background: color-mix(in srgb, var(--danger) 14%, transparent); border-color: color-mix(in srgb, var(--danger) 38%, transparent); color: var(--danger); }
 				.stats { display: flex; flex-direction: row; width: 100%; margin-top: 0.5rem; }
 				.grid.grid-equal .card .stats { margin-top: auto; }
 				.stat {

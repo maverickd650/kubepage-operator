@@ -162,7 +162,7 @@
                 "type": "string"
               },
               "statusStyle": {
-                "description": "statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod\nmonitor (App/PodSelector) statuses render: \"dot\" a colored status dot,\n\"basic\" up/down text. Applies to both indicators when both are\nconfigured. Ignored unless one of Ping, SiteMonitor, App, or\nPodSelector is set.",
+                "description": "statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod\nmonitor (App/PodSelector) statuses render: \"dot\" a colored status dot,\n\"basic\" a colored status pill (status word plus latency/ready-count\ndetail). Applies to both indicators when both are configured. Ignored\nunless one of Ping, SiteMonitor, App, or PodSelector is set.",
                 "enum": [
                   "dot",
                   "basic"
