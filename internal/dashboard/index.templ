@@ -291,7 +291,7 @@ templ Index(data indexData) {
 				</script>
 			}
 		</head>
-		<body>
+		<body hx-ext="morph">
 			<div class="wrap">
 				if data.SampleData {
 					<div class="sample-data-banner">Sample data — no live upstreams polled</div>
@@ -376,14 +376,24 @@ templ Index(data indexData) {
 				// per the EventSource spec, but a poll in the meantime keeps the page
 				// from going stale for however long that takes). htmx.ajax's own
 				// hx-swap="morph:innerHTML" keeps the push and interval paths
-				// rendering identically.
+				// rendering identically — but only once htmx knows to use the morph
+				// extension at all: htmx resolves which extensions apply from the
+				// *source*/context element passed to htmx.ajax, not from the target
+				// being swapped into, and without an explicit source it falls back to
+				// document.body. #cards/#header carry hx-ext="morph" themselves, but
+				// document.body sits outside that scope, so an unqualified call here
+				// would silently degrade "morph:innerHTML" to a plain innerHTML
+				// replace — a full DOM teardown/rebuild on every push event instead of
+				// an in-place patch. Passing source explicitly (and, as a second line
+				// of defense, hx-ext="morph" on <body> itself below) keeps that from
+				// happening regardless of which element ends up as target.
 				if (window.EventSource) {
 					const events = new EventSource("/events");
 					events.addEventListener("fragmentChanged", function () {
-						htmx.ajax("GET", "/fragment", { target: "#cards", swap: "morph:innerHTML" });
+						htmx.ajax("GET", "/fragment", { source: "#cards", target: "#cards", swap: "morph:innerHTML" });
 					});
 					events.addEventListener("headerChanged", function () {
-						htmx.ajax("GET", "/header", { target: "#header", swap: "morph:innerHTML" });
+						htmx.ajax("GET", "/header", { source: "#header", target: "#header", swap: "morph:innerHTML" });
 					});
 				}
 
@@ -402,8 +412,8 @@ templ Index(data indexData) {
 				// rather than waiting on the interval or the SSE reconnect.
 				document.addEventListener("visibilitychange", function () {
 					if (document.visibilityState !== "visible") return;
-					htmx.ajax("GET", "/fragment", { target: "#cards", swap: "morph:innerHTML" });
-					htmx.ajax("GET", "/header", { target: "#header", swap: "morph:innerHTML" });
+					htmx.ajax("GET", "/fragment", { source: "#cards", target: "#cards", swap: "morph:innerHTML" });
+					htmx.ajax("GET", "/header", { source: "#header", target: "#header", swap: "morph:innerHTML" });
 				});
 
 				// datetime header widget: tick every second, re-selecting each tick so it
