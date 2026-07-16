@@ -25,6 +25,40 @@ func TestPercentBarStyle(t *testing.T) {
 	}
 }
 
+// TestGridClasses pins the one place style/columns combine (gridClasses):
+// homepage's layout semantics make `style: row` + explicit columns a normal
+// wrapping N-column grid, so grid-row (the horizontal scroller) is emitted
+// only for row WITHOUT columns.
+func TestGridClasses(t *testing.T) {
+	const wantBareGrid = "grid"
+	two := int32(2)
+	tests := map[string]struct {
+		extra        string
+		style        string
+		columns      *int32
+		equalHeights bool
+		want         string
+	}{
+		"default":                {want: wantBareGrid},
+		"row without columns":    {style: styleRow, want: "grid grid-row"},
+		"row with columns":       {style: styleRow, columns: &two, want: wantBareGrid},
+		"columns only":           {columns: &two, want: wantBareGrid},
+		"equal heights":          {equalHeights: true, want: "grid grid-equal"},
+		"row equal heights":      {style: styleRow, equalHeights: true, want: "grid grid-row grid-equal"},
+		"row columns equal":      {style: styleRow, columns: &two, equalHeights: true, want: "grid grid-equal"},
+		"extra class prefixes":   {extra: "subgroups", style: styleRow, want: "subgroups grid grid-row"},
+		"extra with columns":     {extra: "subgroups", style: styleRow, columns: &two, want: "subgroups grid"},
+		"column style stays off": {style: "column", want: wantBareGrid},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := gridClasses(tc.extra, tc.style, tc.columns, tc.equalHeights); got != tc.want {
+				t.Errorf("gridClasses(%q, %q, %v, %v) = %q, want %q", tc.extra, tc.style, tc.columns, tc.equalHeights, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIsNewTabTarget(t *testing.T) {
 	tests := map[string]struct {
 		target string
@@ -185,8 +219,8 @@ func TestRootVarsCSS(t *testing.T) {
 		if !strings.Contains(got, "--accent: #fff;") {
 			t.Errorf("rootVarsCSS() = %q, missing accent", got)
 		}
-		if strings.Contains(got, "--card-blur") || strings.Contains(got, "--card-opacity") {
-			t.Errorf("rootVarsCSS() = %q, want no blur/opacity vars", got)
+		if strings.Contains(got, "--card-blur") || strings.Contains(got, "--card-opacity") || strings.Contains(got, "--card-backdrop") {
+			t.Errorf("rootVarsCSS() = %q, want no blur/opacity/backdrop vars", got)
 		}
 	})
 
@@ -198,12 +232,35 @@ func TestRootVarsCSS(t *testing.T) {
 		if !strings.Contains(got, "--card-opacity: 75%;") {
 			t.Errorf("rootVarsCSS() = %q, missing card-opacity", got)
 		}
+		if !strings.Contains(got, "--card-backdrop: blur(var(--card-blur, 8px));") {
+			t.Errorf("rootVarsCSS() = %q, missing card-backdrop", got)
+		}
 	})
 
 	t.Run("background set but opacity nil", func(t *testing.T) {
 		got := rootVarsCSS("#fff", ramp, "", &Background{})
 		if strings.Contains(got, "--card-opacity") {
 			t.Errorf("rootVarsCSS() = %q, want no card-opacity when Opacity is nil", got)
+		}
+		if !strings.Contains(got, "--card-backdrop") {
+			t.Errorf("rootVarsCSS() = %q, want card-backdrop when background is set even without opacity", got)
+		}
+	})
+
+	t.Run("card blur without background still emits backdrop", func(t *testing.T) {
+		// Regression: an explicit cardBlur with no background image must still
+		// apply the blur (the .card rule reads --card-backdrop, not
+		// --card-blur, so without --card-backdrop the blur silently does
+		// nothing).
+		got := rootVarsCSS("#fff", ramp, "16px", nil)
+		if !strings.Contains(got, "--card-blur: 16px;") {
+			t.Errorf("rootVarsCSS() = %q, missing card-blur", got)
+		}
+		if !strings.Contains(got, "--card-backdrop: blur(var(--card-blur, 8px));") {
+			t.Errorf("rootVarsCSS() = %q, want card-backdrop when cardBlur is set even without a background", got)
+		}
+		if strings.Contains(got, "--card-opacity") {
+			t.Errorf("rootVarsCSS() = %q, want no card-opacity without a background", got)
 		}
 	})
 }
@@ -236,9 +293,36 @@ func TestBackgroundStyle(t *testing.T) {
 
 	t.Run("plain image URL is embedded as-is", func(t *testing.T) {
 		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL})
-		want := `<style nonce="test-nonce">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; }</style>`
+		want := `<style nonce="test-nonce">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; will-change: transform; }</style>`
 		if got != want {
 			t.Errorf("backgroundStyle() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("brightness and saturate emit a filter", func(t *testing.T) {
+		brightness := int32(55)
+		saturate := int32(80)
+		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL, Brightness: &brightness, Saturate: &saturate})
+		want := `<style nonce="test-nonce">body::before { content: ""; position: fixed; inset: 0; z-index: -1; background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; will-change: transform; filter: brightness(55%) saturate(80%); }</style>`
+		if got != want {
+			t.Errorf("backgroundStyle() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("blur emits a filter and oversizes the inset past the viewport", func(t *testing.T) {
+		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL, Blur: blurPxXL})
+		want := `<style nonce="test-nonce">body::before { content: ""; position: fixed; inset: calc(-2 * 24px); z-index: -1; background-image: url("` + testBgImageURL + `"); background-size: cover; background-position: center; will-change: transform; filter: blur(24px); }</style>`
+		if got != want {
+			t.Errorf("backgroundStyle() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("all three filters combine in blur-brightness-saturate order", func(t *testing.T) {
+		brightness := int32(75)
+		saturate := int32(50)
+		got := backgroundStyle("test-nonce", &Background{Image: testBgImageURL, Blur: blurPxSM, Brightness: &brightness, Saturate: &saturate})
+		if !strings.Contains(got, "filter: blur(4px) brightness(75%) saturate(50%);") {
+			t.Errorf("backgroundStyle() = %q, want combined filter blur(4px) brightness(75%%) saturate(50%%)", got)
 		}
 	})
 

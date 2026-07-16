@@ -215,7 +215,7 @@
                       "type": "string"
                     },
                     "style": {
-                      "description": "style lays the group's cards out in a single row instead of a grid.",
+                      "description": "style lays the group's cards out in a single horizontally-scrolling\nrow instead of a grid. Setting columns alongside \"row\" follows\nhomepage's layout semantics: the group renders as a normal wrapping\ngrid of that many columns (the single-row scroller applies only when\nno columns are set).",
                       "enum": [
                         "row",
                         "column"

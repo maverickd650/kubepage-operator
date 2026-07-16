@@ -187,31 +187,51 @@ templ serviceGroupBlock(g cardGroup, siteTarget string, collapsible bool) {
 }
 
 // serviceSubgroups renders g's nested Subgroups, if any, wrapped in a single
-// "subgroups" div (index.templ's nesting CSS indents/steps down the summary
-// type scale from that wrapper). Renders nothing for a group with no
-// Subgroups, so a flat (non-nested) group's markup is unchanged from before
-// nesting existed.
+// "subgroups" div that is itself a grid carrying g's own (the PARENT
+// group's) Columns/Style — homepage parity for nested groups
+// (https://gethomepage.dev/configs/services/#nested-groups): a parent like
+// `Media {header: false, columns: 2}` flows its subgroups into the same
+// 2-column grid its direct cards use, rather than stacking them vertically.
+// Each child group is wrapped in a single "subgroup-item" div so it occupies
+// exactly one grid cell regardless of whether the child renders a
+// collapsible <details> or a header-less h2+grid pair. index.templ's nesting
+// CSS steps down the summary/h2 type scale from the "subgroups" wrapper.
+// Renders nothing for a group with no Subgroups, so a flat (non-nested)
+// group's markup is unchanged from before nesting existed.
 templ serviceSubgroups(g cardGroup, siteTarget string, collapsible bool) {
 	if len(g.Subgroups) > 0 {
-		<div class="subgroups">
+		<div
+			class={ gridClasses("subgroups", g.Style, g.Columns, false) }
+			if g.Columns != nil {
+				style={ gridStyle(g.Columns) }
+			}
+		>
 			for _, sg := range g.Subgroups {
-				@serviceGroupBlock(sg, siteTarget, collapsible)
+				<div class="subgroup-item">
+					@serviceGroupBlock(sg, siteTarget, collapsible)
+				</div>
 			}
 		</div>
 	}
 }
 
+// serviceCardGrid renders g's direct Cards in a grid, or nothing at all for
+// a group with zero direct cards (e.g. a nested-group placeholder parent
+// materialized by nestGroups purely to hold Subgroups) — an empty grid div
+// has no cards to lay out and would otherwise show up as a stray gap.
 templ serviceCardGrid(g cardGroup, siteTarget string) {
-	<div
-		class={ "grid", templ.KV("grid-row", g.Style == "row"), templ.KV("grid-equal", g.UseEqualHeights) }
-		if g.Columns != nil {
-			style={ gridStyle(g.Columns) }
-		}
-	>
-		for _, c := range g.Cards {
-			@serviceCardView(c, siteTarget)
-		}
-	</div>
+	if len(g.Cards) > 0 {
+		<div
+			class={ gridClasses("", g.Style, g.Columns, g.UseEqualHeights) }
+			if g.Columns != nil {
+				style={ gridStyle(g.Columns) }
+			}
+		>
+			for _, c := range g.Cards {
+				@serviceCardView(c, siteTarget)
+			}
+		</div>
+	}
 }
 
 // bookmarkGroupBlock mirrors serviceGroupBlock for a bookmarks.yaml-style
@@ -240,7 +260,7 @@ templ bookmarkGroupBlock(bg BookmarkGroup, siteTarget string, disableCollapse, i
 
 templ bookmarkCardGrid(bg BookmarkGroup, siteTarget string, iconsOnly bool) {
 	<div
-		class={ "grid", templ.KV("grid-row", bg.Style == "row"), templ.KV("grid-equal", bg.UseEqualHeights) }
+		class={ gridClasses("", bg.Style, bg.Columns, bg.UseEqualHeights) }
 		if bg.Columns != nil {
 			style={ gridStyle(bg.Columns) }
 		}
@@ -282,7 +302,13 @@ templ Cards(data fragmentData) {
 			}
 		</div>
 	}
-	for _, bg := range data.BookmarkGroups {
-		@bookmarkGroupBlock(bg, data.SiteTarget, data.DisableCollapse, data.BookmarksIconsOnly)
+	if len(data.BookmarkGroups) > 0 {
+		<div class="bookmark-groups">
+			for _, bg := range data.BookmarkGroups {
+				<div class="bookmark-group-item">
+					@bookmarkGroupBlock(bg, data.SiteTarget, data.DisableCollapse, data.BookmarksIconsOnly)
+				</div>
+			}
+		</div>
 	}
 }
