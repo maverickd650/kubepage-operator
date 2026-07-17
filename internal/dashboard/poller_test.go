@@ -1825,8 +1825,12 @@ func TestPollerMonitorNamespacesUnset(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
 	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
-	if got := p.monitorNamespaces(t.Context()); got != nil {
-		t.Errorf("monitorNamespaces() = %v, want nil when Dashboard.Spec.MonitorNamespaces is unset", got)
+	spec, ok := p.dashboardSpecForPoll(t.Context())
+	if !ok {
+		t.Fatal("dashboardSpecForPoll() ok = false, want true for an existing Dashboard")
+	}
+	if got := spec.MonitorNamespaces; got != nil {
+		t.Errorf("dashboardSpecForPoll().MonitorNamespaces = %v, want nil when unset", got)
 	}
 }
 
@@ -1839,9 +1843,12 @@ func TestPollerMonitorNamespacesSet(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
 	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
-	got := p.monitorNamespaces(t.Context())
-	if !slices.Equal(got, []string{"allowed-ns"}) {
-		t.Errorf("monitorNamespaces() = %v, want [allowed-ns]", got)
+	spec, ok := p.dashboardSpecForPoll(t.Context())
+	if !ok {
+		t.Fatal("dashboardSpecForPoll() ok = false, want true for an existing Dashboard")
+	}
+	if got := spec.MonitorNamespaces; !slices.Equal(got, []string{"allowed-ns"}) {
+		t.Errorf("dashboardSpecForPoll().MonitorNamespaces = %v, want [allowed-ns]", got)
 	}
 }
 
@@ -1850,8 +1857,12 @@ func TestPollerMonitorNamespacesMissingDashboard(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
 
-	if got := p.monitorNamespaces(t.Context()); got != nil {
-		t.Errorf("monitorNamespaces() = %v, want nil when the Dashboard can't be read", got)
+	spec, ok := p.dashboardSpecForPoll(t.Context())
+	if ok {
+		t.Fatal("dashboardSpecForPoll() ok = true, want false when the Dashboard can't be read")
+	}
+	if got := spec.MonitorNamespaces; got != nil {
+		t.Errorf("dashboardSpecForPoll().MonitorNamespaces = %v, want nil when the Dashboard can't be read", got)
 	}
 }
 

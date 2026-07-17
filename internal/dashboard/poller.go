@@ -195,12 +195,11 @@ func (p *Poller) pollOnce(ctx context.Context) {
 
 	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
 	// One Get of the Dashboard covers discovery config, widget defaults, and
-	// allowed monitor namespaces — previously each of discoverySpec/
-	// widgetDefaults/monitorNamespaces Got it separately, three round-trips
-	// to the same object every cycle. dashboardSpecForPoll's single-Get
-	// result is reused below instead of calling those three methods (kept
-	// around, and still each doing their own Get, only because unit tests
-	// exercise them individually).
+	// allowed monitor namespaces — previously a per-field accessor Got it
+	// separately for each, three round-trips to the same object every cycle.
+	// dashboardSpecForPoll's single-Get result is reused below instead
+	// (discoverySpec/widgetDefaults survive as thin wrappers over it, only
+	// because unit tests exercise them individually).
 	dashboardSpec, dashboardOK := p.dashboardSpecForPoll(ctx)
 	widgetDefaults := dashboardSpec.WidgetDefaults
 	allowedMonitorNamespaces := dashboardSpec.MonitorNamespaces
@@ -1056,10 +1055,12 @@ func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErro
 // zero value and ok=false when the Get fails — a transient error here
 // should not fail the whole poll cycle, only make every field this backs
 // (discovery config, widget defaults, allowed monitor namespaces) fall back
-// to "unset" for this cycle. pollOnce calls this once per cycle and derives
-// all three from the single result; discoverySpec/widgetDefaults/
-// monitorNamespaces below wrap it for callers (currently only tests) that
-// want just one field.
+// to "unset" for this cycle — e.g. a foreign-namespace pod monitor simply
+// renders Down with a card error for the cycle (MonitorNamespaces falls back
+// to nil) rather than failing every other card too. pollOnce calls this once
+// per cycle and derives all three from the single result;
+// discoverySpec/widgetDefaults below wrap it for callers (currently only
+// tests) that want just one field.
 func (p *Poller) dashboardSpecForPoll(ctx context.Context) (pagev1alpha1.DashboardSpec, bool) {
 	var instance pagev1alpha1.Dashboard
 	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
@@ -1102,21 +1103,6 @@ func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.Wid
 		return nil
 	}
 	return spec.WidgetDefaults
-}
-
-// monitorNamespaces returns the Dashboard's Spec.MonitorNamespaces — the
-// namespaces (beyond the Dashboard's own, which a pod monitor entry never
-// needs to name explicitly) a ServiceEntry's pod monitor may list pods in —
-// or nil when unset or the Dashboard can't be read, mirroring
-// widgetDefaults'/discoverySpec's tolerance of a transient Get failure: a
-// foreign-namespace pod monitor simply renders Down with a card error for
-// this cycle rather than failing every other card too.
-func (p *Poller) monitorNamespaces(ctx context.Context) []string {
-	spec, ok := p.dashboardSpecForPoll(ctx)
-	if !ok {
-		return nil
-	}
-	return spec.MonitorNamespaces
 }
 
 // pollDiscoveredService builds and stores the Card for one Ingress-derived
