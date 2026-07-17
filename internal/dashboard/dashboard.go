@@ -161,6 +161,16 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		// BaseContext ties every request's r.Context() to serve's own ctx
+		// instead of the default context.Background(): handleEvents (GET
+		// /events, the SSE stream) loops on r.Context() until it's
+		// canceled, so without this, Shutdown below would only unblock
+		// that loop once its underlying TCP connection closes — which
+		// might be never, for a client left idling on an open tab. Tying
+		// it to ctx means every in-flight SSE handler exits the moment
+		// ctx is canceled, so Shutdown's graceful drain actually
+		// completes instead of stalling on long-lived streams.
+		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
 	go func() {
@@ -175,6 +185,9 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		Addr:              metricsAddr,
 		Handler:           promhttp.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		<-ctx.Done()
