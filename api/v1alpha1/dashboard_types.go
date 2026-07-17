@@ -416,9 +416,9 @@ type NetworkPolicySpec struct {
 //
 // The scanned namespace is single (the Dashboard's own) by default: this
 // keeps a Dashboard's blast radius equal to its own RBAC, matching every
-// other config CRD in this project (DashboardStyle/ServiceCard/Bookmark/
-// InfoWidget all require dashboardRef's Dashboard to be in the same
-// namespace — see CLAUDE.md). Namespaces opts a specific Dashboard into
+// other config CRD in this project (ServiceCard/Bookmark/InfoWidget all
+// require dashboardRef's Dashboard to be in the same namespace — see
+// CLAUDE.md). Namespaces opts a specific Dashboard into
 // scanning additional namespaces beyond its own, for the common homelab
 // shape of one dashboard namespace and apps spread across several others;
 // see its own doc comment for the RBAC this widens.
