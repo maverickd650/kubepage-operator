@@ -102,7 +102,7 @@ spec:
       href: http://plex.example.com  # clicking the tile opens this
       icon: plex                      # a nice logo (see below)
       description: Media server
-      siteMonitor: http://plex.example.com   # gives it an up/down light
+      monitor: self                   # up/down light probing href
 ```
 
 ```sh
@@ -144,10 +144,9 @@ spec:
       href: http://plex.example.com
       icon: plex
       description: Media server
-      siteMonitor: http://plex.example.com
+      monitor: self
       widgets:
-        - type: plex
-          url: http://plex.example.com
+        - type: plex                     # inherits its URL from href
           secrets:
             token:
               secretKeyRef:

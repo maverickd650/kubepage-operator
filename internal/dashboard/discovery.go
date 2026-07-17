@@ -41,7 +41,12 @@ const (
 	discoveryAnnIcon        = "icon"
 	discoveryAnnHref        = "href"
 	discoveryAnnDescription = "description"
-	discoveryAnnPing        = "ping"
+	discoveryAnnMonitor     = "monitor"
+
+	// discoveryAnnPing is homepage's own name for the monitor flag
+	// ("gethomepage.dev/ping"), still honored — alongside "monitor" — so
+	// HomepageCompat keeps working with unmodified homepage annotations.
+	discoveryAnnPing = "ping"
 )
 
 // defaultDiscoveryGroup is the Group a discovered card renders under when
@@ -49,13 +54,13 @@ const (
 const defaultDiscoveryGroup = "Discovered"
 
 // annotationValueTrue is the boolean-flag value Ingress annotations use for
-// "enabled"/"ping" (e.g. "kubepage.io/enabled: \"true\""), matching
+// "enabled"/"monitor" (e.g. "kubepage.io/enabled: \"true\""), matching
 // homepage's own annotation convention.
 const annotationValueTrue = "true"
 
 // discoveredService is a service card synthesized from an annotated Ingress,
 // good for exactly what an Ingress annotation can safely carry: title/icon/
-// description/href/ping. Never a polled widget — see DiscoverySpec's doc
+// description/href/monitor. Never a polled widget — see DiscoverySpec's doc
 // comment on why annotations can't carry secrets.
 type discoveredService struct {
 	Key         string
@@ -64,7 +69,7 @@ type discoveredService struct {
 	IconURL     string
 	Description string
 	Href        string
-	Ping        bool
+	Monitor     bool
 }
 
 // extraDiscoveryNamespaces returns spec.Namespaces with namespace (the
@@ -142,11 +147,18 @@ func discoverServices(ctx context.Context, reader client.Reader, namespace strin
 			IconURL:     iconURL,
 			Description: ann[discoveryAnnDescription],
 			Href:        href,
-			Ping:        ann[discoveryAnnPing] == annotationValueTrue,
+			Monitor:     discoveryMonitorEnabled(ann),
 		})
 	}
 	slices.SortFunc(out, func(a, b discoveredService) int { return strings.Compare(a.Key, b.Key) })
 	return out, nil
+}
+
+// discoveryMonitorEnabled reports whether ann opts the discovered card into
+// an HTTP monitor probe of its href: the native "monitor" flag, or
+// homepage's own "ping" name for the same behavior (see discoveryAnnPing).
+func discoveryMonitorEnabled(ann map[string]string) bool {
+	return ann[discoveryAnnMonitor] == annotationValueTrue || ann[discoveryAnnPing] == annotationValueTrue
 }
 
 // discoveryAnnotations reports whether annotations opt into discovery — the
@@ -250,7 +262,7 @@ func discoverHTTPRoutes(ctx context.Context, reader client.Reader, namespace str
 			IconURL:     iconURL,
 			Description: ann[discoveryAnnDescription],
 			Href:        href,
-			Ping:        ann[discoveryAnnPing] == annotationValueTrue,
+			Monitor:     discoveryMonitorEnabled(ann),
 		})
 	}
 	slices.SortFunc(out, func(a, b discoveredService) int { return strings.Compare(a.Key, b.Key) })

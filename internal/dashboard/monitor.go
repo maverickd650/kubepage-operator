@@ -11,8 +11,8 @@ const statusDown = "Down"
 
 // probeHTTP performs an HTTP reachability check of url, returning whether the
 // endpoint is up (responded with a 2xx/3xx status) and how long the request
-// took. It is the shared implementation behind both ServiceCard.Ping and
-// ServiceCard.SiteMonitor — deliberately HTTP-only so the dashboard pod needs
+// took. It is the implementation behind ServiceEntry.Monitor — deliberately
+// HTTP-only so the dashboard pod needs
 // no raw-socket / NET_RAW capability for ICMP. A transport error (DNS failure,
 // connection refused, timeout) returns up=false with the error; an HTTP
 // response of any status returns no error, with up reflecting the status code.

@@ -88,7 +88,10 @@ type ServiceWidget struct {
 	// +required
 	Type string `json:"type"`
 
-	// url is the base URL the widget talks to.
+	// url is the base URL the widget talks to. When unset, the widget
+	// inherits its entry's base URL: the entry's internalUrl when set, else
+	// its href — so an entry whose widget polls the same URL the card links
+	// to never has to spell it twice. Set url only to override that.
 	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
@@ -180,7 +183,7 @@ type ServiceWidget struct {
 // are expressed as a "/"-separated path in Group, e.g. "Media/Movies" nests
 // group "Movies" inside group "Media", up to 3 levels deep. See
 // docs/design/nested-groups.md.
-// +kubebuilder:validation:XValidation:rule="(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) <= 1",message="at most one of ping or siteMonitor may be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.monitor) || self.monitor != 'self' || has(self.internalUrl) || has(self.href)",message="monitor: self requires internalUrl or href to be set"
 // +kubebuilder:validation:XValidation:rule="!has(self.namespace) || has(self.app) || has(self.podSelector)",message="namespace requires app or podSelector to be set"
 type ServiceEntry struct {
 	// group is the name of the group this entry belongs to, or a
@@ -208,12 +211,27 @@ type ServiceEntry struct {
 	// +optional
 	Order *int32 `json:"order,omitempty"`
 
-	// href makes the card's title a link to the service.
+	// href makes the card's title a link to the service — purely the
+	// browser-facing URL. It also serves as the last-resort base URL for
+	// anything the dashboard pod itself originates for this entry (widget
+	// polls, the monitor probe) when neither internalUrl nor a widget's own
+	// url is set — see internalUrl.
 	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +optional
 	Href *string `json:"href,omitempty"`
+
+	// internalUrl is the in-cluster base URL the dashboard pod uses for
+	// anything it originates for this entry — widget polls and the HTTP
+	// monitor probe — when set, e.g. "http://plex.media.svc:32400" while
+	// href points at the ingress URL the browser opens. A widget's own url,
+	// when set, still wins; without either, the pod falls back to href.
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	InternalURL *string `json:"internalUrl,omitempty"`
 
 	// target overrides the Dashboard's style.target default link target for this
 	// card's Href ("_blank" opens a new tab, "_self" the same tab).
@@ -253,26 +271,19 @@ type ServiceEntry struct {
 	// +optional
 	ErrorDisplay *bool `json:"errorDisplay,omitempty"`
 
-	// ping is a URL probed over HTTP for reachability and latency, shown as
-	// an up/down status on the card. (Raw ICMP is not used, so a pod needs
-	// no elevated capabilities.) Mutually exclusive with SiteMonitor, but
-	// freely combinable with the pod monitor (App/PodSelector) — a service
-	// can show both an HTTP status and a pod status at once.
-	// +kubebuilder:validation:Pattern=`^https?://`
+	// monitor is a URL probed over HTTP for reachability and latency, shown
+	// as an up/down status on the card. (Raw ICMP is not used, so a pod
+	// needs no elevated capabilities.) The sentinel value "self" probes the
+	// entry's own base URL instead of a separate one: internalUrl when set,
+	// else href — the probe runs from the dashboard pod, so the in-cluster
+	// URL wins when present. Freely combinable with the pod monitor
+	// (App/PodSelector) — a service can show both an HTTP status and a pod
+	// status at once.
+	// +kubebuilder:validation:Pattern=`^(self$|https?://)`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +optional
-	Ping *string `json:"ping,omitempty"`
-
-	// siteMonitor is a URL probed over HTTP, shown as an up/down status with
-	// response latency on the card. Mutually exclusive with Ping, but freely
-	// combinable with the pod monitor (App/PodSelector) — a service can show
-	// both an HTTP status and a pod status at once.
-	// +kubebuilder:validation:Pattern=`^https?://`
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=2048
-	// +optional
-	SiteMonitor *string `json:"siteMonitor,omitempty"`
+	Monitor *string `json:"monitor,omitempty"`
 
 	// app locates this service's pods by the standard
 	// app.kubernetes.io/name=<app> label (homepage parity), a shorthand for
@@ -294,20 +305,20 @@ type ServiceEntry struct {
 
 	// podSelector selects pods whose readiness determines this service's pod
 	// monitor status — a Kubernetes-native alternative (or addition) to
-	// Ping/SiteMonitor for services that run as pods in this cluster,
-	// needing no externally reachable URL. With multiple matches, some Ready
-	// pods render "Partial" and all Ready pods render "Up"; the card shows
-	// "<ready>/<total> ready" in place of Ping/SiteMonitor's latency. Freely
-	// combinable with Ping/SiteMonitor (each gets its own status indicator);
-	// when set, overrides the App-derived selector.
+	// Monitor for services that run as pods in this cluster, needing no
+	// externally reachable URL. With multiple matches, some Ready pods
+	// render "Partial" and all Ready pods render "Up"; the card shows
+	// "<ready>/<total> ready" in place of Monitor's latency. Freely
+	// combinable with Monitor (each gets its own status indicator); when
+	// set, overrides the App-derived selector.
 	// +optional
 	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
 
-	// statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod
-	// monitor (App/PodSelector) statuses render: "dot" a colored status dot,
+	// statusStyle controls how the HTTP monitor (Monitor) and pod monitor
+	// (App/PodSelector) statuses render: "dot" a colored status dot,
 	// "basic" a colored status pill (status word plus latency/ready-count
 	// detail). Applies to both indicators when both are configured. Ignored
-	// unless one of Ping, SiteMonitor, App, or PodSelector is set.
+	// unless one of Monitor, App, or PodSelector is set.
 	// +kubebuilder:validation:Enum=dot;basic
 	// +optional
 	StatusStyle *string `json:"statusStyle,omitempty"`
@@ -320,6 +331,35 @@ type ServiceEntry struct {
 	// +listType=atomic
 	// +optional
 	Widgets []ServiceWidget `json:"widgets,omitempty"`
+}
+
+// MonitorSelf is ServiceEntry.Monitor's sentinel value: probe the entry's
+// own base URL (InternalURL, else Href) rather than a separately spelled one.
+const MonitorSelf = "self"
+
+// BaseURL returns the base URL the dashboard pod uses for anything it
+// originates for this entry (widget polls without their own url, a
+// "monitor: self" probe): InternalURL when set, else Href, else "".
+func (se *ServiceEntry) BaseURL() string {
+	if se.InternalURL != nil && *se.InternalURL != "" {
+		return *se.InternalURL
+	}
+	if se.Href != nil {
+		return *se.Href
+	}
+	return ""
+}
+
+// MonitorURL resolves the entry's HTTP monitor probe URL: "" when Monitor is
+// unset, the entry's BaseURL for "monitor: self", the URL itself otherwise.
+func (se *ServiceEntry) MonitorURL() string {
+	if se.Monitor == nil || *se.Monitor == "" {
+		return ""
+	}
+	if *se.Monitor == MonitorSelf {
+		return se.BaseURL()
+	}
+	return *se.Monitor
 }
 
 // ServiceCardSpec defines the service card(s) rendered by the native

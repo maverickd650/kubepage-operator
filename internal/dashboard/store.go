@@ -32,7 +32,7 @@ type Card struct {
 	ShowStats  bool
 	HideErrors bool
 
-	// HTTP monitor (ping/siteMonitor) result. Status is "" when no HTTP
+	// HTTP monitor (monitor) result. Status is "" when no HTTP
 	// monitor is configured, otherwise "Up"/"Down". StatusStyle is
 	// "dot"/"basic", shared with the pod monitor below.
 	Status      string

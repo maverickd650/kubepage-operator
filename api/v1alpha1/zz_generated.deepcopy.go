@@ -1157,6 +1157,11 @@ func (in *ServiceEntry) DeepCopyInto(out *ServiceEntry) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.InternalURL != nil {
+		in, out := &in.InternalURL, &out.InternalURL
+		*out = new(string)
+		**out = **in
+	}
 	if in.Target != nil {
 		in, out := &in.Target, &out.Target
 		*out = new(string)
@@ -1182,13 +1187,8 @@ func (in *ServiceEntry) DeepCopyInto(out *ServiceEntry) {
 		*out = new(bool)
 		**out = **in
 	}
-	if in.Ping != nil {
-		in, out := &in.Ping, &out.Ping
-		*out = new(string)
-		**out = **in
-	}
-	if in.SiteMonitor != nil {
-		in, out := &in.SiteMonitor, &out.SiteMonitor
+	if in.Monitor != nil {
+		in, out := &in.Monitor, &out.Monitor
 		*out = new(string)
 		**out = **in
 	}

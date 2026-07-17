@@ -97,7 +97,7 @@ credential leaks to any dashboard viewer the moment that request fails. See
 | Kind | Purpose |
 |------|---------|
 | `Dashboard` (`pdash`) | The dashboard Deployment, Service, optional Ingress, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `dashboardRef`. Its optional `spec.style` carries the look: title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. |
-| `ServiceCard` (`pcard`) | One or many service cards (`services`) in a named group, each with optional widgets polling that service's API. Supports an HTTP `ping`/`siteMonitor` up/down status *and*, independently, a Kubernetes pod-readiness status (`app`/`podSelector`, homepage parity) — both may be set at once for two status lights on one card. Also supports per-card link `target` and `showStats`/`errorDisplay` toggles. |
+| `ServiceCard` (`pcard`) | One or many service cards (`services`) in a named group, each with optional widgets polling that service's API. Supports an HTTP `monitor` up/down status (a URL, or `self` to probe the entry's own `internalUrl`/`href`) *and*, independently, a Kubernetes pod-readiness status (`app`/`podSelector`, homepage parity) — both may be set at once for two status lights on one card. Widgets without their own `url` inherit the entry's base URL (`internalUrl`, else `href`). Also supports per-card link `target` and `showStats`/`errorDisplay` toggles. |
 | `Bookmark` (`pbmk`) | One or many static bookmark links (`bookmarks`) in a named group, each with an optional per-bookmark link `target`. |
 | `InfoWidget` (`piw`) | One or many header-strip widgets (`widgets`): `datetime` (client-side clock), `greeting` (static text), `logo` (static header logo image), `openmeteo` (current weather, keyless), `openweathermap` (current weather via OpenWeatherMap), `glances` (host CPU/memory usage), `longhorn` (aggregate Longhorn cluster storage usage), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
@@ -109,9 +109,10 @@ namespace-matching is implicit: they must live in the same namespace as that
 ### Admission validation
 
 Cross-field invariants — every secret-bearing field (`SecretValueSource`)
-sets exactly one of `value` or `secretKeyRef`, a `ServiceCard` sets at most
-one of `ping`/`siteMonitor` (the pod monitor `app`/`podSelector` is freely
-combinable with either), widget `type` is one of the
+sets exactly one of `value` or `secretKeyRef`, a `ServiceCard` entry's
+`monitor: self` requires an `internalUrl` or `href` to resolve against (the
+pod monitor `app`/`podSelector` is freely combinable with `monitor`), widget
+`type` is one of the
 supported set — are enforced by CEL rules baked directly into the CRD
 schemas (**Kubernetes v1.31+** — most rules only need v1.29, but the
 `egressCIDRs` rule uses the `isCIDR()` CEL function added in 1.31, and an
@@ -191,7 +192,9 @@ required.
   `kubepage.io/enabled: "true"`, `kubepage.io/name`, `kubepage.io/group`
   (may itself be a `"/"`-separated path, see [Nested groups](#nested-groups)),
   `kubepage.io/icon`, `kubepage.io/description`, `kubepage.io/href`,
-  `kubepage.io/ping`.
+  `kubepage.io/monitor` (homepage's own `ping` name for the same flag is
+  also honored, under either prefix, so `homepageCompat` and half-migrated
+  annotations keep working).
 - `spec.discovery.homepageCompat: true` additionally honors homepage's own
   `gethomepage.dev/*` annotations (https://gethomepage.dev/configs/kubernetes/)
   on any resource that doesn't carry the native prefix's own enable
@@ -217,7 +220,7 @@ the route's).
 
 Discovery annotations are scoped to what's safe on a resource anyone with
 read access to it can also read: **no secrets and no widget config** — only
-`href`/`icon`/`description`/`group`/`ping`. For a card with a polled widget
+`href`/`icon`/`description`/`group`/`monitor`. For a card with a polled widget
 (API key, metrics, ...), use an explicit `ServiceCard` instead. Note there is
 currently no de-duplication between an explicit `ServiceCard` and a
 discovered `Ingress`/`HTTPRoute` that would render under the same

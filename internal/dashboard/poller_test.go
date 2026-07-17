@@ -275,8 +275,8 @@ func TestPollerMultiCardFormProducesPerEntryCards(t *testing.T) {
 					},
 				},
 				{
-					Name:        testMultiEntryNameMonitored,
-					SiteMonitor: &monSrv.URL,
+					Name:    testMultiEntryNameMonitored,
+					Monitor: &monSrv.URL,
 				},
 			},
 		},
@@ -510,7 +510,7 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 			Group:        "G",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name:        "Monitored",
-				SiteMonitor: &srv.URL,
+				Monitor:     &srv.URL,
 				StatusStyle: &style,
 			}},
 		},
@@ -541,20 +541,20 @@ func TestPollerMonitorOnlyEntry(t *testing.T) {
 	}
 }
 
-func TestPollerMonitorPingOnlyEntry(t *testing.T) {
+func TestPollerMonitorURLOnlyEntry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	entry := pagev1alpha1.ServiceCard{
-		ObjectMeta: metav1.ObjectMeta{Name: "ping", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "mon-url", Namespace: testNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        "G",
 			Services: []pagev1alpha1.ServiceEntry{{
-				Name: "Pinged",
-				Ping: &srv.URL,
+				Name:    "Monitored",
+				Monitor: &srv.URL,
 			}},
 		},
 	}
@@ -562,14 +562,77 @@ func TestPollerMonitorPingOnlyEntry(t *testing.T) {
 	p := &Poller{HTTPClient: srv.Client()}
 	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], statusStyleDot, nil, func(string, string) {})
 	if m.status != "Up" {
-		t.Errorf("monitor(Ping) status = %q, want Up", m.status)
+		t.Errorf("monitor(Monitor) status = %q, want Up", m.status)
 	}
 	if m.statusStyle != statusStyleDot {
-		t.Errorf("monitor(Ping) style = %q, want default dot", m.statusStyle)
+		t.Errorf("monitor(Monitor) style = %q, want default dot", m.statusStyle)
 	}
 	if m.latency == "" {
-		t.Errorf("monitor(Ping) latency = empty, want non-empty")
+		t.Errorf("monitor(Monitor) latency = empty, want non-empty")
 	}
+}
+
+// TestPollerMonitorSelfResolution covers the "monitor: self" sentinel: the
+// probe goes to the entry's own base URL — internalUrl when set (the probe
+// runs from the pod, so the in-cluster URL wins), else href — and an entry
+// whose base URL resolves empty probes nothing at all.
+func TestPollerMonitorSelfResolution(t *testing.T) {
+	probed := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case probed <- r.Host:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	unreachable := "http://browser-facing.invalid/"
+	monitorSelf := pagev1alpha1.MonitorSelf
+
+	t.Run("internalUrl wins over href", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{
+			Name:        testSvcDisplayName,
+			Href:        &unreachable,
+			InternalURL: &srv.URL,
+			Monitor:     &monitorSelf,
+		}
+		p := &Poller{HTTPClient: srv.Client()}
+		m := p.monitor(t.Context(), testNamespace, "self-internal", se, statusStyleDot, nil, func(string, string) {})
+		if m.status != "Up" {
+			t.Errorf("monitor(self with internalUrl) status = %q, want Up (probe of internalUrl)", m.status)
+		}
+		select {
+		case <-probed:
+		default:
+			t.Error("monitor(self with internalUrl) never probed internalUrl")
+		}
+	})
+
+	t.Run("falls back to href", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{
+			Name:    testSvcDisplayName,
+			Href:    &srv.URL,
+			Monitor: &monitorSelf,
+		}
+		p := &Poller{HTTPClient: srv.Client()}
+		m := p.monitor(t.Context(), testNamespace, "self-href", se, statusStyleDot, nil, func(string, string) {})
+		if m.status != "Up" {
+			t.Errorf("monitor(self with href) status = %q, want Up (probe of href)", m.status)
+		}
+	})
+
+	t.Run("no base URL probes nothing", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{
+			Name:    testSvcDisplayName,
+			Monitor: &monitorSelf,
+		}
+		p := &Poller{HTTPClient: srv.Client()}
+		m := p.monitor(t.Context(), testNamespace, "self-none", se, statusStyleDot, nil, func(string, string) {})
+		if m.status != "" {
+			t.Errorf("monitor(self without base URL) status = %q, want empty (no probe)", m.status)
+		}
+	})
 }
 
 func TestPollerPodStatusInvalidSelector(t *testing.T) {
@@ -1706,7 +1769,7 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 	entry := pagev1alpha1.ServiceCard{
 		Spec: pagev1alpha1.ServiceCardSpec{
 			Services: []pagev1alpha1.ServiceEntry{{
-				Ping: &srv.URL,
+				Monitor: &srv.URL,
 			}},
 		},
 	}
@@ -1875,15 +1938,15 @@ func TestPollerPollDiscoveredServiceStoresCard(t *testing.T) {
 
 	cards := store.Snapshot()
 	if len(cards) != 1 || cards[0].ServiceName != testDiscoveredAppName || cards[0].Group != testDiscoveryGroup || cards[0].Status != "" {
-		t.Fatalf("Snapshot() = %+v, want an unmonitored App card (Ping unset)", cards)
+		t.Fatalf("Snapshot() = %+v, want an unmonitored App card (monitor unset)", cards)
 	}
 }
 
-func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
+func TestPollerPollDiscoveredServiceWithMonitorSetsStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	defer srv.Close()
 
-	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: srv.URL, Ping: true}
+	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: srv.URL, Monitor: true}
 	store := NewStore()
 	p := &Poller{HTTPClient: srv.Client(), Store: store}
 
@@ -1895,7 +1958,7 @@ func TestPollerPollDiscoveredServiceWithPingSetsStatus(t *testing.T) {
 		t.Errorf("card = %+v, want Status=Up StatusStyle=dot", card)
 	}
 	if recorded == "" {
-		t.Error("pollDiscoveredService() did not record a monitor label for a Ping-enabled discovered service")
+		t.Error("pollDiscoveredService() did not record a monitor label for a monitor-enabled discovered service")
 	}
 }
 
@@ -1923,8 +1986,8 @@ func TestPollerSampleDataSkipsNetworkAndSecrets(t *testing.T) {
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testGroup,
 			Services: []pagev1alpha1.ServiceEntry{{
-				Name:        testSvcDisplayName,
-				SiteMonitor: &monitorURL,
+				Name:    testSvcDisplayName,
+				Monitor: &monitorURL,
 				Widgets: []pagev1alpha1.ServiceWidget{{
 					Type: testWidgetType,
 					URL:  &widgetURL,
@@ -2109,7 +2172,7 @@ func TestPollerPollOnceDiscoversIngresses(t *testing.T) {
 // TestPollerPollOnceDiscoveredServiceSampleDataSkipsNetwork closes the gap
 // found in review: pollDiscoveredService is a separate poll path from
 // pollWidget/pollInfoWidget/monitor, so it needs its own SampleData check.
-// A Ping-enabled discovered Ingress must render a fabricated "Up" status
+// A monitor-enabled discovered Ingress must render a fabricated "Up" status
 // without ever dialing the network or touching the monitorUp metric under
 // SampleData — see probeURL's doc comment for the same guarantee on
 // monitor-based probes.
@@ -2125,10 +2188,10 @@ func TestPollerPollOnceDiscoveredServiceSampleDataSkipsNetwork(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testDiscoveredAppKey, Namespace: testNamespace,
 			Annotations: map[string]string{
-				testDiscoveryEnabledAnnotation:            annotationValueTrue,
-				testKubepageNameAnnotation:                testDiscoveredAppCardName,
-				defaultDiscoveryPrefix + discoveryAnnHref: testUnreachableAddr,
-				defaultDiscoveryPrefix + discoveryAnnPing: annotationValueTrue,
+				testDiscoveryEnabledAnnotation:               annotationValueTrue,
+				testKubepageNameAnnotation:                   testDiscoveredAppCardName,
+				defaultDiscoveryPrefix + discoveryAnnHref:    testUnreachableAddr,
+				defaultDiscoveryPrefix + discoveryAnnMonitor: annotationValueTrue,
 			},
 		},
 	}
@@ -2270,7 +2333,7 @@ func TestPollerPollOnceSkipsHTTPRoutesWhenSourcesUnset(t *testing.T) {
 // --- Combined HTTP + pod monitor tests (docs/design/combined-monitor.md) ---
 
 // TestPollerCombinedMonitorFillsBothSlots verifies a services entry
-// configuring both an HTTP monitor (siteMonitor) and a pod monitor (app)
+// configuring both an HTTP monitor (monitor) and a pod monitor (app)
 // populates Card.Status/Latency from the HTTP probe and Card.PodStatus/
 // PodReadyText from the pod probe independently, in one poll cycle.
 func TestPollerCombinedMonitorFillsBothSlots(t *testing.T) {
@@ -2288,9 +2351,9 @@ func TestPollerCombinedMonitorFillsBothSlots(t *testing.T) {
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testGroup,
 			Services: []pagev1alpha1.ServiceEntry{{
-				Name:        testCombinedServiceName,
-				SiteMonitor: &srv.URL,
-				App:         &app,
+				Name:    testCombinedServiceName,
+				Monitor: &srv.URL,
+				App:     &app,
 			}},
 		},
 	}
@@ -2415,9 +2478,9 @@ func TestPollerMonitorMetricsPerSourceAndPruning(t *testing.T) {
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testGroup,
 			Services: []pagev1alpha1.ServiceEntry{{
-				Name:        testCombinedServiceName,
-				SiteMonitor: &srv.URL,
-				App:         &app,
+				Name:    testCombinedServiceName,
+				Monitor: &srv.URL,
+				App:     &app,
 			}},
 		},
 	}
@@ -2438,7 +2501,7 @@ func TestPollerMonitorMetricsPerSourceAndPruning(t *testing.T) {
 		}
 	}
 
-	// Remove the pod monitor (App) from the entry, leaving only siteMonitor,
+	// Remove the pod monitor (App) from the entry, leaving only monitor,
 	// and re-fetch it from the fake client so the update actually persists.
 	var updated pagev1alpha1.ServiceCard
 	if err := cl.Get(t.Context(), client.ObjectKeyFromObject(entry), &updated); err != nil {
@@ -2455,5 +2518,80 @@ func TestPollerMonitorMetricsPerSourceAndPruning(t *testing.T) {
 	}
 	if !p.monitorLabels[monitorLabelKey(label, monitorSourceHTTP)] {
 		t.Error("monitorLabels dropped the http source, want it to remain tracked")
+	}
+}
+
+// TestPollerWidgetURLInheritance covers a widget's base URL resolution
+// precedence: an explicit widgets[].url wins, else the entry's internalUrl,
+// else the entry's href (see ServiceEntry.BaseURL and pollWidget).
+func TestPollerWidgetURLInheritance(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"activeTargets":[{"health":"up"}]}}`))
+	}))
+	defer srv.Close()
+
+	unreachable := "http://unreachable.invalid/"
+	cases := []struct {
+		name  string
+		entry pagev1alpha1.ServiceEntry
+	}{
+		{
+			name: "explicit widget url wins over internalUrl and href",
+			entry: pagev1alpha1.ServiceEntry{
+				Name:        testSvcDisplayName,
+				Href:        &unreachable,
+				InternalURL: &unreachable,
+				Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &srv.URL}},
+			},
+		},
+		{
+			name: "internalUrl inherited over href",
+			entry: pagev1alpha1.ServiceEntry{
+				Name:        testSvcDisplayName,
+				Href:        &unreachable,
+				InternalURL: &srv.URL,
+				Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType}},
+			},
+		},
+		{
+			name: "href inherited when nothing else is set",
+			entry: pagev1alpha1.ServiceEntry{
+				Name:    testSvcDisplayName,
+				Href:    &srv.URL,
+				Widgets: []pagev1alpha1.ServiceWidget{{Type: testWidgetType}},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := &pagev1alpha1.ServiceCard{
+				ObjectMeta: metav1.ObjectMeta{Name: "inherit", Namespace: testNamespace},
+				Spec: pagev1alpha1.ServiceCardSpec{
+					DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+					Group:        testGroup,
+					Services:     []pagev1alpha1.ServiceEntry{tc.entry},
+				},
+			}
+			scheme := testScheme(t)
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+			store := NewStore()
+			p := &Poller{
+				Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+				Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+			}
+			p.pollOnce(t.Context())
+
+			cards := store.Snapshot()
+			if len(cards) != 1 {
+				t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+			}
+			if cards[0].Err != "" {
+				t.Errorf("card.Err = %q, want empty (widget should have polled the reachable URL)", cards[0].Err)
+			}
+			if len(cards[0].Fields) == 0 {
+				t.Errorf("card.Fields empty, want fields from the resolved base URL poll")
+			}
+		})
 	}
 }

@@ -412,7 +412,7 @@ type NetworkPolicySpec struct {
 // (https://gethomepage.dev/configs/kubernetes/), scoped to what an
 // annotation — world-readable to anyone who can read the source resource —
 // can safely carry: no secrets, so no widget config, only href/icon/
-// description/group/ping.
+// description/group/monitor.
 //
 // The scanned namespace is single (the Dashboard's own) by default: this
 // keeps a Dashboard's blast radius equal to its own RBAC, matching every

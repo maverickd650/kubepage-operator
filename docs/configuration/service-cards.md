@@ -57,14 +57,15 @@ Everything you can set on a single tile (an entry under `services:`):
 | Field | What it does |
 |-------|--------------|
 | `name` | **Required.** The tile's title. |
-| `href` | Makes the title a clickable link to the service. |
+| `href` | Makes the title a clickable link to the service (the browser-facing URL). Also the fallback base URL for widget polls and `monitor: self` when `internalUrl` isn't set. |
+| `internalUrl` | The in-cluster base URL the dashboard **pod** uses for widget polls and `monitor: self`, when it differs from `href` (e.g. `http://plex.media.svc:32400` behind an ingress). |
 | `icon` | The logo. See [Icons](#icons). |
 | `description` | A line of text under the title. |
 | `group` | Which heading this tile appears under. Falls back to the file's top-level `group`. Supports nesting — see [Groups & nesting](#groups-and-nesting). |
 | `order` | A number to control position. Lower numbers come first; ties break alphabetically. |
 | `target` | `_blank` opens the link in a new tab (default), `_self` in the same tab. |
-| `ping` / `siteMonitor` | An HTTP up/down status light. Pick **one** — see [Status lights](#status-lights). |
-| `app` / `podSelector` | A Kubernetes pod-readiness status light, shown alongside `ping`/`siteMonitor` if both are set — see [Status lights](#status-lights). |
+| `monitor` | An HTTP up/down status light: a URL, or `self` to probe the entry's own base URL — see [Status lights](#status-lights). |
+| `app` / `podSelector` | A Kubernetes pod-readiness status light, shown alongside `monitor` if both are set — see [Status lights](#status-lights). |
 | `namespace` | Which namespace `app`/`podSelector` list pods in, if not this ServiceCard's own — see [Status lights](#status-lights). |
 | `statusStyle` | `dot` (a coloured dot, the default) or `basic` (a coloured status pill with status word plus latency/ready-count detail). |
 | `showStats` | Set `false` to hide widget numbers but keep the tile. Default `true`. |
@@ -97,18 +98,25 @@ lets you search the available names.
 ## Status lights
 
 A tile can show up to **two independent** status lights: an HTTP one
-(`ping`/`siteMonitor`) and a Kubernetes pod one (`app`/`podSelector`). Set
-either, both, or neither — this mirrors
+(`monitor`) and a Kubernetes pod one (`app`/`podSelector`). Set either, both,
+or neither — this mirrors
 [homepage's Kubernetes status](https://gethomepage.dev/configs/kubernetes/).
 
-**HTTP monitor** — choose at most one of these two (setting both is rejected
-when you apply):
+**HTTP monitor** — one field, `monitor`:
 
-- **`siteMonitor: http://plex.example.com`** — the usual choice. Fetches the URL
-  over HTTP and shows up/down **plus response time**.
-- **`ping: http://plex.example.com`** — similar, a lighter reachability + latency
-  check. (Despite the name it uses HTTP, not raw network ping, so it needs no
-  special permissions.)
+- **`monitor: self`** — the usual choice. Probes the entry's own base URL
+  (`internalUrl` when set, else `href` — the probe runs from the dashboard
+  pod, so the in-cluster URL wins) and shows up/down **plus response time**.
+- **`monitor: http://plex.example.com`** — an explicit URL, when the probe
+  target differs from the entry's own base URL.
+
+The probe is plain HTTP (not raw network ping), so it needs no special
+permissions.
+
+> **Migrating from `ping`/`siteMonitor`?** Both fields were merged into
+> `monitor` — they were always the same HTTP probe. Replace either one with
+> `monitor: <same URL>` (or just `monitor: self` if the URL equals the
+> entry's `href`/`internalUrl`).
 
 **Pod monitor** — for services that run as pods *in this cluster*. It watches
 pod readiness instead of hitting a URL, so it needs no reachable address, and
@@ -120,8 +128,8 @@ rendered amber), or **Down** (none Ready, or nothing matched):
 
   ```yaml
   - name: My App
-    siteMonitor: http://my-app.example.com
-    app: my-app # shows a second, pod-readiness status light alongside siteMonitor
+    monitor: http://my-app.example.com
+    app: my-app # shows a second, pod-readiness status light alongside monitor
   ```
 
 - **`podSelector:`** — an explicit label selector, for pods that don't carry

@@ -47,7 +47,7 @@ func isBlockedMetadataAddress(ip net.IP) bool {
 // to a blocked address (including via DNS rebinding) is caught the same as a
 // literal one.
 //
-// ServiceCard ping/siteMonitor/widget URLs are deliberately trusted to
+// ServiceCard monitor/widget URLs are deliberately trusted to
 // reach cluster-internal addresses (ClusterIP/pod-CIDR ranges, typically
 // RFC1918) — that's the whole point of those fields — so this does not
 // attempt broad SSRF prevention. It only closes the gaps with no legitimate

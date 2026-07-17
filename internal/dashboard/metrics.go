@@ -23,7 +23,7 @@ var (
 
 	monitorUp = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubepage_monitor_up",
-		Help: "Whether a ServiceCard's monitor probe last succeeded (1) or failed (0), by source (\"http\" for ping/siteMonitor, \"pods\" for app/podSelector; a pod monitor's Partial status still counts as up).",
+		Help: "Whether a ServiceCard's monitor probe last succeeded (1) or failed (0), by source (\"http\" for monitor, \"pods\" for app/podSelector; a pod monitor's Partial status still counts as up).",
 	}, []string{"service", "source"})
 )
 

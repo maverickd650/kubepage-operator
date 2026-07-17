@@ -40,8 +40,7 @@ services:
     href: http://plex.example.com
     icon: plex
     widgets:                       # <- widgets attach here, inside the tile
-      - type: plex
-        url: http://plex.example.com
+      - type: plex                 # no url: inherits the tile's href
         secrets:
           token:
             secretKeyRef:
@@ -61,7 +60,7 @@ required:
 
 ```yaml
 - type: plex                       # 1. WHICH widget (required)
-  url: http://plex.example.com     # 2. WHERE the service is
+  url: http://plex.example.com     # 2. WHERE the service is (optional override)
   secrets:                         # 3. The KEY/PASSWORD to get in (if needed)
     token:
       secretKeyRef:
@@ -86,8 +85,15 @@ The base web address of the service, e.g. `http://plex.example.com` or
 `http://192.168.1.50:8096`. Use the address the **dashboard** can reach — often
 an internal cluster address, not the public one you use from your laptop.
 
-A few widgets don't need a `url` (the header-only ones like `kubemetrics` read
-the cluster directly). The reference table tells you which.
+**You usually don't need to set it.** A widget without its own `url` inherits
+its tile's base URL: the tile's `internalUrl` when set, else its `href`. So a
+tile whose widget polls the same address the card links to never repeats the
+URL, and a tile that sets `internalUrl` (the in-cluster address) next to a
+public `href` gives its widgets the in-cluster one automatically. Set `url`
+only when the widget's address differs from both.
+
+A few widgets don't need a `url` at all (the header-only ones like
+`kubemetrics` read the cluster directly). The reference table tells you which.
 
 ### 3. `secrets` — the credential, stored safely
 

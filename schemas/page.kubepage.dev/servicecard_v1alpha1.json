@@ -67,7 +67,7 @@
                 "type": "string"
               },
               "href": {
-                "description": "href makes the card's title a link to the service.",
+                "description": "href makes the card's title a link to the service — purely the\nbrowser-facing URL. It also serves as the last-resort base URL for\nanything the dashboard pod itself originates for this entry (widget\npolls, the monitor probe) when neither internalUrl nor a widget's own\nurl is set — see internalUrl.",
                 "maxLength": 2048,
                 "minLength": 1,
                 "pattern": "^https?://",
@@ -77,6 +77,20 @@
                 "description": "icon resolves as a dashboard-icons slug (e.g. \"grafana\"), passes\nthrough as-is if it's already a full URL, or accepts homepage's icon\nprefix syntax: \"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\"fa6-solid-X\" for a\ngeneric icon glyph (Material Design Icons/Simple Icons/Lucide/Weather\nIcons/Font Awesome 6 Solid, resolved via Iconify — X may end in\n\"-#hexcolor\" to recolor it), or \"sh-X\" for a selfh.st/icons glyph (X\nmay end in .svg/.png/.webp, defaulting to .png).",
                 "maxLength": 256,
                 "minLength": 1,
+                "type": "string"
+              },
+              "internalUrl": {
+                "description": "internalUrl is the in-cluster base URL the dashboard pod uses for\nanything it originates for this entry — widget polls and the HTTP\nmonitor probe — when set, e.g. \"http://plex.media.svc:32400\" while\nhref points at the ingress URL the browser opens. A widget's own url,\nwhen set, still wins; without either, the pod falls back to href.",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^https?://",
+                "type": "string"
+              },
+              "monitor": {
+                "description": "monitor is a URL probed over HTTP for reachability and latency, shown\nas an up/down status on the card. (Raw ICMP is not used, so a pod\nneeds no elevated capabilities.) The sentinel value \"self\" probes the\nentry's own base URL instead of a separate one: internalUrl when set,\nelse href — the probe runs from the dashboard pod, so the in-cluster\nURL wins when present. Freely combinable with the pod monitor\n(App/PodSelector) — a service can show both an HTTP status and a pod\nstatus at once.",
+                "maxLength": 2048,
+                "minLength": 1,
+                "pattern": "^(self$|https?://)",
                 "type": "string"
               },
               "name": {
@@ -96,15 +110,8 @@
                 "format": "int32",
                 "type": "integer"
               },
-              "ping": {
-                "description": "ping is a URL probed over HTTP for reachability and latency, shown as\nan up/down status on the card. (Raw ICMP is not used, so a pod needs\nno elevated capabilities.) Mutually exclusive with SiteMonitor, but\nfreely combinable with the pod monitor (App/PodSelector) — a service\ncan show both an HTTP status and a pod status at once.",
-                "maxLength": 2048,
-                "minLength": 1,
-                "pattern": "^https?://",
-                "type": "string"
-              },
               "podSelector": {
-                "description": "podSelector selects pods whose readiness determines this service's pod\nmonitor status — a Kubernetes-native alternative (or addition) to\nPing/SiteMonitor for services that run as pods in this cluster,\nneeding no externally reachable URL. With multiple matches, some Ready\npods render \"Partial\" and all Ready pods render \"Up\"; the card shows\n\"\u003cready\u003e/\u003ctotal\u003e ready\" in place of Ping/SiteMonitor's latency. Freely\ncombinable with Ping/SiteMonitor (each gets its own status indicator);\nwhen set, overrides the App-derived selector.",
+                "description": "podSelector selects pods whose readiness determines this service's pod\nmonitor status — a Kubernetes-native alternative (or addition) to\nMonitor for services that run as pods in this cluster, needing no\nexternally reachable URL. With multiple matches, some Ready pods\nrender \"Partial\" and all Ready pods render \"Up\"; the card shows\n\"\u003cready\u003e/\u003ctotal\u003e ready\" in place of Monitor's latency. Freely\ncombinable with Monitor (each gets its own status indicator); when\nset, overrides the App-derived selector.",
                 "properties": {
                   "matchExpressions": {
                     "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
@@ -153,15 +160,8 @@
                 "description": "showStats controls whether the polled widget fields are displayed on\nthe card. Defaults to true; set false to show only the title/icon/\ndescription (and any monitor status).",
                 "type": "boolean"
               },
-              "siteMonitor": {
-                "description": "siteMonitor is a URL probed over HTTP, shown as an up/down status with\nresponse latency on the card. Mutually exclusive with Ping, but freely\ncombinable with the pod monitor (App/PodSelector) — a service can show\nboth an HTTP status and a pod status at once.",
-                "maxLength": 2048,
-                "minLength": 1,
-                "pattern": "^https?://",
-                "type": "string"
-              },
               "statusStyle": {
-                "description": "statusStyle controls how the HTTP monitor (Ping/SiteMonitor) and pod\nmonitor (App/PodSelector) statuses render: \"dot\" a colored status dot,\n\"basic\" a colored status pill (status word plus latency/ready-count\ndetail). Applies to both indicators when both are configured. Ignored\nunless one of Ping, SiteMonitor, App, or PodSelector is set.",
+                "description": "statusStyle controls how the HTTP monitor (Monitor) and pod monitor\n(App/PodSelector) statuses render: \"dot\" a colored status dot,\n\"basic\" a colored status pill (status word plus latency/ready-count\ndetail). Applies to both indicators when both are configured. Ignored\nunless one of Monitor, App, or PodSelector is set.",
                 "enum": [
                   "dot",
                   "basic"
@@ -424,7 +424,7 @@
                       "type": "string"
                     },
                     "url": {
-                      "description": "url is the base URL the widget talks to.",
+                      "description": "url is the base URL the widget talks to. When unset, the widget\ninherits its entry's base URL: the entry's internalUrl when set, else\nits href — so an entry whose widget polls the same URL the card links\nto never has to spell it twice. Set url only to override that.",
                       "maxLength": 2048,
                       "minLength": 1,
                       "pattern": "^https?://",
@@ -448,8 +448,8 @@
             "type": "object",
             "x-kubernetes-validations": [
               {
-                "message": "at most one of ping or siteMonitor may be set",
-                "rule": "(has(self.ping) ? 1 : 0) + (has(self.siteMonitor) ? 1 : 0) \u003c= 1"
+                "message": "monitor: self requires internalUrl or href to be set",
+                "rule": "!has(self.monitor) || self.monitor != 'self' || has(self.internalUrl) || has(self.href)"
               },
               {
                 "message": "namespace requires app or podSelector to be set",

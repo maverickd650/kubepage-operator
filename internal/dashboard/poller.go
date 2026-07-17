@@ -38,7 +38,7 @@ const (
 	statusStyleBasic = "basic"
 )
 
-// statusPartial is the pod monitor's three-valued status a ping/siteMonitor
+// statusPartial is the pod monitor's three-valued status an HTTP monitor
 // probe never reports: some, but not all, of a PodSelector/App's matched
 // pods are Ready. Renders amber, between statusUp's green and statusDown's
 // red — see cards.templ's status-Partial CSS class.
@@ -46,7 +46,7 @@ const statusPartial = "Partial"
 
 // monitorSourceHTTP and monitorSourcePods are the monitorUp gauge's "source"
 // label values, distinguishing a ServiceEntry's HTTP monitor
-// (Ping/SiteMonitor) from its pod monitor (App/PodSelector) — the two can
+// (Monitor) from its pod monitor (App/PodSelector) — the two can
 // now be configured at once (see docs/design/combined-monitor.md), so they
 // must not share one label series.
 const (
@@ -393,7 +393,7 @@ func (p *Poller) pruneCAClientCache() {
 
 // pruneMonitorMetrics deletes any monitorUp label series from the previous
 // cycle that current (this cycle's labels) no longer reports, so a deleted
-// ServiceCard — or one that's had its Ping/SiteMonitor/App/PodSelector
+// ServiceCard — or one that's had its Monitor/App/PodSelector
 // removed — doesn't leave a stale gauge value exported forever.
 func (p *Poller) pruneMonitorMetrics(current map[string]bool) {
 	for key := range p.monitorLabels {
@@ -423,7 +423,7 @@ func splitMonitorLabelKey(key string) (label, source string) {
 }
 
 // monitorProbeResult is monitor's combined result: the HTTP monitor
-// (Ping/SiteMonitor) result in status/statusStyle/latency, and the pod
+// (Monitor) result in status/statusStyle/latency, and the pod
 // monitor (App/PodSelector) result in podStatus/podReadyText — either half
 // may be empty when that source isn't configured for the entry. err, when
 // non-empty, is a card-facing error message (e.g. a disallowed foreign
@@ -440,11 +440,12 @@ type monitorProbeResult struct {
 	err string
 }
 
-// monitor probes se's configured monitor sources: the HTTP monitor (Ping or
-// SiteMonitor, mutually exclusive by ServiceEntry's own CEL validation) and
-// the pod monitor (App and/or PodSelector, freely combinable with the HTTP
-// monitor — see docs/design/combined-monitor.md), returning both results at
-// once. record is called once per configured source with the monitorUp
+// monitor probes se's configured monitor sources: the HTTP monitor (Monitor,
+// a URL or the "self" sentinel resolved to the entry's own base URL — see
+// ServiceEntry.MonitorURL) and the pod monitor (App and/or PodSelector,
+// freely combinable with the HTTP monitor — see
+// docs/design/combined-monitor.md), returning both results at once. record
+// is called once per configured source with the monitorUp
 // label/source pair this probe reported under, so the caller can track which
 // series are still live this cycle (see pruneMonitorMetrics). The label is
 // "namespace/crName/entryName", so two entries defined in the same
@@ -452,11 +453,8 @@ type monitorProbeResult struct {
 func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, defaultStatusStyle string, allowedMonitorNamespaces []string, record func(label, source string)) monitorProbeResult {
 	var result monitorProbeResult
 
-	switch {
-	case se.SiteMonitor != nil && *se.SiteMonitor != "":
-		result.status, result.latency = p.probeURL(ctx, *se.SiteMonitor)
-	case se.Ping != nil && *se.Ping != "":
-		result.status, result.latency = p.probeURL(ctx, *se.Ping)
+	if url := se.MonitorURL(); url != "" {
+		result.status, result.latency = p.probeURL(ctx, url)
 	}
 
 	if selector := podMonitorSelector(se); selector != nil {
@@ -503,7 +501,7 @@ func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev
 }
 
 // sampleMonitorLatency and sampleMonitorReadyText are the canned monitor
-// results SampleData mode reports for a configured ping/siteMonitor and
+// results SampleData mode reports for a configured monitor and
 // app/podSelector, respectively — see probeURL/probePodMonitor.
 const (
 	sampleMonitorLatency   = "12 ms"
@@ -695,8 +693,13 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 	}
 
 	cfg := WidgetConfig{Secrets: map[string]string{}}
+	// An explicit widget url wins; otherwise the widget inherits the entry's
+	// base URL (internalUrl, else href — see ServiceEntry.BaseURL), so the
+	// common one-URL entry never spells the same URL twice.
 	if widget.URL != nil {
 		cfg.URL = *widget.URL
+	} else {
+		cfg.URL = se.BaseURL()
 	}
 	if widget.Config != nil {
 		cfg.Config = widget.Config.Raw
@@ -1105,8 +1108,8 @@ func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.Wid
 }
 
 // pollDiscoveredService builds and stores the Card for one Ingress-derived
-// discoveredService: title/icon/description/href only, plus an optional Ping
-// probe — never a polled widget, since annotations are world-readable to
+// discoveredService: title/icon/description/href only, plus an optional
+// monitor probe of its href — never a polled widget, since annotations are world-readable to
 // anyone who can read the Ingress and so can't safely carry secrets (see
 // DiscoverySpec's doc comment).
 func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredService, record func(label, source string)) {
@@ -1119,7 +1122,7 @@ func (p *Poller) pollDiscoveredService(ctx context.Context, svc discoveredServic
 		Href:        svc.Href,
 		UpdatedAt:   time.Now(),
 	}
-	if svc.Ping && svc.Href != "" {
+	if svc.Monitor && svc.Href != "" {
 		card.Status, card.Latency = p.probeURL(ctx, svc.Href)
 		card.StatusStyle = statusStyleDot
 		// Sample-mode monitor results are fabricated, not observed, so they

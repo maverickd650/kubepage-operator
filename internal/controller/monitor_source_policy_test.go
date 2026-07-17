@@ -10,32 +10,51 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
-// These specs verify the ServiceEntry CRD schema CEL rules
-// (api/v1alpha1/servicecard_types.go's XValidation markers on that struct):
-// ping/siteMonitor stay mutually exclusive with each other, the pod monitor
-// (app/podSelector) is freely combinable with either of them, and namespace
-// requires a pod monitor to be configured at all — see
-// docs/design/combined-monitor.md.
+// These specs verify the ServiceEntry CRD schema rules
+// (api/v1alpha1/servicecard_types.go's markers on that struct): monitor is a
+// URL or the "self" sentinel ("self" requiring internalUrl or href to
+// resolve against), the pod monitor (app/podSelector) is freely combinable
+// with it, and namespace requires a pod monitor to be configured at all —
+// see docs/design/combined-monitor.md.
 var _ = Describe("ServiceCard monitor-source CRD schema validation", func() {
 	podSelector := func() *metav1.LabelSelector {
 		return &metav1.LabelSelector{MatchLabels: map[string]string{"app": "demo"}}
 	}
 
-	It("rejects ping + siteMonitor both set on a services entry", func() {
-		se := serviceEntryWithMonitors("se-ping-and-site", monitorSources{ping: new("http://example.invalid/"), siteMonitor: new("http://example.invalid/")})
+	It("rejects monitor: self without internalUrl or href", func() {
+		se := serviceEntryWithMonitors("se-self-without-base", monitorSources{monitor: new(pagev1alpha1.MonitorSelf)})
 		err := k8sClient.Create(ctx, se)
 		Expect(err).To(HaveOccurred())
 		Expect(apierrors.IsInvalid(err)).To(BeTrue())
 	})
 
-	It("admits siteMonitor + podSelector both set on a services entry", func() {
-		se := serviceEntryWithMonitors("se-site-and-pod", monitorSources{siteMonitor: new("http://example.invalid/"), podSelector: podSelector()})
+	It("admits monitor: self with href set", func() {
+		se := serviceEntryWithMonitors("se-self-with-href", monitorSources{monitor: new(pagev1alpha1.MonitorSelf), href: new("http://example.invalid/")})
 		Expect(k8sClient.Create(ctx, se)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
 	})
 
-	It("admits ping + app both set on a services entry", func() {
-		se := serviceEntryWithMonitors("se-ping-and-app", monitorSources{ping: new("http://example.invalid/"), app: new("demo")})
+	It("admits monitor: self with internalUrl set", func() {
+		se := serviceEntryWithMonitors("se-self-with-internal", monitorSources{monitor: new(pagev1alpha1.MonitorSelf), internalURL: new("http://svc.ns.svc:8080")})
+		Expect(k8sClient.Create(ctx, se)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
+	})
+
+	It("rejects a monitor value that is neither self nor an http(s) URL", func() {
+		se := serviceEntryWithMonitors("se-bad-monitor", monitorSources{monitor: new("selfish")})
+		err := k8sClient.Create(ctx, se)
+		Expect(err).To(HaveOccurred())
+		Expect(apierrors.IsInvalid(err)).To(BeTrue())
+	})
+
+	It("admits monitor + podSelector both set on a services entry", func() {
+		se := serviceEntryWithMonitors("se-monitor-and-pod", monitorSources{monitor: new("http://example.invalid/"), podSelector: podSelector()})
+		Expect(k8sClient.Create(ctx, se)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
+	})
+
+	It("admits monitor + app both set on a services entry", func() {
+		se := serviceEntryWithMonitors("se-monitor-and-app", monitorSources{monitor: new("http://example.invalid/"), app: new("demo")})
 		Expect(k8sClient.Create(ctx, se)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
 	})
@@ -75,8 +94,9 @@ var _ = Describe("ServiceCard monitor-source CRD schema validation", func() {
 // monitorSources bundles every monitor-related field serviceEntryWithMonitors
 // can set on a single services entry; any field may be left nil.
 type monitorSources struct {
-	ping        *string
-	siteMonitor *string
+	monitor     *string
+	href        *string
+	internalURL *string
 	app         *string
 	namespace   *string
 	podSelector *metav1.LabelSelector
@@ -93,8 +113,9 @@ func serviceEntryWithMonitors(name string, m monitorSources) *pagev1alpha1.Servi
 			Services: []pagev1alpha1.ServiceEntry{
 				{
 					Name:        name,
-					Ping:        m.ping,
-					SiteMonitor: m.siteMonitor,
+					Monitor:     m.monitor,
+					Href:        m.href,
+					InternalURL: m.internalURL,
 					App:         m.app,
 					Namespace:   m.namespace,
 					PodSelector: m.podSelector,
