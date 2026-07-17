@@ -4,4 +4,5 @@ resources:
 - page_v1alpha1_servicecard.yaml
 - page_v1alpha1_bookmark.yaml
 - page_v1alpha1_infowidget.yaml
+- service_plex.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

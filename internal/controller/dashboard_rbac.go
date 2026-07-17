@@ -30,8 +30,9 @@ const (
 	verbList  = "list"
 	verbWatch = "watch"
 
-	resourcePods    = "pods"
-	resourceSecrets = "secrets"
+	resourcePods     = "pods"
+	resourceServices = "services"
+	resourceSecrets  = "secrets"
 
 	// secretAllowWidgetsValue is the value SecretAllowWidgetsLabel must be
 	// set to for filterLabeledSecrets to treat a Secret as widget-readable.
@@ -105,13 +106,18 @@ var dashboardHTTPRouteRule = rbacv1.PolicyRule{
 // dashboardPodsRule is the read access the dashboard pod needs in its own
 // namespace to evaluate a ServiceCard's PodSelector
 // (internal/dashboard/poller.go's monitor): listing/watching pods to compute
-// "M/N ready" status. Unlike the kubemetrics ClusterRole below, this is
-// namespace-scoped and owner-referenced like the rest of the per-Dashboard
-// Role, so it's granted unconditionally rather than added/removed as
-// PodSelector usage comes and goes — there's no GC/finalizer cost to it.
+// "M/N ready" status; and, for a ServiceEntry's "internalUrl: auto"
+// (internal/dashboard/poller.go's resolveBaseURL), to Get/List the Service
+// its URL is derived from. Reading Service metadata in a namespace the
+// dashboard pod can already read Pods (and Secrets, per dashboardRoles' own
+// trust-model note) in widens nothing meaningful — see SECURITY.md. Unlike
+// the kubemetrics ClusterRole below, this is namespace-scoped and
+// owner-referenced like the rest of the per-Dashboard Role, so it's granted
+// unconditionally rather than added/removed as PodSelector/auto usage comes
+// and goes — there's no GC/finalizer cost to it.
 var dashboardPodsRule = rbacv1.PolicyRule{
 	APIGroups: []string{""},
-	Resources: []string{resourcePods},
+	Resources: []string{resourcePods, resourceServices},
 	Verbs:     []string{verbGet, verbList, verbWatch},
 }
 

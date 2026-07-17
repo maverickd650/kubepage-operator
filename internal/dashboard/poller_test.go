@@ -562,7 +562,7 @@ func TestPollerMonitorURLOnlyEntry(t *testing.T) {
 	}
 
 	p := &Poller{HTTPClient: srv.Client()}
-	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], statusStyleDot, nil, func(string, string) {})
+	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
 	if m.status != "Up" {
 		t.Errorf("monitor(Monitor) status = %q, want Up", m.status)
 	}
@@ -600,7 +600,7 @@ func TestPollerMonitorSelfResolution(t *testing.T) {
 			Monitor:     &monitorSelf,
 		}
 		p := &Poller{HTTPClient: srv.Client()}
-		m := p.monitor(t.Context(), testNamespace, "self-internal", se, statusStyleDot, nil, func(string, string) {})
+		m := p.monitor(t.Context(), testNamespace, "self-internal", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
 		if m.status != "Up" {
 			t.Errorf("monitor(self with internalUrl) status = %q, want Up (probe of internalUrl)", m.status)
 		}
@@ -618,7 +618,7 @@ func TestPollerMonitorSelfResolution(t *testing.T) {
 			Monitor: &monitorSelf,
 		}
 		p := &Poller{HTTPClient: srv.Client()}
-		m := p.monitor(t.Context(), testNamespace, "self-href", se, statusStyleDot, nil, func(string, string) {})
+		m := p.monitor(t.Context(), testNamespace, "self-href", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
 		if m.status != "Up" {
 			t.Errorf("monitor(self with href) status = %q, want Up (probe of href)", m.status)
 		}
@@ -630,7 +630,7 @@ func TestPollerMonitorSelfResolution(t *testing.T) {
 			Monitor: &monitorSelf,
 		}
 		p := &Poller{HTTPClient: srv.Client()}
-		m := p.monitor(t.Context(), testNamespace, "self-none", se, statusStyleDot, nil, func(string, string) {})
+		m := p.monitor(t.Context(), testNamespace, "self-none", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
 		if m.status != "" {
 			t.Errorf("monitor(self without base URL) status = %q, want empty (no probe)", m.status)
 		}
@@ -2133,7 +2133,7 @@ func TestPollerMonitorUsesSiteDefaultStatusStyle(t *testing.T) {
 		},
 	}
 	p := &Poller{HTTPClient: srv.Client()}
-	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], testStatusBasic, nil, func(string, string) {})
+	m := p.monitor(t.Context(), entry.Namespace, entry.Name, entry.Spec.Entries()[0], testStatusBasic, nil, defaultClusterDomain, func(string, string) {})
 	if m.statusStyle != testStatusBasic {
 		t.Errorf("monitor() style = %q, want the passed-in default %q when ServiceCard.StatusStyle is unset", m.statusStyle, testStatusBasic)
 	}
@@ -2953,4 +2953,182 @@ func TestPollerWidgetURLInheritance(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPollerResolveAutoInternalURL covers "internalUrl: auto"'s Service
+// lookup and URL derivation (see resolveAutoInternalURL/lookupAutoService):
+// a named-Service hit, the label-selector fallback, zero/multiple-match card
+// errors, named-port-vs-first-port selection, and a missing app.
+func TestPollerResolveAutoInternalURL(t *testing.T) {
+	auto := pagev1alpha1.InternalURLAuto
+	app := testAppLabelValue
+
+	namedSvc := func(name string, ports ...corev1.ServicePort) *corev1.Service {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+			Spec:       corev1.ServiceSpec{Ports: ports},
+		}
+	}
+	labeledSvc := func(name string, ports ...corev1.ServicePort) *corev1.Service {
+		svc := namedSvc(name, ports...)
+		svc.Labels = map[string]string{podMonitorLabel: testAppLabelValue}
+		return svc
+	}
+
+	cases := []struct {
+		name     string
+		se       pagev1alpha1.ServiceEntry
+		objs     []client.Object
+		wantURL  string
+		wantErrs []string
+	}{
+		{
+			name:    "named Service hit, first port when unnamed",
+			se:      pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto},
+			objs:    []client.Object{namedSvc(testAppLabelValue, corev1.ServicePort{Port: 9090})},
+			wantURL: fmt.Sprintf("http://%s.%s.svc.%s:9090", testAppLabelValue, testNamespace, defaultClusterDomain),
+		},
+		{
+			name: "named port wins over first port",
+			se:   pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto},
+			objs: []client.Object{namedSvc(testAppLabelValue,
+				corev1.ServicePort{Name: "metrics", Port: 9100},
+				corev1.ServicePort{Name: "http", Port: 8080},
+			)},
+			wantURL: fmt.Sprintf("http://%s.%s.svc.%s:8080", testAppLabelValue, testNamespace, defaultClusterDomain),
+		},
+		{
+			name:    "label-selector fallback when no Service is named after app",
+			se:      pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto},
+			objs:    []client.Object{labeledSvc("actual-svc-name", corev1.ServicePort{Port: 32400})},
+			wantURL: fmt.Sprintf("http://actual-svc-name.%s.svc.%s:32400", testNamespace, defaultClusterDomain),
+		},
+		{
+			name:     "zero matches renders a card error",
+			se:       pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto},
+			objs:     nil,
+			wantErrs: []string{"no Service", testAppLabelValue},
+		},
+		{
+			name: "multiple label matches renders a card error naming the candidates",
+			se:   pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto},
+			objs: []client.Object{
+				labeledSvc("candidate-a", corev1.ServicePort{Port: 80}),
+				labeledSvc("candidate-b", corev1.ServicePort{Port: 80}),
+			},
+			wantErrs: []string{"multiple", "candidate-a", "candidate-b"},
+		},
+		{
+			name:     "no ports renders a card error",
+			se:       pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto},
+			objs:     []client.Object{namedSvc(testAppLabelValue)},
+			wantErrs: []string{"no ports"},
+		},
+		{
+			name:     "missing app renders a card error",
+			se:       pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, InternalURL: &auto},
+			objs:     []client.Object{namedSvc(testAppLabelValue, corev1.ServicePort{Port: 80})},
+			wantErrs: []string{"requires app"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scheme := testScheme(t)
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.objs...).Build()
+			p := &Poller{Reader: cl}
+
+			url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, tc.se, nil, defaultClusterDomain)
+			if len(tc.wantErrs) > 0 {
+				if url != "" {
+					t.Errorf("resolveBaseURL() url = %q, want empty alongside a card error", url)
+				}
+				for _, want := range tc.wantErrs {
+					if !strings.Contains(cardErr, want) {
+						t.Errorf("resolveBaseURL() cardErr = %q, want it to contain %q", cardErr, want)
+					}
+				}
+				return
+			}
+			if cardErr != "" {
+				t.Errorf("resolveBaseURL() cardErr = %q, want empty", cardErr)
+			}
+			if url != tc.wantURL {
+				t.Errorf("resolveBaseURL() url = %q, want %q", url, tc.wantURL)
+			}
+		})
+	}
+}
+
+// TestPollerResolveAutoInternalURLCustomClusterDomain verifies a Dashboard's
+// spec.clusterDomain overrides the "cluster.local" default in the resolved
+// FQDN.
+func TestPollerResolveAutoInternalURLCustomClusterDomain(t *testing.T) {
+	app := testAppLabelValue
+	auto := pagev1alpha1.InternalURLAuto
+	se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, InternalURL: &auto}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: testAppLabelValue, Namespace: testNamespace},
+			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 32400}}},
+		},
+	).Build()
+	p := &Poller{Reader: cl}
+
+	const customDomain = "custom.internal"
+	url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, nil, customDomain)
+	if cardErr != "" {
+		t.Fatalf("resolveBaseURL() cardErr = %q, want empty", cardErr)
+	}
+	want := fmt.Sprintf("http://%s.%s.svc.%s:32400", testAppLabelValue, testNamespace, customDomain)
+	if url != want {
+		t.Errorf("resolveBaseURL() url = %q, want %q", url, want)
+	}
+}
+
+// TestPollerResolveAutoInternalURLCrossNamespace covers "internalUrl: auto"
+// under se.Namespace naming a namespace other than the ServiceCard's own:
+// allowed (via spec.monitorNamespaces) resolves through KubeReader, and
+// disallowed short-circuits to a card error, mirroring probePodMonitor's own
+// cross-namespace gate exactly.
+func TestPollerResolveAutoInternalURLCrossNamespace(t *testing.T) {
+	const foreignNS = "other-ns"
+	app := testAppLabelValue
+	auto := pagev1alpha1.InternalURLAuto
+	foreignNamespace := foreignNS
+	se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app, Namespace: &foreignNamespace, InternalURL: &auto}
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: testAppLabelValue, Namespace: foreignNS},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 32400}}},
+	}
+
+	t.Run("allowed foreign namespace resolves through KubeReader", func(t *testing.T) {
+		scheme := testScheme(t)
+		kubeCl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc).Build()
+		p := &Poller{KubeReader: kubeCl}
+
+		url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, []string{foreignNS}, defaultClusterDomain)
+		if cardErr != "" {
+			t.Errorf("resolveBaseURL(allowed foreign namespace) cardErr = %q, want empty", cardErr)
+		}
+		want := fmt.Sprintf("http://%s.%s.svc.%s:32400", testAppLabelValue, foreignNS, defaultClusterDomain)
+		if url != want {
+			t.Errorf("resolveBaseURL(allowed foreign namespace) url = %q, want %q", url, want)
+		}
+	})
+
+	t.Run("disallowed foreign namespace renders a card error", func(t *testing.T) {
+		p := &Poller{KubeReader: nil} // proves resolveBaseURL never touches KubeReader here
+
+		url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, nil, defaultClusterDomain)
+		if url != "" {
+			t.Errorf("resolveBaseURL(disallowed foreign namespace) url = %q, want empty", url)
+		}
+		if cardErr == "" || !strings.Contains(cardErr, foreignNS) || !strings.Contains(cardErr, "monitorNamespaces") {
+			t.Errorf("resolveBaseURL(disallowed foreign namespace) cardErr = %q, want it to name the namespace and spec.monitorNamespaces", cardErr)
+		}
+	})
 }

@@ -1,0 +1,21 @@
+# Backs Plex's "internalUrl: auto" in page_v1alpha1_servicecard.yaml: the
+# dashboard pod looks up a Service named after app ("plex"), falling back to
+# the app.kubernetes.io/name=plex label selector, and derives
+# http://plex.<namespace>.svc.<clusterDomain>:32400 from this Service's
+# "http"-named port. A plain core Service (not a page.kubepage.dev CRD), so
+# it lives outside the page_v1alpha1_*.yaml naming convention those samples
+# use, and out of the `schemas-validate`/kubeconform sweep of page_*.yaml,
+# which only has schemas for this project's own CRDs.
+apiVersion: v1
+kind: Service
+metadata:
+  name: plex
+  labels:
+    app.kubernetes.io/name: kubepage-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  selector:
+    app.kubernetes.io/name: plex
+  ports:
+    - name: http
+      port: 32400

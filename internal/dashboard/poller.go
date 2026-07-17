@@ -203,6 +203,10 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	dashboardSpec, dashboardOK := p.dashboardSpecForPoll(ctx)
 	widgetDefaults := dashboardSpec.WidgetDefaults
 	allowedMonitorNamespaces := dashboardSpec.MonitorNamespaces
+	clusterDomain := defaultClusterDomain
+	if dashboardSpec.ClusterDomain != nil && *dashboardSpec.ClusterDomain != "" {
+		clusterDomain = *dashboardSpec.ClusterDomain
+	}
 
 	dashCount, err := namespaceDashboardCount(ctx, p.Reader, p.Namespace)
 	if err != nil {
@@ -231,7 +235,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 			// unreachable monitor delayed every other card in the cycle by
 			// up to its full HTTP timeout.
 			run(func() {
-				m := p.monitor(ctx, namespace, crName, se, defaultStatusStyle, allowedMonitorNamespaces, recordMonitorLabel)
+				m := p.monitor(ctx, namespace, crName, se, defaultStatusStyle, allowedMonitorNamespaces, clusterDomain, recordMonitorLabel)
 
 				if len(se.Widgets) == 0 {
 					// A service with a monitor but no widget still gets one
@@ -443,6 +447,12 @@ type monitorProbeResult struct {
 	podStatus    string
 	podReadyText string
 
+	// baseURL is the entry's resolved base URL — InternalURL/Href, with the
+	// InternalURLAuto sentinel resolved to an actual in-cluster URL — for
+	// pollWidget to use in place of calling ServiceEntry.BaseURL() directly
+	// (which can't perform the Service lookup "auto" requires).
+	baseURL string
+
 	err string
 }
 
@@ -456,15 +466,25 @@ type monitorProbeResult struct {
 // series are still live this cycle (see pruneMonitorMetrics). The label is
 // "namespace/crName/entryName", so two entries defined in the same
 // ServiceCard don't collide on one label series.
-func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, defaultStatusStyle string, allowedMonitorNamespaces []string, record func(label, source string)) monitorProbeResult {
+func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev1alpha1.ServiceEntry, defaultStatusStyle string, allowedMonitorNamespaces []string, clusterDomain string, record func(label, source string)) monitorProbeResult {
 	var result monitorProbeResult
 
-	if url := se.MonitorURL(); url != "" {
+	// Resolved unconditionally (not just when Monitor: self is set): a
+	// widget-only entry with no monitor still needs its base URL resolved
+	// for pollWidget, and resolveBaseURL is a no-op (no Service lookup) for
+	// anything other than the InternalURLAuto sentinel.
+	result.baseURL, result.err = p.resolveBaseURL(ctx, namespace, se, allowedMonitorNamespaces, clusterDomain)
+
+	if url := se.MonitorURLWithBase(result.baseURL); url != "" {
 		result.status, result.latency = p.probeURL(ctx, url)
 	}
 
 	if selector := podMonitorSelector(se); selector != nil {
-		result.podStatus, result.podReadyText, result.err = p.probePodMonitor(ctx, namespace, se, selector, allowedMonitorNamespaces)
+		var podErr string
+		result.podStatus, result.podReadyText, podErr = p.probePodMonitor(ctx, namespace, se, selector, allowedMonitorNamespaces)
+		if podErr != "" {
+			result.err = podErr
+		}
 	}
 
 	if result.status == "" && result.podStatus == "" {
@@ -581,6 +601,140 @@ func (p *Poller) probeURL(ctx context.Context, url string) (status, latency stri
 		return "Up", sampleMonitorLatency
 	}
 	return monitorResult(ctx, p.HTTPClient, url)
+}
+
+// defaultClusterDomain is the fallback DashboardSpec.ClusterDomain used to
+// build an "internalUrl: auto" entry's FQDN when the field is unset — the
+// CRD's own +default marker only applies at object-creation time through the
+// API server, so a Dashboard created before this field existed (or a fake
+// client in tests) never has it defaulted retroactively.
+const defaultClusterDomain = "cluster.local"
+
+// autoInternalURLPortName is the Service port name resolveAutoInternalURL
+// prefers when a Service exposes more than one; a Service with no port named
+// this falls back to its first port.
+const autoInternalURLPortName = "http"
+
+// resolveBaseURL resolves se's base URL for pollWidget/the monitor's "self"
+// probe: se.InternalURL when set and not the InternalURLAuto sentinel, else
+// se.Href, else "" — mirroring ServiceEntry.BaseURL exactly, except that the
+// InternalURLAuto sentinel is resolved here via a Service lookup
+// (resolveAutoInternalURL) instead of being returned unresolved. cardErr is
+// set only when auto resolution itself fails; it is never set for the
+// non-auto cases, which can't fail.
+func (p *Poller) resolveBaseURL(ctx context.Context, namespace string, se pagev1alpha1.ServiceEntry, allowedMonitorNamespaces []string, clusterDomain string) (url, cardErr string) {
+	if se.InternalURL != nil && *se.InternalURL != "" {
+		if *se.InternalURL == pagev1alpha1.InternalURLAuto {
+			return p.resolveAutoInternalURL(ctx, namespace, se, allowedMonitorNamespaces, clusterDomain)
+		}
+		return *se.InternalURL, ""
+	}
+	if se.Href != nil {
+		return *se.Href, ""
+	}
+	return "", ""
+}
+
+// resolveAutoInternalURL resolves se's "internalUrl: auto" base URL: it looks
+// up a Service for se.App (lookupAutoService) in se's pod-monitor namespace
+// (se.Namespace, else namespace — the same field and default the pod monitor
+// uses, gated by the same cross-namespace allowedMonitorNamespaces allowlist
+// as probePodMonitor) and builds
+// "http://<service>.<namespace>.svc.<clusterDomain>:<port>" from the result.
+// Any failure (no app, disallowed namespace, zero/multiple Service matches,
+// no ports) renders as a card error rather than a resolved URL — the same UX
+// as a disallowed pod-monitor namespace.
+func (p *Poller) resolveAutoInternalURL(ctx context.Context, namespace string, se pagev1alpha1.ServiceEntry, allowedMonitorNamespaces []string, clusterDomain string) (url, cardErr string) {
+	if se.App == nil || *se.App == "" {
+		return "", "internalUrl: auto requires app to be set"
+	}
+
+	svcNamespace := namespace
+	if se.Namespace != nil && *se.Namespace != "" {
+		svcNamespace = *se.Namespace
+	}
+
+	reader := p.Reader
+	if svcNamespace != namespace {
+		if !slices.Contains(allowedMonitorNamespaces, svcNamespace) {
+			return "", fmt.Sprintf(
+				"internalUrl: auto namespace %q is not allowed: add it to this Dashboard's spec.monitorNamespaces",
+				svcNamespace)
+		}
+		reader = p.KubeReader
+	}
+
+	svc, cardErr := p.lookupAutoService(ctx, reader, svcNamespace, *se.App)
+	if cardErr != "" {
+		return "", cardErr
+	}
+
+	port := autoInternalURLPort(svc)
+	if port == 0 {
+		return "", fmt.Sprintf("internalUrl: auto found Service %q in namespace %q but it has no ports", svc.Name, svcNamespace)
+	}
+
+	domain := clusterDomain
+	if domain == "" {
+		domain = defaultClusterDomain
+	}
+	return fmt.Sprintf("http://%s.%s.svc.%s:%d", svc.Name, svcNamespace, domain, port), ""
+}
+
+// lookupAutoService resolves the Service "internalUrl: auto" derives its URL
+// from: a Service named app, falling back to the standard
+// app.kubernetes.io/name=app label selector (podMonitorLabel, the same label
+// the App-derived pod monitor selector uses) when no Service has that name.
+// The label-selector fallback requires exactly one match; zero or multiple
+// renders a card error naming the candidates (multiple) or nothing found
+// (zero) instead of guessing.
+func (p *Poller) lookupAutoService(ctx context.Context, reader client.Reader, namespace, app string) (corev1.Service, string) {
+	var svc corev1.Service
+	err := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: app}, &svc)
+	switch {
+	case err == nil:
+		return svc, ""
+	case !apierrors.IsNotFound(err):
+		pollerLog.Error(err, "getting Service for internalUrl: auto", "namespace", namespace, "app", app)
+		return corev1.Service{}, fmt.Sprintf("internalUrl: auto failed to look up Service %q in namespace %q: %v", app, namespace, err)
+	}
+
+	var svcs corev1.ServiceList
+	if err := reader.List(ctx, &svcs, client.InNamespace(namespace), client.MatchingLabels{podMonitorLabel: app}); err != nil {
+		pollerLog.Error(err, "listing Services for internalUrl: auto", "namespace", namespace, "app", app)
+		return corev1.Service{}, fmt.Sprintf("internalUrl: auto failed to list Services labeled %s=%q in namespace %q: %v", podMonitorLabel, app, namespace, err)
+	}
+	switch len(svcs.Items) {
+	case 1:
+		return svcs.Items[0], ""
+	case 0:
+		return corev1.Service{}, fmt.Sprintf(
+			"internalUrl: auto found no Service named %q or labeled %s=%q in namespace %q",
+			app, podMonitorLabel, app, namespace)
+	default:
+		names := make([]string, len(svcs.Items))
+		for i, s := range svcs.Items {
+			names[i] = s.Name
+		}
+		return corev1.Service{}, fmt.Sprintf(
+			"internalUrl: auto found multiple Services labeled %s=%q in namespace %q: %s",
+			podMonitorLabel, app, namespace, strings.Join(names, ", "))
+	}
+}
+
+// autoInternalURLPort picks the Service port "internalUrl: auto" builds its
+// URL from: the port named autoInternalURLPortName, else the Service's first
+// port, else 0 (no ports at all).
+func autoInternalURLPort(svc corev1.Service) int32 {
+	if len(svc.Spec.Ports) == 0 {
+		return 0
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == autoInternalURLPortName {
+			return p.Port
+		}
+	}
+	return svc.Spec.Ports[0].Port
 }
 
 // podStatus computes a three-valued pod monitor status from selector: pods
@@ -700,12 +854,14 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 
 	cfg := WidgetConfig{Secrets: map[string]string{}}
 	// An explicit widget url wins; otherwise the widget inherits the entry's
-	// base URL (internalUrl, else href — see ServiceEntry.BaseURL), so the
+	// already-resolved base URL (m.baseURL, computed once per entry by
+	// monitor's call to resolveBaseURL — internalUrl, with the
+	// InternalURLAuto sentinel resolved to an actual URL, else href), so the
 	// common one-URL entry never spells the same URL twice.
 	if widget.URL != nil {
 		cfg.URL = *widget.URL
 	} else {
-		cfg.URL = se.BaseURL()
+		cfg.URL = m.baseURL
 	}
 	if widget.Config != nil {
 		cfg.Config = widget.Config.Raw

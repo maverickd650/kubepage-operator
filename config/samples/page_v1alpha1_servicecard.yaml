@@ -13,13 +13,17 @@ spec:
   group: Media
   services:
     # The split-URL shape: href is what the browser opens (through the
-    # ingress), internalUrl is what the dashboard pod itself polls and
+    # ingress); internalUrl is what the dashboard pod itself polls and
     # probes (in-cluster Service DNS). "monitor: self" probes that same
     # base URL (internalUrl when set, else href), and the plex widget
     # inherits it too — each distinct URL is written exactly once.
+    # internalUrl: auto has the dashboard pod derive that in-cluster URL
+    # itself from app (below) — a Service named "plex", its "http"-named
+    # port else its first port — instead of it being spelled out by hand
+    # (see service_plex.yaml in this directory).
     - name: Plex
       href: https://plex.example.com
-      internalUrl: http://plex.media.svc:32400
+      internalUrl: auto
       icon: plex
       description: Media server
       monitor: self

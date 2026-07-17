@@ -89,6 +89,26 @@ var _ = Describe("ServiceCard monitor-source CRD schema validation", func() {
 		Expect(k8sClient.Create(ctx, se)).To(Succeed())
 		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
 	})
+
+	It("admits internalUrl: auto", func() {
+		se := serviceEntryWithMonitors("se-internal-auto", monitorSources{internalURL: new(pagev1alpha1.InternalURLAuto), app: new("demo")})
+		Expect(k8sClient.Create(ctx, se)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, se)).To(Succeed())
+	})
+
+	It("rejects an internalUrl value that is neither auto nor an http(s) URL", func() {
+		se := serviceEntryWithMonitors("se-internal-bad", monitorSources{internalURL: new("ftp://svc.ns.svc:8080"), app: new("demo")})
+		err := k8sClient.Create(ctx, se)
+		Expect(err).To(HaveOccurred())
+		Expect(apierrors.IsInvalid(err)).To(BeTrue())
+	})
+
+	It("rejects an internalUrl value merely prefixed with auto", func() {
+		se := serviceEntryWithMonitors("se-internal-auto-prefix", monitorSources{internalURL: new("autozone"), app: new("demo")})
+		err := k8sClient.Create(ctx, se)
+		Expect(err).To(HaveOccurred())
+		Expect(apierrors.IsInvalid(err)).To(BeTrue())
+	})
 })
 
 // monitorSources bundles every monitor-related field serviceEntryWithMonitors

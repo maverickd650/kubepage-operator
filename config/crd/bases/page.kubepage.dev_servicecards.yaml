@@ -163,9 +163,19 @@ spec:
                         monitor probe — when set, e.g. "http://plex.media.svc:32400" while
                         href points at the ingress URL the browser opens. A widget's own url,
                         when set, still wins; without either, the pod falls back to href.
+
+                        The sentinel value "auto" has the dashboard pod derive this URL itself
+                        from the entry's app field: it looks up a Service named app (falling
+                        back to the app.kubernetes.io/name=app label selector, requiring
+                        exactly one match), and builds
+                        "http://<service>.<namespace>.svc.<clusterDomain>:<port>" from that
+                        Service's own namespace, its "http"-named port (else its first port),
+                        and the Dashboard's spec.clusterDomain. Requires app to be set; a
+                        zero/multiple-match lookup, or a missing app, renders a card error
+                        instead of a URL, the same as a disallowed monitor-namespace.
                       maxLength: 2048
                       minLength: 1
-                      pattern: ^https?://
+                      pattern: ^(auto$|https?://)
                       type: string
                     monitor:
                       description: |-
