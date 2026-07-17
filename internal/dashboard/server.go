@@ -526,6 +526,12 @@ func writeCachedHTML(w http.ResponseWriter, r *http.Request, render func(io.Writ
 	h := w.Header()
 	h.Set("ETag", sum)
 	h.Set("Cache-Control", "no-cache")
+	// Vary: Accept-Encoding must be sent on every response whose body
+	// encoding depends on the request's Accept-Encoding header — including
+	// the 304 branch below and the uncompressed branch — so a shared cache
+	// sitting in front of the dashboard doesn't serve a gzip response to a
+	// client that didn't advertise gzip support, or vice versa.
+	h.Set("Vary", "Accept-Encoding")
 	if r.Header.Get("If-None-Match") == sum {
 		w.WriteHeader(http.StatusNotModified)
 		return nil
@@ -534,7 +540,6 @@ func writeCachedHTML(w http.ResponseWriter, r *http.Request, render func(io.Writ
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		h.Set("Content-Encoding", "gzip")
-		h.Set("Vary", "Accept-Encoding")
 		gz := gzip.NewWriter(w)
 		if _, err := gz.Write(buf.Bytes()); err != nil {
 			_ = gz.Close()
