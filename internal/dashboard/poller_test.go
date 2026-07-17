@@ -1222,6 +1222,97 @@ func TestPollerSecretRefDenied(t *testing.T) {
 	}
 }
 
+// TestPollerSecretRefMissingSecret exercises resolveSecretRefFields'
+// apierrors.IsNotFound branch directly (as opposed to
+// TestPollerSecretRefDenied's generic Get-error/RBAC-denial simulation): a
+// widget's SecretRef names a Secret that simply doesn't exist.
+func TestPollerSecretRefMissingSecret(t *testing.T) {
+	const secretRefName = "does-not-exist"
+
+	url := testExampleURL
+	secretRef := secretRefName
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type:      testWidgetTypePlex,
+					URL:       &url,
+					SecretRef: &secretRef,
+				}},
+			}},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err == "" {
+		t.Fatalf("Snapshot() = %+v, want one card with a non-empty Err for a nonexistent SecretRef Secret", cards)
+	}
+}
+
+// TestPollerWidgetDefaultsMissingSecretSetsCardErr exercises
+// resolveWidgetSecrets' widgetDefaults-resolution error branch: a widget
+// sets neither Secrets nor SecretRef of its own, but the Dashboard's
+// widgetDefaults entry for its type points at a Secret that doesn't exist.
+func TestPollerWidgetDefaultsMissingSecretSetsCardErr(t *testing.T) {
+	url := testExampleURL
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type: testWidgetTypePlex,
+					URL:  &url,
+				}},
+			}},
+		},
+	}
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+				testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{
+					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: testSecretMissingName},
+						Key:                  testSecretField,
+					}},
+				}},
+			},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, instance).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err == "" {
+		t.Fatalf("Snapshot() = %+v, want one card with a non-empty Err for a widgetDefaults Secret that doesn't exist", cards)
+	}
+}
+
 // TestPollerInfoWidgetSecretRefSuppliesFields is TestPollerSecretRefSuppliesFields'
 // InfoWidget counterpart: proves pollInfoWidget's SecretRef branch expands
 // every key of the named Secret into a resolved secret field too, by having
