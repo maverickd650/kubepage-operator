@@ -22,9 +22,8 @@ const (
 // (docs/design/nested-groups.md): ServiceEntry.Group/ServiceCardSpec.Group's
 // path pattern (api/v1alpha1/servicecard_types.go), LayoutGroupSpec.Name's
 // matching pattern, and LayoutTabSpec's per-tab CEL rule keeping a nested
-// group entry's root listed in the same tab (api/v1alpha1/dashboardstyle_types.go),
-// following the same envtest-backed pattern as monitor_source_policy_test.go/
-// dashboardstyle_policy_test.go.
+// group entry's root listed in the same tab (api/v1alpha1/style_types.go),
+// following the same envtest-backed pattern as monitor_source_policy_test.go.
 var _ = Describe("Nested service-card group CRD schema validation", func() {
 	Describe("ServiceEntry.Group path pattern", func() {
 		DescribeTable("group value acceptance",
@@ -58,7 +57,7 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 				if i := strings.Index(name, "/"); i > 0 && !wantErr {
 					groups = append([]pagev1alpha1.LayoutGroupSpec{{Name: name[:i]}}, groups...)
 				}
-				ds := dashboardStyleWithLayout("style-name-"+sanitizeName(name), []pagev1alpha1.LayoutTabSpec{
+				ds := dashboardWithStyleLayout("style-name-"+sanitizeName(name), []pagev1alpha1.LayoutTabSpec{
 					{Name: nestedGroupTab1, Groups: groups},
 				})
 				err := k8sClient.Create(ctx, ds)
@@ -80,7 +79,7 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 
 	Describe("LayoutTabSpec root-listed rule", func() {
 		It("rejects a path entry whose root isn't listed in the same tab", func() {
-			ds := dashboardStyleWithLayout("style-orphan-path", []pagev1alpha1.LayoutTabSpec{
+			ds := dashboardWithStyleLayout("style-orphan-path", []pagev1alpha1.LayoutTabSpec{
 				{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: nestedGroupMediaMovies}}},
 			})
 			err := k8sClient.Create(ctx, ds)
@@ -89,7 +88,7 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 		})
 
 		It("admits a path entry whose root is also listed in the same tab", func() {
-			ds := dashboardStyleWithLayout("style-rooted-path", []pagev1alpha1.LayoutTabSpec{
+			ds := dashboardWithStyleLayout("style-rooted-path", []pagev1alpha1.LayoutTabSpec{
 				{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testMultiFormGroupMedia}, {Name: nestedGroupMediaMovies}}},
 			})
 			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
@@ -97,7 +96,7 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 		})
 
 		It("admits a depth-3 path entry whose root alone is listed (ancestor prefix suffices)", func() {
-			ds := dashboardStyleWithLayout("style-deep-rooted-path", []pagev1alpha1.LayoutTabSpec{
+			ds := dashboardWithStyleLayout("style-deep-rooted-path", []pagev1alpha1.LayoutTabSpec{
 				{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testMultiFormGroupMedia}, {Name: nestedGroupMediaMovies + "/4K"}}},
 			})
 			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
@@ -105,7 +104,7 @@ var _ = Describe("Nested service-card group CRD schema validation", func() {
 		})
 
 		It("rejects a path entry whose root is only listed in a different tab", func() {
-			ds := dashboardStyleWithLayout("style-cross-tab-orphan", []pagev1alpha1.LayoutTabSpec{
+			ds := dashboardWithStyleLayout("style-cross-tab-orphan", []pagev1alpha1.LayoutTabSpec{
 				{Name: nestedGroupTab1, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testMultiFormGroupMedia}}},
 				{Name: nestedGroupTab2, Groups: []pagev1alpha1.LayoutGroupSpec{{Name: nestedGroupMediaMovies}}},
 			})
@@ -131,15 +130,13 @@ func serviceCardWithGroup(name, group string) *pagev1alpha1.ServiceCard {
 	}
 }
 
-// dashboardStyleWithLayout builds a minimally-valid DashboardStyle (named
-// after its own dashboardRef, satisfying the name-must-match-ref rule) with
-// the given spec.layout.
-func dashboardStyleWithLayout(name string, layout []pagev1alpha1.LayoutTabSpec) *pagev1alpha1.DashboardStyle {
-	return &pagev1alpha1.DashboardStyle{
+// dashboardWithStyleLayout builds a minimally-valid Dashboard with the given
+// spec.style.layout.
+func dashboardWithStyleLayout(name string, layout []pagev1alpha1.LayoutTabSpec) *pagev1alpha1.Dashboard {
+	return &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
-		Spec: pagev1alpha1.DashboardStyleSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: name},
-			Layout:       layout,
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{Layout: layout},
 		},
 	}
 }

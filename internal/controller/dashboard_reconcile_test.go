@@ -323,13 +323,13 @@ func TestDashboardReconcileHTTPRouteGatewayNotInstalled(t *testing.T) {
 func TestDashboardReconcileBoundCountsError(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newDashboardReconcileTestDashboard()
-	wantErr := errors.New("list DashboardStyles boom")
+	wantErr := errors.New("list ServiceCards boom")
 
 	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).WithStatusSubresource(instance).Build()
 	seedMatchingDeployment(t, newDashboardReconciler(base), instance)
 	cl := interceptor.NewClient(base, interceptor.Funcs{
 		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
-			if _, ok := list.(*pagev1alpha1.DashboardStyleList); ok {
+			if _, ok := list.(*pagev1alpha1.ServiceCardList); ok {
 				return wantErr
 			}
 			return c.List(ctx, list, opts...)
@@ -617,22 +617,13 @@ func TestBoundCountsForDashboardListErrors(t *testing.T) {
 	}
 }
 
-// TestBoundCountsForDashboardCounts covers the DashboardStyle and InfoWidget
-// increment branches specifically: the envtest-backed Ginkgo specs exercise
-// ServiceCard/Bookmark counting, but leave configs/infoWidgets matching
-// instance.Name untested.
+// TestBoundCountsForDashboardCounts covers the InfoWidget increment branch
+// specifically: the envtest-backed Ginkgo specs exercise ServiceCard/
+// Bookmark counting, but leave infoWidgets matching instance.Name untested.
 func TestBoundCountsForDashboardCounts(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newDashboardReconcileTestDashboard()
 
-	matchingCfg := &pagev1alpha1.DashboardStyle{
-		ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: instance.Namespace},
-		Spec:       pagev1alpha1.DashboardStyleSpec{DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name}},
-	}
-	otherCfg := &pagev1alpha1.DashboardStyle{
-		ObjectMeta: metav1.ObjectMeta{Name: "cfg-other", Namespace: instance.Namespace},
-		Spec:       pagev1alpha1.DashboardStyleSpec{DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName}},
-	}
 	matchingWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
@@ -653,15 +644,12 @@ func TestBoundCountsForDashboardCounts(t *testing.T) {
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(instance, matchingCfg, otherCfg, matchingWidget, otherWidget).Build()
+		WithObjects(instance, matchingWidget, otherWidget).Build()
 	r := newDashboardReconciler(cl)
 
 	counts, err := r.boundCountsForDashboard(t.Context(), instance)
 	if err != nil {
 		t.Fatalf("boundCountsForDashboard() unexpected error: %v", err)
-	}
-	if counts.configurations != 1 {
-		t.Errorf("counts.configurations = %d, want 1 (other instance's DashboardStyle excluded)", counts.configurations)
 	}
 	if counts.infoWidgets != 1 {
 		t.Errorf("counts.infoWidgets = %d, want 1 (other instance's InfoWidget excluded)", counts.infoWidgets)

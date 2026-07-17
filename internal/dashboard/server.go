@@ -45,7 +45,7 @@ const pwaIconPath = "/assets/icon.svg"
 // cardGroup is a display-ready group of cards sharing a ServiceCard Group,
 // in the order Store.Snapshot already produced (Order, then name). Columns/
 // Style/IconURL/Header/InitiallyCollapsed/UseEqualHeights come from the
-// DashboardStyle's Layout, when one places this group (or, for a nested
+// Dashboard's spec.style's Layout, when one places this group (or, for a nested
 // subgroup, its full Path) in a tab, already resolved against the Site-wide
 // defaults by layoutTabs.
 //
@@ -380,7 +380,7 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRobots serves a permissive robots.txt by default, or a disallow-all
-// one when the DashboardStyle sets Indexing: NoIndex — homepage's documented
+// one when spec.style sets Indexing: NoIndex — homepage's documented
 // "ask search engines not to index" setting.
 func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 	site, err := LoadSite(r.Context(), s.Reader, s.Namespace, s.DashboardName)
@@ -508,7 +508,7 @@ func (s *Server) handleFragment(w http.ResponseWriter, r *http.Request) {
 // writeCachedHTML renders an HTML fragment into a buffer and serves it with
 // a content-hash ETag: unlike a Store generation counter, a hash of the
 // actual rendered bytes stays correct even though /fragment and /header
-// depend on more than the Store (DashboardStyle/Bookmark/InfoWidget changes,
+// depend on more than the Store (Dashboard style/Bookmark/InfoWidget changes,
 // read through the cached client, also change the output — see LoadSite).
 // "Cache-Control: no-cache" tells the browser to keep revalidating on every
 // request rather than caching outright, so it automatically sends
@@ -1278,7 +1278,7 @@ func orderSubgroups(g cardGroup, orderByPath map[string]int) cardGroup {
 }
 
 // layoutTabs arranges groupCards'/nestGroups' output into tabs per the
-// DashboardStyle's Layout. An empty layout returns the (nested) groups
+// Dashboard's spec.style's Layout. An empty layout returns the (nested) groups
 // unchanged in a single unnamed tab, so the dashboard renders exactly as it
 // did before tabs existed. Placement is root-only: a LayoutGroupSpec whose
 // Name has no "/" places that root group — and its whole Subgroups tree —

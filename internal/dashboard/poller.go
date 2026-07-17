@@ -1028,15 +1028,14 @@ func (p *Poller) resolveSecret(ctx context.Context, namespace string, src pagev1
 }
 
 // siteDefaults returns the site-wide StatusStyle/HideErrors defaults from
-// the Dashboard's bound DashboardStyle (falling back to statusStyleDot/false
-// when none is bound), the same "which DashboardStyle wins" resolution
-// LoadSite uses for the HTTP-serving side.
+// the Dashboard's spec.style (falling back to statusStyleDot/false when
+// unset), the same resolution LoadSite uses for the HTTP-serving side.
 func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErrors bool) {
 	statusStyle = statusStyleDot
 
-	spec, err := boundDashboardStyleSpec(ctx, p.Reader, p.Namespace, p.DashboardName)
+	spec, err := boundStyleSpec(ctx, p.Reader, p.Namespace, p.DashboardName)
 	if err != nil {
-		pollerLog.Error(err, "loading DashboardStyle for site-wide defaults")
+		pollerLog.Error(err, "loading Dashboard style for site-wide defaults")
 		return statusStyle, hideErrors
 	}
 	if spec == nil {

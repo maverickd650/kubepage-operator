@@ -20,7 +20,7 @@ import (
 
 // InfoWidgetReconciler reconciles a InfoWidget object.
 //
-// Thin, like DashboardStyleReconciler, ServiceCardReconciler, and
+// Thin, like ServiceCardReconciler, BookmarkReconciler, and
 // BookmarkReconciler: it only validates that dashboardRef resolves to an
 // existing Dashboard and reflects that in status. Actually polling and
 // rendering an InfoWidget (datetime, greeting, openmeteo, kubemetrics)
@@ -79,7 +79,7 @@ func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagev1alpha1.InfoWidget{}).
 		Named("infowidget").
-		// Watch Dashboard objects too: see DashboardStyleReconciler.SetupWithManager
+		// Watch Dashboard objects too: see ServiceCardReconciler.SetupWithManager
 		// for why (out-of-order apply self-heals without waiting for the
 		// InfoWidget itself to be touched again).
 		Watches(

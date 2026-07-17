@@ -59,7 +59,7 @@ func gridClasses(extra, style string, columns *int32, equalHeights bool) string 
 }
 
 // isHTTPURL reports whether s has an http(s) scheme. Used to defensively
-// re-check DashboardStyle.Spec.Search.URL before it's passed into a
+// re-check StyleSpec.Search.URL before it's passed into a
 // client-side window.open()/href — see the call site in site.go.
 func isHTTPURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
@@ -335,7 +335,7 @@ func backgroundInsetCSS(bg *Background) string {
 }
 
 // customStyle returns a complete "<style>...</style>" element wrapping the
-// DashboardStyle's CustomCSS, nonce-carrying like backgroundStyle above (same
+// Dashboard's spec.style's CustomCSS, nonce-carrying like backgroundStyle above (same
 // reasoning: emitted via @templ.Raw, so templ's automatic nonce handling
 // doesn't reach it). Returns "" when css is empty, so the caller's
 // @templ.Raw call renders nothing.
@@ -347,7 +347,7 @@ func customStyle(nonce, css string) string {
 }
 
 // customScript returns a complete "<script>...</script>" element wrapping
-// the DashboardStyle's CustomJS, nonce-carrying like backgroundStyle/
+// the Dashboard's spec.style's CustomJS, nonce-carrying like backgroundStyle/
 // customStyle above. Returns "" when js is empty.
 func customScript(nonce, js string) string {
 	if js == "" {

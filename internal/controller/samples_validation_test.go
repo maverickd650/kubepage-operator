@@ -40,6 +40,6 @@ var _ = Describe("Config samples validation", func() {
 			Expect(err).NotTo(HaveOccurred(), "dry-run apply failed for %s: server rejected the sample", entry.Name())
 			applied++
 		}
-		Expect(applied).To(BeNumerically(">=", 5), "expected at least 5 sample manifests")
+		Expect(applied).To(BeNumerically(">=", 4), "expected at least 4 sample manifests (one per CRD)")
 	})
 })

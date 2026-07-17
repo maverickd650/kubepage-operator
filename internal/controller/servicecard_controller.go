@@ -21,7 +21,7 @@ import (
 
 // ServiceCardReconciler reconciles a ServiceCard object.
 //
-// Thin, like DashboardStyleReconciler: it only validates that dashboardRef
+// Thin, like ServiceCardReconciler: it only validates that dashboardRef
 // resolves to an existing Dashboard and reflects that in status. The
 // dashboard pod (internal/dashboard) reads and polls ServiceCards directly
 // through its own cache; this controller never renders or resolves secrets.
@@ -78,7 +78,7 @@ func (r *ServiceCardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagev1alpha1.ServiceCard{}).
 		Named("servicecard").
-		// Watch Dashboard objects too: see DashboardStyleReconciler.SetupWithManager
+		// Watch Dashboard objects too: see ServiceCardReconciler.SetupWithManager
 		// for why (out-of-order apply self-heals without waiting for the
 		// ServiceCard itself to be touched again).
 		Watches(

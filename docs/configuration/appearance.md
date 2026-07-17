@@ -1,44 +1,42 @@
 # Appearance
 
 Everything about how your dashboard *looks* — title, theme, colour, background,
-tabs, the search box — lives in a single **DashboardStyle** object.
-
-## The one rule to remember
-
-A DashboardStyle's `metadata.name` **must be identical to the Dashboard it
-styles**, and `dashboardRef.name` must match too. This is how a dashboard is
-guaranteed exactly one look — you literally cannot create a second style for the
-same dashboard.
+tabs, the search box — lives in the `style` field of that dashboard's own
+**Dashboard** object (`spec.style`). It's optional: omit it entirely and every
+setting below takes its documented default, exactly as an unset style always
+has.
 
 ```yaml
 apiVersion: page.kubepage.dev/v1alpha1
-kind: DashboardStyle
+kind: Dashboard
 metadata:
-  name: home            # <- MUST equal the Dashboard's name
+  name: home
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home          # <- same again
-  title: Home Lab
+  style:
+    title: Home Lab
 ```
 
 ## A well-rounded example
 
 ```yaml
 spec:
-  dashboardRef:
-    name: home
-  title: Home Lab
-  description: Self-hosted services
-  favicon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png
-  theme: dark
-  color: slate
-  headerStyle: boxed
-  cardBlur: md
-  background:
-    image: https://example.com/background.png
-    opacity: 40
+  style:
+    title: Home Lab
+    description: Self-hosted services
+    favicon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png
+    theme: dark
+    color: slate
+    headerStyle: boxed
+    cardBlur: md
+    background:
+      image: https://example.com/background.png
+      opacity: 40
 ```
+
+All the field names below (`title`, `background`, `layout`, `search`, ...) are
+keys under `spec.style` on the Dashboard; the standalone snippets in this page
+omit the `spec.style:` wrapper for brevity.
 
 ## Everyday settings
 
@@ -170,6 +168,25 @@ customCSS: |
 - `indexing` — `true` (default) lets search engines index the page; `false`
   blocks crawlers via `robots.txt` and a `noindex` tag. Set `false` for a
   private dashboard on a public address.
+
+## Migrating from a standalone DashboardStyle
+
+Older versions of this operator styled a Dashboard through a separate
+`DashboardStyle` object (short name `pstyle`); that kind has been removed —
+its fields now live directly under `spec.style` on the Dashboard it styled.
+To migrate an existing cluster:
+
+```sh
+kubectl get pstyle <name> -n <namespace> -o yaml
+```
+
+Copy everything under that object's `spec:` (skip `dashboardRef`, which no
+longer applies) into the Dashboard's own `spec.style:`, then delete the old
+object:
+
+```sh
+kubectl delete pstyle <name> -n <namespace>
+```
 
 ## Next
 

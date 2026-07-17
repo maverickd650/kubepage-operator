@@ -49,8 +49,8 @@ const (
 	dashboardBookmarkName = "E2E Bookmark Card"
 )
 
-// dashboardSampleManifest is a minimal, self-contained Dashboard plus
-// DashboardStyle and Bookmark, deliberately avoiding ServiceCard widgets
+// dashboardSampleManifest is a minimal, self-contained Dashboard (with
+// spec.style set) plus Bookmark, deliberately avoiding ServiceCard widgets
 // (which need a real upstream and Secret) so this scenario has no external
 // dependencies.
 var dashboardSampleManifest = fmt.Sprintf(`
@@ -62,16 +62,8 @@ metadata:
 spec:
   replicas: 1
   containerPort: 8080
----
-apiVersion: page.kubepage.dev/v1alpha1
-kind: DashboardStyle
-metadata:
-  name: %[1]s
-  namespace: %[2]s
-spec:
-  dashboardRef:
-    name: %[1]s
-  title: %[3]s
+  style:
+    title: %[3]s
 ---
 apiVersion: page.kubepage.dev/v1alpha1
 kind: Bookmark
@@ -327,7 +319,7 @@ var _ = Describe("Manager", Ordered, func() {
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
-			By("applying a Dashboard plus DashboardStyle and Bookmark")
+			By("applying a Dashboard (with spec.style) plus Bookmark")
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(dashboardSampleManifest)
 			_, err = utils.Run(cmd)
@@ -391,7 +383,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyCurlUp, 3*time.Minute).Should(Succeed())
 
-			By("verifying the page shell reflects the applied DashboardStyle's title")
+			By("verifying the page shell reflects the applied Dashboard spec.style title")
 			cmd = exec.Command("kubectl", "logs", "curl-dashboard", "-n", dashboardTestNamespace)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl-dashboard pod")

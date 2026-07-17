@@ -39,13 +39,14 @@ func TestBrowserTabAndGroupStateSurviveFragmentSwap(t *testing.T) {
 	store.Set(Card{Key: "ns/plex/0", Group: testGroupMedia, ServiceName: testMultiEntryNamePlex,
 		Fields: []Field{{Label: labelStatus, Value: statusHealthy}}})
 
-	style := &pagev1alpha1.DashboardStyle{
+	style := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-		Spec: pagev1alpha1.DashboardStyleSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Layout: []pagev1alpha1.LayoutTabSpec{
-				{Name: "Infra", Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Monitoring"}}},
-				{Name: "Apps", Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testGroupMedia}}},
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{
+				Layout: []pagev1alpha1.LayoutTabSpec{
+					{Name: "Infra", Groups: []pagev1alpha1.LayoutGroupSpec{{Name: "Monitoring"}}},
+					{Name: "Apps", Groups: []pagev1alpha1.LayoutGroupSpec{{Name: testGroupMedia}}},
+				},
 			},
 		},
 	}

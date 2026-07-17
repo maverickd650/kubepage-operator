@@ -378,7 +378,7 @@ func TestPollerRunPollsOnIntervalAndStopsOnCancel(t *testing.T) {
 		}()
 
 		synctest.Wait()
-		// pollOnce Gets the DashboardStyle (site-wide defaults, not counted
+		// pollOnce Gets the Dashboard (site-wide defaults, not counted
 		// here) and lists ServiceCards and InfoWidgets once each.
 		if n := listCalls.Load(); n != 2 {
 			t.Fatalf("after the immediate poll, List was called %d times, want 2", n)
@@ -1648,16 +1648,17 @@ func TestResolveSecretGetError(t *testing.T) {
 	}
 }
 
-func TestPollerSiteDefaultsAppliesDashboardStyle(t *testing.T) {
+func TestPollerSiteDefaultsAppliesStyle(t *testing.T) {
 	scheme := testScheme(t)
 	style := statusStyleBasic
 	hide := false
-	cfg := &pagev1alpha1.DashboardStyle{
+	cfg := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-		Spec: pagev1alpha1.DashboardStyleSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			StatusStyle:  &style,
-			ErrorDisplay: &hide,
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{
+				StatusStyle:  &style,
+				ErrorDisplay: &hide,
+			},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cfg).Build()
@@ -1669,7 +1670,7 @@ func TestPollerSiteDefaultsAppliesDashboardStyle(t *testing.T) {
 	}
 }
 
-func TestPollerSiteDefaultsNoDashboardStyle(t *testing.T) {
+func TestPollerSiteDefaultsNoStyle(t *testing.T) {
 	scheme := testScheme(t)
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
@@ -1686,7 +1687,7 @@ func TestPollerSiteDefaultsGetError(t *testing.T) {
 	failing := errInjectingReader{
 		Reader: cl,
 		failGet: func(_ client.ObjectKey, obj client.Object) bool {
-			_, ok := obj.(*pagev1alpha1.DashboardStyle)
+			_, ok := obj.(*pagev1alpha1.Dashboard)
 			return ok
 		},
 	}
@@ -1694,7 +1695,7 @@ func TestPollerSiteDefaultsGetError(t *testing.T) {
 
 	statusStyle, hideErrors := p.siteDefaults(t.Context())
 	if statusStyle != statusStyleDot || hideErrors {
-		t.Errorf("siteDefaults() = (%q, %v), want (%q, false) on a DashboardStyle get error", statusStyle, hideErrors, statusStyleDot)
+		t.Errorf("siteDefaults() = (%q, %v), want (%q, false) on a Dashboard get error", statusStyle, hideErrors, statusStyleDot)
 	}
 }
 

@@ -96,14 +96,13 @@ credential leaks to any dashboard viewer the moment that request fails. See
 
 | Kind | Purpose |
 |------|---------|
-| `Dashboard` (`pdash`) | The dashboard Deployment, Service, optional Ingress, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `dashboardRef`. |
-| `DashboardStyle` (`pstyle`) | Title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. Exactly one per Dashboard — the object's name must match the Dashboard's name. |
+| `Dashboard` (`pdash`) | The dashboard Deployment, Service, optional Ingress, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Every other CRD names one via `dashboardRef`. Its optional `spec.style` carries the look: title, description, favicon, theme, color, background, card blur, header style, default link target, the header search box, and an optional `layout` arranging Groups into tabs. |
 | `ServiceCard` (`pcard`) | One or many service cards (`services`) in a named group, each with optional widgets polling that service's API. Supports an HTTP `ping`/`siteMonitor` up/down status *and*, independently, a Kubernetes pod-readiness status (`app`/`podSelector`, homepage parity) — both may be set at once for two status lights on one card. Also supports per-card link `target` and `showStats`/`errorDisplay` toggles. |
 | `Bookmark` (`pbmk`) | One or many static bookmark links (`bookmarks`) in a named group, each with an optional per-bookmark link `target`. |
 | `InfoWidget` (`piw`) | One or many header-strip widgets (`widgets`): `datetime` (client-side clock), `greeting` (static text), `logo` (static header logo image), `openmeteo` (current weather, keyless), `openweathermap` (current weather via OpenWeatherMap), `glances` (host CPU/memory usage), `longhorn` (aggregate Longhorn cluster storage usage), or `kubemetrics` (cluster-wide CPU/memory usage). |
 
-Every config CRD (`DashboardStyle`, `ServiceCard`, `Bookmark`, `InfoWidget`)
-carries a `dashboardRef.name` naming the `Dashboard` it belongs to, and any
+Every config CRD (`ServiceCard`, `Bookmark`, `InfoWidget`) carries a
+`dashboardRef.name` naming the `Dashboard` it belongs to, and any
 namespace-matching is implicit: they must live in the same namespace as that
 `Dashboard`.
 
@@ -258,24 +257,23 @@ need a card of its own — if every entry only ever sets `Media/...`, the
 dashboard still renders an (empty-of-direct-cards) `Media` parent so the
 subgroups have somewhere to nest.
 
-A `DashboardStyle`'s `layout` can style a subgroup the same way it styles a
-top-level group, by giving `groups[].name` the same path:
+A Dashboard's `spec.style.layout` can style a subgroup the same way it styles
+a top-level group, by giving `groups[].name` the same path:
 
 ```yaml
 apiVersion: page.kubepage.dev/v1alpha1
-kind: DashboardStyle
+kind: Dashboard
 metadata:
   name: dashboard-sample
 spec:
-  dashboardRef:
-    name: dashboard-sample
-  layout:
-    - name: Apps
-      groups:
-        - name: Media          # places the whole Media group (+ subtree) in this tab
-          style: row
-        - name: Media/Movies   # styles only the Movies subgroup — doesn't place it
-          columns: 2
+  style:
+    layout:
+      - name: Apps
+        groups:
+          - name: Media          # places the whole Media group (+ subtree) in this tab
+            style: row
+          - name: Media/Movies   # styles only the Movies subgroup — doesn't place it
+            columns: 2
 ```
 
 Rules to know:
@@ -375,12 +373,12 @@ kubectl apply -k config/samples/
 ```
 
 The samples under [`config/samples/`](config/samples/) show the minimal shape
-of every CRD: [`Dashboard`](config/samples/page_v1alpha1_dashboard.yaml),
-[`DashboardStyle`](config/samples/page_v1alpha1_dashboardstyle.yaml),
+of every CRD: [`Dashboard`](config/samples/page_v1alpha1_dashboard.yaml)
+(including a `spec.style` block),
 [`ServiceCard`](config/samples/page_v1alpha1_servicecard.yaml),
 [`Bookmark`](config/samples/page_v1alpha1_bookmark.yaml), and
 [`InfoWidget`](config/samples/page_v1alpha1_infowidget.yaml). Once applied,
-`kubectl get pdash,pstyle,pcard,pbmk,piw` shows their `Ready` status and
+`kubectl get pdash,pcard,pbmk,piw` shows their `Ready` status and
 bound counts, plus a `URL` column on `pdash` itself (derived from
 `spec.ingress`/`spec.gateway`, falling back to the dashboard Service's
 cluster-internal DNS name — see `status.url`); the dashboard Service is
@@ -432,9 +430,9 @@ IMG=<some-registry>/kubepage-operator:tag mise run deploy
 ### Local preview (no cluster required)
 
 To see what a `Dashboard` actually renders as without installing the operator
-anywhere, `preview` mode loads `Dashboard`/`DashboardStyle`/`ServiceCard`/
-`Bookmark`/`InfoWidget`/`Secret` YAML straight from local files and serves the
-same dashboard UI code the in-cluster pod runs:
+anywhere, `preview` mode loads `Dashboard`/`ServiceCard`/`Bookmark`/
+`InfoWidget`/`Secret` YAML straight from local files and serves the same
+dashboard UI code the in-cluster pod runs:
 
 ```sh
 mise run preview                      # serves config/samples on :8080

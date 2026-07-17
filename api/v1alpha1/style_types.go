@@ -1,10 +1,5 @@
 package v1alpha1
 
-import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-)
-
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
@@ -158,13 +153,13 @@ type LayoutGroupSpec struct {
 	Header *bool `json:"header,omitempty"`
 
 	// initiallyCollapsed collapses this group by default on first load,
-	// overriding the DashboardStyle's GroupsInitiallyCollapsed. Ignored when
+	// overriding the StyleSpec's GroupsInitiallyCollapsed. Ignored when
 	// Collapse is false.
 	// +optional
 	InitiallyCollapsed *bool `json:"initiallyCollapsed,omitempty"`
 
 	// useEqualHeights makes every card in this group the same height,
-	// overriding the DashboardStyle's UseEqualHeights.
+	// overriding the StyleSpec's UseEqualHeights.
 	// +optional
 	UseEqualHeights *bool `json:"useEqualHeights,omitempty"`
 }
@@ -201,17 +196,12 @@ type LayoutTabSpec struct {
 	Groups []LayoutGroupSpec `json:"groups"`
 }
 
-// DashboardStyleSpec defines the desired state of DashboardStyle: the native
-// dashboard's theme/color/background/header-style look and its header search
-// box, applied by internal/dashboard's LoadSite.
-type DashboardStyleSpec struct {
-	// dashboardRef names the Dashboard this DashboardStyle applies to. Must
-	// equal this object's own metadata.name (enforced by a CEL rule on the
-	// DashboardStyle type), which is what makes at most one DashboardStyle
-	// per Dashboard possible to enforce via ordinary object-name uniqueness.
-	// +required
-	DashboardRef DashboardRef `json:"dashboardRef"`
-
+// StyleSpec defines the native dashboard's theme/color/background/
+// header-style look and its header search box, applied by
+// internal/dashboard's LoadSite. Set on Dashboard.spec.style; a nil/omitted
+// Style means every field below takes its documented default, exactly as an
+// absent DashboardStyle used to mean before this was folded into Dashboard.
+type StyleSpec struct {
 	// title is the dashboard's browser tab title and header heading.
 	// Defaults to "kubepage" when unset.
 	// +kubebuilder:validation:MinLength=1
@@ -338,7 +328,7 @@ type DashboardStyleSpec struct {
 	// customCSS is raw CSS injected into the dashboard's page in a second
 	// <style> block appended after the built-in stylesheet, so its rules
 	// can override it. Trusted, operator-supplied content — the same trust
-	// level as every other DashboardStyle field (e.g. Background.Image).
+	// level as every other StyleSpec field (e.g. Background.Image).
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=10000
 	// +optional
@@ -373,76 +363,4 @@ type DashboardStyleSpec struct {
 	// hideVersion hides the dashboard's version/commit footer.
 	// +optional
 	HideVersion *bool `json:"hideVersion,omitempty"`
-}
-
-// DashboardStyleStatus defines the observed state of DashboardStyle.
-// +kubebuilder:validation:MinProperties=1
-type DashboardStyleStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the DashboardStyle resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
-	// +patchStrategy=merge
-	// +patchMergeKey=type
-	// +listType=map
-	// +listMapKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=pstyle
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Available')].status"
-// +kubebuilder:printcolumn:name="Dashboard",type=string,JSONPath=".spec.dashboardRef.name"
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:validation:XValidation:rule="self.metadata.name == self.spec.dashboardRef.name",message="a DashboardStyle must be named after the Dashboard it styles (metadata.name must equal spec.dashboardRef.name)"
-
-// DashboardStyle is the Schema for the dashboardstyles API. Exactly one
-// DashboardStyle may exist per Dashboard: the CEL rule above requires
-// metadata.name == spec.dashboardRef.name, so the API server's own name
-// uniqueness makes a second DashboardStyle bound to the same Dashboard
-// impossible, rather than merely undefined (see docs/crd-architecture-review.md
-// finding #4).
-type DashboardStyle struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// metadata is a standard object metadata
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
-
-	// spec defines the desired state of DashboardStyle
-	// +required
-	Spec DashboardStyleSpec `json:"spec"`
-
-	// status defines the observed state of DashboardStyle
-	// +optional
-	Status DashboardStyleStatus `json:"status,omitzero"`
-}
-
-// +kubebuilder:object:root=true
-
-// DashboardStyleList contains a list of DashboardStyle
-type DashboardStyleList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
-	Items           []DashboardStyle `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &DashboardStyle{}, &DashboardStyleList{})
-		return nil
-	})
 }

@@ -45,7 +45,7 @@ type BookmarkEntry struct {
 	// +required
 	Href string `json:"href"`
 
-	// target overrides the DashboardStyle's default link target for this
+	// target overrides the Dashboard's style.target default link target for this
 	// bookmark ("_blank" opens a new tab, "_self" the same tab).
 	// +kubebuilder:validation:Enum=_blank;_self
 	// +optional

@@ -31,9 +31,6 @@ resources:
 - servicecard_admin_role.yaml
 - servicecard_editor_role.yaml
 - servicecard_viewer_role.yaml
-- dashboardstyle_admin_role.yaml
-- dashboardstyle_editor_role.yaml
-- dashboardstyle_viewer_role.yaml
 - dashboard_admin_role.yaml
 - dashboard_editor_role.yaml
 - dashboard_viewer_role.yaml

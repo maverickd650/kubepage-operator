@@ -720,7 +720,6 @@ var _ = Describe("Dashboard controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())
 			Expect(instance.Status.BoundBookmarks).To(Equal(int32(1)))
 			Expect(instance.Status.BoundServiceCards).To(Equal(int32(1)))
-			Expect(instance.Status.BoundDashboardStyles).To(Equal(int32(0)))
 			Expect(instance.Status.ObservedGeneration).To(Equal(instance.Generation))
 		})
 

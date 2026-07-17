@@ -8,9 +8,9 @@ every decision below — read them before exposing a dashboard beyond a
 trusted network:
 
 1. **A Dashboard's blast radius is its own namespace, unless a Dashboard
-   author explicitly widens it.** Every config CRD (`DashboardStyle`/
-   `ServiceCard`/`Bookmark`/`InfoWidget`) must live in the same namespace as
-   the `Dashboard` it binds to — no cross-namespace `dashboardRef`. Ingress/
+   author explicitly widens it.** Every config CRD (`ServiceCard`/
+   `Bookmark`/`InfoWidget`) must live in the same namespace as the
+   `Dashboard` it binds to — no cross-namespace `dashboardRef`. Ingress/
    HTTPRoute annotation discovery (`spec.discovery`) follows the same rule
    by default: it only scans the Dashboard's own namespace. The one opt-in
    exception is `spec.discovery.namespaces`, a static list of additional

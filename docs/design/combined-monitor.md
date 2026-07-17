@@ -138,8 +138,8 @@ today use `podSelector` alone move their result to the new fields.
   A `status-Partial` CSS class (amber) joins `status-Up`/`status-Down`.
 - `basic` style: the status line shows both, e.g.
   `Up (12ms) · 2/3 ready`.
-- `StatusStyle` (entry override, else DashboardStyle default) applies to
-  both indicators — one knob, matching homepage.
+- `StatusStyle` (entry override, else the Dashboard's spec.style default)
+  applies to both indicators — one knob, matching homepage.
 
 ## Poller changes (`internal/dashboard/poller.go`)
 

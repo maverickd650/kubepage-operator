@@ -27,8 +27,8 @@ collapse a whole parent section at once.
 
 Goal: parity with homepage's nested service groups — a group can contain both
 cards and child groups, child groups render (and collapse) inside their
-parent, and the `DashboardStyle` layout can place and style child groups —
-without breaking any existing flat config.
+parent, and the Dashboard's `spec.style.layout` can place and style child
+groups — without breaking any existing flat config.
 
 ## Constraints that shape the design
 

@@ -40,11 +40,10 @@ func TestRunGeneratesJSONSchemasForEveryCRDVersion(t *testing.T) {
 	}
 
 	wantKinds := map[string]bool{
-		"bookmark_v1alpha1.json":       false,
-		"dashboard_v1alpha1.json":      false,
-		"dashboardstyle_v1alpha1.json": false,
-		"infowidget_v1alpha1.json":     false,
-		"servicecard_v1alpha1.json":    false,
+		"bookmark_v1alpha1.json":    false,
+		"dashboard_v1alpha1.json":   false,
+		"infowidget_v1alpha1.json":  false,
+		"servicecard_v1alpha1.json": false,
 	}
 
 	for _, f := range files {

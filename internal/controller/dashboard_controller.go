@@ -95,8 +95,7 @@ const (
 	// optional NetworkPolicy failed.
 	reasonNetworkPolicyFailed = "NetworkPolicyReconcileFailed"
 	// reasonBoundCountsFailed marks Available=False when listing the config
-	// CRDs (DashboardStyle/ServiceCard/Bookmark/InfoWidget) bound to this
-	// Dashboard failed.
+	// CRDs (ServiceCard/Bookmark/InfoWidget) bound to this Dashboard failed.
 	reasonBoundCountsFailed = "BoundCountsListFailed"
 	// reasonDeploymentNotReady marks Available=False when the Deployment
 	// object matches the desired spec but doesn't yet have as many ready
@@ -177,7 +176,6 @@ type DashboardReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards/finalizers,verbs=update
-// +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboardstyles,verbs=get;list;watch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=servicecards,verbs=get;list;watch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks,verbs=get;list;watch
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets,verbs=get;list;watch
@@ -382,7 +380,6 @@ func (r *DashboardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	instance.Status.ObservedGeneration = instance.Generation
-	instance.Status.BoundDashboardStyles = counts.configurations
 	instance.Status.BoundServiceCards = counts.serviceEntries
 	instance.Status.BoundBookmarks = counts.bookmarks
 	instance.Status.BoundInfoWidgets = counts.infoWidgets
@@ -491,11 +488,10 @@ func (r *DashboardReconciler) doFinalizerOperationsForDashboard(ctx context.Cont
 // Dashboard, surfaced in its status (see pagev1alpha1.DashboardStatus). Unlike
 // the pre-Phase-6.4 homepage-wrapper path, this is purely informational now:
 // the dashboard pod reads these same CRDs live through its own
-// controller-runtime cache (internal/dashboard), so a DashboardStyle/
-// ServiceCard/Bookmark/InfoWidget change needs no Dashboard-mediated
-// re-render or rollout to take effect.
+// controller-runtime cache (internal/dashboard), so a ServiceCard/Bookmark/
+// InfoWidget change needs no Dashboard-mediated re-render or rollout to take
+// effect.
 type boundCounts struct {
-	configurations int32
 	serviceEntries int32
 	bookmarks      int32
 	infoWidgets    int32
@@ -505,10 +501,6 @@ type boundCounts struct {
 // status visibility (kubectl get/describe) without having to cross-reference
 // every config CRD's own dashboardRef by hand.
 func (r *DashboardReconciler) boundCountsForDashboard(ctx context.Context, instance *pagev1alpha1.Dashboard) (boundCounts, error) {
-	var configs pagev1alpha1.DashboardStyleList
-	if err := r.List(ctx, &configs, client.InNamespace(instance.Namespace)); err != nil {
-		return boundCounts{}, fmt.Errorf("listing DashboardStyles: %w", err)
-	}
 	var serviceEntries pagev1alpha1.ServiceCardList
 	if err := r.List(ctx, &serviceEntries, client.InNamespace(instance.Namespace)); err != nil {
 		return boundCounts{}, fmt.Errorf("listing ServiceCards: %w", err)
@@ -523,11 +515,6 @@ func (r *DashboardReconciler) boundCountsForDashboard(ctx context.Context, insta
 	}
 
 	counts := boundCounts{}
-	for _, c := range configs.Items {
-		if c.Spec.DashboardRef.Name == instance.Name {
-			counts.configurations++
-		}
-	}
 	for _, s := range serviceEntries.Items {
 		if s.Spec.DashboardRef.Name == instance.Name {
 			counts.serviceEntries++
@@ -1003,10 +990,6 @@ func (r *DashboardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// bound-count status fresh. The dashboard pod itself reads these
 		// CRDs live through its own cache (internal/dashboard), so this no
 		// longer drives any render or rollout — only status visibility.
-		Watches(
-			&pagev1alpha1.DashboardStyle{},
-			handler.EnqueueRequestsFromMapFunc(mapToDashboard(func(c *pagev1alpha1.DashboardStyle) string { return c.Spec.DashboardRef.Name })),
-		).
 		Watches(
 			&pagev1alpha1.ServiceCard{},
 			handler.EnqueueRequestsFromMapFunc(mapToDashboard(func(s *pagev1alpha1.ServiceCard) string { return s.Spec.DashboardRef.Name })),

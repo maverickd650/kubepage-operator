@@ -42,7 +42,7 @@ const (
 
 // typeAvailableBound represents whether a config CRD's dashboardRef resolves
 // to an existing Dashboard. Shared by every thin config-CRD controller
-// (DashboardStyle, ServiceCard, and future ones with the same shape).
+// (ServiceCard, Bookmark, InfoWidget, and future ones with the same shape).
 const typeAvailableBound = "Available"
 
 // typeConfigValid represents whether every widget on a ServiceCard/InfoWidget

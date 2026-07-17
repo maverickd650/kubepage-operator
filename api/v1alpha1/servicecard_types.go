@@ -215,7 +215,7 @@ type ServiceEntry struct {
 	// +optional
 	Href *string `json:"href,omitempty"`
 
-	// target overrides the DashboardStyle's default link target for this
+	// target overrides the Dashboard's style.target default link target for this
 	// card's Href ("_blank" opens a new tab, "_self" the same tab).
 	// +kubebuilder:validation:Enum=_blank;_self
 	// +optional
@@ -249,7 +249,7 @@ type ServiceEntry struct {
 	// errorDisplay controls whether a widget's error text is shown on the
 	// card (e.g. set false for a service that is expected to be
 	// intermittently unreachable). When unset, falls back to the
-	// DashboardStyle's site-wide errorDisplay (defaults to true).
+	// Dashboard's style.errorDisplay (defaults to true).
 	// +optional
 	ErrorDisplay *bool `json:"errorDisplay,omitempty"`
 

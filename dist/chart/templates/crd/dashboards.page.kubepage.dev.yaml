@@ -2486,6 +2486,418 @@ spec:
                     - NodePort
                     type: string
                 type: object
+              style:
+                description: |-
+                  style is the native dashboard's theme/color/background/header-style
+                  look and its header search box, applied by internal/dashboard's
+                  LoadSite. Unset means every field takes its documented default,
+                  exactly like an absent DashboardStyle used to mean before the
+                  DashboardStyle CRD was folded into this field.
+                properties:
+                  background:
+                    description: background image and filters, used instead of the
+                      solid theme color.
+                    minProperties: 1
+                    properties:
+                      blur:
+                        description: |-
+                          blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.
+                          "sm", "md", "xl", ""). An explicit "" is equivalent to leaving it
+                          unset (the default 8px blur).
+                        maxLength: 8
+                        type: string
+                      brightness:
+                        description: |-
+                          brightness is a backdrop brightness percentage (Tailwind
+                          backdrop-brightness scale, e.g. 0, 50, 75).
+                        format: int32
+                        type: integer
+                      image:
+                        description: |-
+                          image is the full URL or path (relative to /app/public) to the
+                          background image.
+                        maxLength: 2048
+                        minLength: 1
+                        type: string
+                      opacity:
+                        description: opacity blends the background image with the
+                          background color, 0-100.
+                        format: int32
+                        maximum: 100
+                        minimum: 0
+                        type: integer
+                      saturate:
+                        description: |-
+                          saturate is a backdrop saturate percentage (Tailwind backdrop-saturate
+                          scale, e.g. 0, 50, 100).
+                        format: int32
+                        type: integer
+                    type: object
+                  bookmarksStyle:
+                    description: |-
+                      bookmarksStyle renders every bookmark card icon-only (no name or
+                      description), matching homepage's `bookmarksStyle: icons`.
+                    enum:
+                    - icons
+                    type: string
+                  cardBlur:
+                    description: |-
+                      cardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur
+                      size keyword (e.g. "sm", "md", "xl", ""). An explicit "" is equivalent
+                      to leaving it unset (the default 8px blur). Most visible over a
+                      background image.
+                    maxLength: 8
+                    type: string
+                  collapse:
+                    default: true
+                    description: |-
+                      collapse controls the collapsible expand/collapse control on service
+                      and bookmark group headers. true (the default) shows the control;
+                      false renders every group with a plain, non-collapsible header.
+                    type: boolean
+                  color:
+                    description: color is the fixed color palette, disabling the palette
+                      switcher.
+                    enum:
+                    - slate
+                    - gray
+                    - zinc
+                    - neutral
+                    - stone
+                    - amber
+                    - yellow
+                    - lime
+                    - green
+                    - emerald
+                    - teal
+                    - cyan
+                    - sky
+                    - blue
+                    - indigo
+                    - violet
+                    - purple
+                    - fuchsia
+                    - pink
+                    - rose
+                    - red
+                    - white
+                    type: string
+                  customCSS:
+                    description: |-
+                      customCSS is raw CSS injected into the dashboard's page in a second
+                      <style> block appended after the built-in stylesheet, so its rules
+                      can override it. Trusted, operator-supplied content — the same trust
+                      level as every other StyleSpec field (e.g. Background.Image).
+                    maxLength: 10000
+                    minLength: 1
+                    type: string
+                  customJS:
+                    description: |-
+                      customJS is raw JavaScript injected into the dashboard's page in a
+                      <script> block, run once on page load. Trusted, operator-supplied
+                      content — the same trust level as CustomCSS/Background.Image.
+                    maxLength: 10000
+                    minLength: 1
+                    type: string
+                  description:
+                    description: |-
+                      description is shown as a header subtitle and the page's meta
+                      description.
+                    maxLength: 1024
+                    minLength: 1
+                    type: string
+                  errorDisplay:
+                    default: true
+                    description: |-
+                      errorDisplay is the site-wide default for whether a widget's error
+                      text is shown on its card, used when a ServiceCard doesn't set its own
+                      ErrorDisplay. Defaults to true when unset here too.
+                    type: boolean
+                  favicon:
+                    description: favicon is a URL to the dashboard's favicon.
+                    maxLength: 2048
+                    minLength: 1
+                    pattern: ^https?://
+                    type: string
+                  fullWidth:
+                    description: |-
+                      fullWidth uses the entire window width instead of a centered,
+                      constrained layout.
+                    type: boolean
+                  groupsInitiallyCollapsed:
+                    description: |-
+                      groupsInitiallyCollapsed collapses every group by default on first
+                      load. A LayoutGroupSpec's own InitiallyCollapsed overrides this per
+                      group. Ignored when Collapse is false.
+                    type: boolean
+                  headerStyle:
+                    description: |-
+                      headerStyle for the header info-widget strip (datetime, greeting,
+                      weather, etc.): "underlined" draws a line under it, "boxed" wraps it in
+                      a card, "clean" leaves it unstyled, and "boxedWidgets" additionally
+                      gives each individual widget its own boxed card.
+                    enum:
+                    - underlined
+                    - boxed
+                    - clean
+                    - boxedWidgets
+                    type: string
+                  hideVersion:
+                    description: hideVersion hides the dashboard's version/commit
+                      footer.
+                    type: boolean
+                  indexing:
+                    default: true
+                    description: |-
+                      indexing controls whether search engines may index the dashboard:
+                      true (the default) leaves indexing unrestricted; false disallows all
+                      crawlers in robots.txt and adds a noindex meta tag.
+                    type: boolean
+                  language:
+                    description: language is the UI language, e.g. "en", "fr", "de".
+                    maxLength: 16
+                    minLength: 1
+                    type: string
+                  layout:
+                    description: |-
+                      layout arranges ServiceCard Groups into tabs, mirroring homepage's
+                      settings.yaml `layout:` map (group -> style) with tabs added on top.
+                      Omitted/empty renders every group flat with no tab UI, as before.
+                    items:
+                      description: |-
+                        LayoutTabSpec is one tab: a named, ordered set of Groups shown together.
+                        Groups not referenced by any tab still render, appended to an implicit
+                        trailing "Other" tab; a Group referenced by more than one tab is shown
+                        under the first tab that lists it. Tab placement is root-only: a nested
+                        subgroup always renders in whatever tab its root group is placed in, so a
+                        path-named LayoutGroupSpec entry (e.g. "Media/Movies", only styling that
+                        subgroup) must not appear in a tab unless an ancestor prefix of that path
+                        ("Media", or "Media/Movies" for a "Media/Movies/4K" entry) is also listed
+                        in this same tab's groups — applied to every path entry, this makes the
+                        root itself required transitively; otherwise which tab the subgroup would
+                        render under is ambiguous. (The rule checks the immediate prefix rather
+                        than splitting out the root segment to stay within the apiserver's static
+                        CEL cost budget.)
+                      properties:
+                        groups:
+                          description: |-
+                            groups lists, in display order, the Groups shown under this tab.
+                            MaxItems is 32 (down from 64 pre-nesting) to keep the tab's
+                            parent-listed CEL rule within the apiserver's static cost budget —
+                            the rule's estimated cost is quadratic in this bound.
+                          items:
+                            description: |-
+                              LayoutGroupSpec configures one Group's placement and style within a
+                              LayoutTabSpec, mirroring homepage's settings.yaml `layout:` per-group
+                              style keys (style/columns/icon).
+                              See https://gethomepage.dev/configs/settings/#layout
+                            properties:
+                              columns:
+                                description: |-
+                                  columns is the number of card columns to render this group in,
+                                  overriding the dashboard's default auto-fill grid.
+                                format: int32
+                                maximum: 6
+                                minimum: 1
+                                type: integer
+                              header:
+                                description: |-
+                                  header renders this group's header (name + icon) when true (the
+                                  default). Set false to hide it while still rendering the group's
+                                  cards.
+                                type: boolean
+                              icon:
+                                description: |-
+                                  icon overrides the group header's icon. Same resolution rules as
+                                  ServiceCard/Bookmark Icon: a full URL passes through, homepage's icon
+                                  prefix syntax ("mdi-X"/"si-X"/"lucide-X"/"wi-X"/"fa6-solid-X"/"sh-X",
+                                  see ServiceEntry.Icon) resolves to that icon set, and anything else is
+                                  resolved as a dashboard-icons slug.
+                                maxLength: 256
+                                minLength: 1
+                                type: string
+                              initiallyCollapsed:
+                                description: |-
+                                  initiallyCollapsed collapses this group by default on first load,
+                                  overriding the StyleSpec's GroupsInitiallyCollapsed. Ignored when
+                                  Collapse is false.
+                                type: boolean
+                              name:
+                                description: |-
+                                  name is the ServiceCard Group this entry places and styles, or a
+                                  "/"-separated path (e.g. "Media/Movies") naming a nested subgroup to
+                                  style (see ServiceEntry.Group). A root name (no "/") also places the
+                                  whole group — and everything nested under it — into this tab; a path
+                                  entry only styles the subgroup it names and must not place it into a
+                                  different tab than its root (see LayoutTabSpec's validation rule).
+                                maxLength: 256
+                                minLength: 1
+                                pattern: ^[^/]+(/[^/]+){0,2}$
+                                type: string
+                              style:
+                                description: |-
+                                  style lays the group's cards out in a single horizontally-scrolling
+                                  row instead of a grid. Setting columns alongside "row" follows
+                                  homepage's layout semantics: the group renders as a normal wrapping
+                                  grid of that many columns (the single-row scroller applies only when
+                                  no columns are set).
+                                enum:
+                                - row
+                                - column
+                                type: string
+                              useEqualHeights:
+                                description: |-
+                                  useEqualHeights makes every card in this group the same height,
+                                  overriding the StyleSpec's UseEqualHeights.
+                                type: boolean
+                            required:
+                            - name
+                            type: object
+                          maxItems: 32
+                          minItems: 1
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        name:
+                          description: name is the tab's label.
+                          maxLength: 256
+                          minLength: 1
+                          type: string
+                      required:
+                      - groups
+                      - name
+                      type: object
+                      x-kubernetes-validations:
+                      - message: a nested group entry's parent group must be listed
+                          in the same tab
+                        rule: self.groups.all(g, !g.name.contains('/') || self.groups.exists(r,
+                          g.name.startsWith(r.name + '/')))
+                    maxItems: 32
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  search:
+                    description: |-
+                      search configures the native dashboard's header search box (card
+                      filtering + web-search fallthrough).
+                    minProperties: 1
+                    properties:
+                      filterCards:
+                        default: true
+                        description: |-
+                          filterCards enables as-you-type filtering of service and bookmark
+                          cards by name/description, independent of the Enter-to-search
+                          fallthrough.
+                        type: boolean
+                      internetSearchEntry:
+                        default: true
+                        description: |-
+                          internetSearchEntry controls the quick-launch palette's "search the
+                          web" fallthrough entry: true (the default) shows it alongside card
+                          matches; false removes it, leaving only card matches (and, unless
+                          visitURLEntry is also false, the direct-URL entry).
+                        type: boolean
+                      provider:
+                        default: duckduckgo
+                        description: |-
+                          provider is the web search engine Enter submits the query to.
+                          "custom" requires URL.
+                        enum:
+                        - duckduckgo
+                        - google
+                        - bing
+                        - custom
+                        type: string
+                      searchDescriptions:
+                        default: true
+                        description: |-
+                          searchDescriptions includes each card's description, not just its
+                          name, when matching the quick-launch (Ctrl/Cmd-K) palette's query
+                          against cards. Independent of FilterCards, which controls the
+                          inline as-you-type card filter instead.
+                        type: boolean
+                      target:
+                        default: _blank
+                        description: |-
+                          target controls whether the search results page opens in the same tab
+                          or a new one.
+                        enum:
+                        - _blank
+                        - _self
+                        type: string
+                      url:
+                        description: |-
+                          url is the search endpoint used when Provider is "custom". The query
+                          is appended as a URL-encoded "q" parameter. Must be an http(s) URL —
+                          the dashboard passes this straight into a client-side window.open()/
+                          href, so a non-http(s) scheme (e.g. "javascript:") would be a stored
+                          script-injection vector rather than a search endpoint.
+                        maxLength: 2048
+                        minLength: 1
+                        pattern: ^https?://
+                        type: string
+                      visitURLEntry:
+                        default: true
+                        description: |-
+                          visitURLEntry controls the quick-launch palette's "visit <url>" entry
+                          that appears when the typed query itself looks like a URL or domain:
+                          true (the default) lets the query jump there directly; false removes
+                          the entry, requiring a web search instead.
+                        type: boolean
+                    type: object
+                    x-kubernetes-validations:
+                    - message: url is required when provider is "custom"
+                      rule: self.provider != 'custom' || has(self.url)
+                  startUrl:
+                    description: |-
+                      startUrl is the PWA manifest's start_url, used when the dashboard is
+                      installed as an app. Defaults to "/".
+                    maxLength: 2048
+                    minLength: 1
+                    pattern: ^(https?://|/)
+                    type: string
+                  statusStyle:
+                    description: |-
+                      statusStyle is the site-wide default for how a ServiceCard's Ping/
+                      SiteMonitor/PodSelector status renders ("dot" a colored status dot,
+                      "basic" a colored status pill with status word plus latency/
+                      ready-count detail), used when a ServiceCard doesn't set its own
+                      StatusStyle. Defaults to "dot" when unset here too. Kept as an enum
+                      rather than a bool: a third rendering style is plausible here, unlike
+                      this file's other converted fields.
+                    enum:
+                    - dot
+                    - basic
+                    type: string
+                  target:
+                    default: _blank
+                    description: |-
+                      target is the default link target for service and bookmark cards.
+                      Individual ServiceCards may override it via their own target.
+                    enum:
+                    - _blank
+                    - _self
+                    type: string
+                  theme:
+                    description: |-
+                      theme is the fixed theme, disabling the theme switcher. One of "light"
+                      or "dark".
+                    enum:
+                    - light
+                    - dark
+                    type: string
+                  title:
+                    description: |-
+                      title is the dashboard's browser tab title and header heading.
+                      Defaults to "kubepage" when unset.
+                    maxLength: 256
+                    minLength: 1
+                    type: string
+                  useEqualHeights:
+                    description: |-
+                      useEqualHeights makes every card in a group the same height. A
+                      LayoutGroupSpec's own UseEqualHeights overrides this per group.
+                    type: boolean
+                type: object
               tolerations:
                 description: |-
                   tolerations let the pod schedule onto nodes with matching taints (e.g.
@@ -4833,12 +5245,6 @@ spec:
                 description: |-
                   boundBookmarks is the number of Bookmark objects currently bound to
                   this Dashboard.
-                format: int32
-                type: integer
-              boundDashboardStyles:
-                description: |-
-                  boundDashboardStyles is the number of DashboardStyle objects currently
-                  bound to (dashboardRef-ing) this Dashboard.
                 format: int32
                 type: integer
               boundInfoWidgets:

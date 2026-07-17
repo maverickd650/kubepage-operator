@@ -24,10 +24,10 @@ func TestBrowserHTMXPolling(t *testing.T) {
 		Fields: []Field{{Label: "Status", Value: "Initial"}},
 	})
 
-	style := &pagev1alpha1.DashboardStyle{
+	style := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-		Spec: pagev1alpha1.DashboardStyleSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{},
 		},
 	}
 

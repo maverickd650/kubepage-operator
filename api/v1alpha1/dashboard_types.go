@@ -277,6 +277,14 @@ type DashboardSpec struct {
 	// +optional
 	WidgetDefaults map[string]WidgetDefaultsEntry `json:"widgetDefaults,omitempty"`
 
+	// style is the native dashboard's theme/color/background/header-style
+	// look and its header search box, applied by internal/dashboard's
+	// LoadSite. Unset means every field takes its documented default,
+	// exactly like an absent DashboardStyle used to mean before the
+	// DashboardStyle CRD was folded into this field.
+	// +optional
+	Style *StyleSpec `json:"style,omitempty"`
+
 	// monitorNamespaces lists the namespaces (beyond the Dashboard's own,
 	// which is always allowed) that a bound ServiceCard's pod monitor may
 	// name via its entries' namespace field. Each listed namespace gets a
@@ -408,9 +416,9 @@ type NetworkPolicySpec struct {
 //
 // The scanned namespace is single (the Dashboard's own) by default: this
 // keeps a Dashboard's blast radius equal to its own RBAC, matching every
-// other config CRD in this project (DashboardStyle/ServiceCard/Bookmark/
-// InfoWidget all require dashboardRef's Dashboard to be in the same
-// namespace — see CLAUDE.md). Namespaces opts a specific Dashboard into
+// other config CRD in this project (ServiceCard/Bookmark/InfoWidget all
+// require dashboardRef's Dashboard to be in the same namespace — see
+// CLAUDE.md). Namespaces opts a specific Dashboard into
 // scanning additional namespaces beyond its own, for the common homelab
 // shape of one dashboard namespace and apps spread across several others;
 // see its own doc comment for the RBAC this widens.
@@ -622,11 +630,6 @@ type DashboardStatus struct {
 	// observedGeneration is the most recent generation this status reflects.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-	// boundDashboardStyles is the number of DashboardStyle objects currently
-	// bound to (dashboardRef-ing) this Dashboard.
-	// +optional
-	BoundDashboardStyles int32 `json:"boundDashboardStyles,omitempty"`
 
 	// boundServiceCards is the number of ServiceCard objects currently
 	// bound to this Dashboard.

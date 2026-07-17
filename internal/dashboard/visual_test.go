@@ -160,14 +160,15 @@ func startVisualServer(t *testing.T, theme, headerStyle string) (baseURL string,
 				},
 			},
 		},
-		&pagev1alpha1.DashboardStyle{
+		&pagev1alpha1.Dashboard{
 			ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-			Spec: pagev1alpha1.DashboardStyleSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-				Title:        strPtr("Homelab"),
-				Theme:        strPtr(theme),
-				Color:        strPtr("slate"),
-				HeaderStyle:  strPtr(headerStyle),
+			Spec: pagev1alpha1.DashboardSpec{
+				Style: &pagev1alpha1.StyleSpec{
+					Title:       strPtr("Homelab"),
+					Theme:       strPtr(theme),
+					Color:       strPtr("slate"),
+					HeaderStyle: strPtr(headerStyle),
+				},
 			},
 		},
 	}

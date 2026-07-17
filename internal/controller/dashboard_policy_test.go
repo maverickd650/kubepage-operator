@@ -119,6 +119,34 @@ var _ = Describe("Dashboard CRD schema validation", func() {
 		})
 	})
 
+	Describe("StyleSpec.Search (spec.style.search)", func() {
+		It("rejects provider \"custom\" with no url", func() {
+			d := dashboardWithStyleSearch("dash-style-search-nourl", &pagev1alpha1.SearchSpec{
+				Provider: new("custom"),
+			})
+			err := k8sClient.Create(ctx, d)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("admits provider \"custom\" with a url set", func() {
+			d := dashboardWithStyleSearch("dash-style-search-custom", &pagev1alpha1.SearchSpec{
+				Provider: new("custom"),
+				URL:      new("https://example.invalid/search"),
+			})
+			Expect(k8sClient.Create(ctx, d)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, d)).To(Succeed())
+		})
+
+		It("admits a non-custom provider with no url", func() {
+			d := dashboardWithStyleSearch("dash-style-search-duckduckgo", &pagev1alpha1.SearchSpec{
+				Provider: new("duckduckgo"),
+			})
+			Expect(k8sClient.Create(ctx, d)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, d)).To(Succeed())
+		})
+	})
+
 	// SecretValueSource's exactly-one-of-value/secretKeyRef rule
 	// (api/v1alpha1/common_types.go) is exercised elsewhere (ServiceCard/
 	// InfoWidget) via secret_source_validation_test.go; these two specs
@@ -179,6 +207,18 @@ func dashboardWithEgressCIDRs(name string, cidrs []string) *pagev1alpha1.Dashboa
 				Enabled:     true,
 				EgressCIDRs: cidrs,
 			},
+		},
+	}
+}
+
+// dashboardWithStyleSearch builds a minimally-valid Dashboard with the given
+// spec.style.search.
+func dashboardWithStyleSearch(name string, search *pagev1alpha1.SearchSpec) *pagev1alpha1.Dashboard {
+	return &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			ContainerPort: 8080,
+			Style:         &pagev1alpha1.StyleSpec{Search: search},
 		},
 	}
 }

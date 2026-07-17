@@ -20,9 +20,9 @@ const (
 // the full trust-model rationale.
 const SecretAllowWidgetsLabel = "page.kubepage.dev/allow-widgets"
 
-// DashboardRef binds a config object (DashboardStyle, ServiceCard, Bookmark,
-// InfoWidget) to the Dashboard it should be rendered into. The referenced
-// Dashboard must exist in the same namespace as the object carrying this ref.
+// DashboardRef binds a config object (ServiceCard, Bookmark, InfoWidget) to
+// the Dashboard it should be rendered into. The referenced Dashboard must
+// exist in the same namespace as the object carrying this ref.
 type DashboardRef struct {
 	// name of the Dashboard this object belongs to.
 	// +kubebuilder:validation:MinLength=1

@@ -18,7 +18,7 @@ import (
 
 // BookmarkReconciler reconciles a Bookmark object.
 //
-// Thin, like DashboardStyleReconciler and ServiceCardReconciler: it only
+// Thin, like ServiceCardReconciler: it only
 // validates that dashboardRef resolves to an existing Dashboard and reflects
 // that in status. Rendering bookmarks.yaml and watching Bookmark changes is
 // the DashboardReconciler's job (see instance_controller.go).
@@ -68,7 +68,7 @@ func (r *BookmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagev1alpha1.Bookmark{}).
 		Named("bookmark").
-		// Watch Dashboard objects too: see DashboardStyleReconciler.SetupWithManager
+		// Watch Dashboard objects too: see ServiceCardReconciler.SetupWithManager
 		// for why (out-of-order apply self-heals without waiting for the
 		// Bookmark itself to be touched again).
 		Watches(

@@ -110,7 +110,7 @@ you set that key once — see [Secrets → shared keys](secrets.md#share-one-key
 ## Styling the strip
 
 How the whole strip *looks* — underlined, boxed, plain — is set once in
-[DashboardStyle](appearance.md) via `headerStyle`, not here.
+the Dashboard's [spec.style](appearance.md) via `headerStyle`, not here.
 
 ## Next
 

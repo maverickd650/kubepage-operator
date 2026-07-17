@@ -8,15 +8,14 @@ always tell you *why*. This page shows how to ask.
 **List everything and see what's healthy:**
 
 ```sh
-kubectl get pdash,pstyle,pcard,piw,pbmk -n dashboards
+kubectl get pdash,pcard,piw,pbmk -n dashboards
 ```
 
 Those short names are:
 
 | Short name | Building block |
 |------------|----------------|
-| `pdash` | Dashboard |
-| `pstyle` | DashboardStyle |
+| `pdash` | Dashboard (appearance lives at `spec.style` on this object) |
 | `pcard` | ServiceCard |
 | `piw` | InfoWidget |
 | `pbmk` | Bookmark |
@@ -66,12 +65,12 @@ Almost always the **`dashboardRef.name` doesn't match**, or the object is in the
    # SERVICES / BOOKMARKS / WIDGETS columns count what's bound
    ```
 
-### "My DashboardStyle isn't applying"
+### "My style settings aren't applying"
 
-A DashboardStyle only applies when its **`metadata.name` equals the Dashboard's
-name** *and* `dashboardRef.name` matches. If the names differ, the cluster
-rejects the object when you apply it — re-read the error from `kubectl apply`.
-See [Appearance → the one rule](appearance.md#the-one-rule-to-remember).
+Appearance lives at `spec.style` on the Dashboard object itself, not a
+separate object — double-check you're editing the right Dashboard (`kubectl
+edit pdash home -n dashboards`) and that the fields are nested under `style:`,
+not directly under `spec:`. See [Appearance](appearance.md).
 
 ### "The card shows a red error / auth message"
 

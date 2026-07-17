@@ -273,13 +273,6 @@ func runManager() {
 		setupLog.Error(err, "Failed to create controller", "controller", "dashboard")
 		os.Exit(1)
 	}
-	if err := (&controller.DashboardStyleReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "dashboardstyle")
-		os.Exit(1)
-	}
 	if err := (&controller.ServiceCardReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -551,9 +544,8 @@ func (s *stringSliceFlag) Set(v string) error {
 // runPreview serves the dashboard against manifests loaded from local files
 // instead of a live cluster, for previewing what a Dashboard renders as
 // without installing the operator anywhere. See internal/preview for how
-// -f's paths are turned into a Dashboard/DashboardStyle/ServiceCard/
-// Bookmark/InfoWidget/Secret set and internal/dashboard.RunPreview for how
-// that's served.
+// -f's paths are turned into a Dashboard/ServiceCard/Bookmark/InfoWidget/
+// Secret set and internal/dashboard.RunPreview for how that's served.
 func runPreview(args []string) {
 	fs := flag.NewFlagSet("preview", flag.ExitOnError)
 	var paths stringSliceFlag

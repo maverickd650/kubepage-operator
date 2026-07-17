@@ -90,7 +90,6 @@ rules:
   resources:
   - bookmarks
   - dashboards
-  - dashboardstyles
   - infowidgets
   - servicecards
   verbs:
@@ -106,7 +105,6 @@ rules:
   resources:
   - bookmarks/finalizers
   - dashboards/finalizers
-  - dashboardstyles/finalizers
   - infowidgets/finalizers
   - servicecards/finalizers
   verbs:
@@ -116,7 +114,6 @@ rules:
   resources:
   - bookmarks/status
   - dashboards/status
-  - dashboardstyles/status
   - infowidgets/status
   - servicecards/status
   verbs:
