@@ -115,6 +115,29 @@ type ServiceWidget struct {
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
+	// secretRef names a single Secret, in the same namespace, every key of
+	// which becomes a resolved secret field for this widget — as if each key
+	// were listed under Secrets with secretKeyRef.key == that key name. A key
+	// also present in Secrets is not overridden by secretRef: Secrets always
+	// wins for that key, so secretRef is a shorthand for the common case (one
+	// Secret whose key names already match the widget's field names, e.g.
+	// Plex's single "token" or Grafana's "username"/"password") while the
+	// long form under Secrets remains available for a Secret whose key names
+	// don't match, or that must be split across widgets of different types.
+	// Precedence for a given field, low to high: DashboardSpec.WidgetDefaults
+	// (dashboard-wide) < SecretRef (widget-level, whole-Secret) < Secrets
+	// (widget-level, explicit per key) — a widget's own SecretRef is more
+	// specific than a shared default, but its own explicit Secrets entry
+	// always wins outright. Resolved under the same secretPolicy rules and
+	// the same dashboard-pod RBAC as Secrets (see
+	// internal/controller/dashboard_rbac.go's referencedSecretNames) — this
+	// field widens convenience, not the trust model documented in
+	// SECURITY.md.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	SecretRef *string `json:"secretRef,omitempty"`
+
 	// caCert optionally supplies a PEM-encoded CA certificate (or bundle)
 	// used, in addition to the system trust store, to verify this widget's
 	// url. An alternative to Config's per-widget "insecureTLS" escape hatch

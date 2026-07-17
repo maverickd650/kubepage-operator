@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -709,17 +710,13 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		return
 	}
 
-	secrets, caCert := mergeWidgetSecrets(widget.Type, widget.Secrets, widget.CACert, widgetDefaults)
-	for field, src := range secrets {
-		value, err := p.resolveSecret(ctx, namespace, src)
-		if err != nil {
-			if !card.HideErrors {
-				card.Err = fmt.Sprintf("resolving secret field %q: %v", field, err)
-			}
-			p.Store.Set(card)
-			return
+	caCert, err := p.resolveWidgetSecrets(ctx, namespace, widget.Type, widget.Secrets, widget.SecretRef, widget.CACert, widgetDefaults, cfg.Secrets)
+	if err != nil {
+		if !card.HideErrors {
+			card.Err = err.Error()
 		}
-		cfg.Secrets[field] = value
+		p.Store.Set(card)
+		return
 	}
 
 	httpClient, err := p.httpClientForCACert(ctx, namespace, caCert, p.HTTPClient)
@@ -942,19 +939,14 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 		return
 	}
 
-	secrets, caCert := mergeWidgetSecrets(entry.Type, entry.Secrets, entry.CACert, widgetDefaults)
-	for field, src := range secrets {
-		value, err := p.resolveSecret(ctx, iw.Namespace, src)
-		if err != nil {
-			card.Err = fmt.Sprintf("resolving secret field %q: %v", field, err)
-			p.Store.Set(card)
-			return
-		}
-		cfg.Secrets[field] = value
+	caCert, err := p.resolveWidgetSecrets(ctx, iw.Namespace, entry.Type, entry.Secrets, entry.SecretRef, entry.CACert, widgetDefaults, cfg.Secrets)
+	if err != nil {
+		card.Err = err.Error()
+		p.Store.Set(card)
+		return
 	}
 
 	var fields []Field
-	var err error
 	start := time.Now()
 	if cw, ok := impl.(ClusterWidget); ok {
 		// Cluster-backed widget (e.g. kubemetrics): read the Kubernetes API
@@ -1018,6 +1010,79 @@ func (p *Poller) resolveSecret(ctx context.Context, namespace string, src pagev1
 		return "", fmt.Errorf("key %q does not exist in Secret %q", ref.Key, ref.Name)
 	}
 	return string(data), nil
+}
+
+// resolveSecretRefFields returns the plaintext content of every key in the
+// Secret named name, keyed by key name — the expansion a widget's SecretRef
+// performs (see ServiceWidget.SecretRef's doc comment): every key becomes a
+// resolved secret field, as if listed under Secrets with secretKeyRef.key
+// equal to that key name. Read through the same RBAC-scoped SecretReader as
+// resolveSecret, so secretPolicy: Labeled enforcement (via
+// internal/controller/dashboard_rbac.go's referencedSecretNames) applies
+// identically: the dashboard pod can only Get a Secret its Role permits.
+func (p *Poller) resolveSecretRefFields(ctx context.Context, namespace, name string) (map[string]string, error) {
+	secret := &corev1.Secret{}
+	if err := p.SecretReader.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("secret %q does not exist in namespace %q", name, namespace)
+		}
+		return nil, fmt.Errorf("getting Secret %q: %w", name, err)
+	}
+
+	fields := make(map[string]string, len(secret.Data))
+	for key, data := range secret.Data {
+		fields[key] = string(data)
+	}
+	return fields, nil
+}
+
+// resolveWidgetSecrets resolves a widget's secret-bearing fields into
+// cfgSecrets (a ServiceWidget/InfoWidgetEntry's own WidgetConfig.Secrets, or
+// pollWidgetSample-adjacent caller's equivalent) in increasing precedence,
+// each stage free to overwrite the last: widgetDefaults (dashboard-wide) <
+// secretRef (widget-level, whole-Secret shorthand) < secrets (widget-level,
+// explicit per key) — see ServiceWidget.SecretRef's doc comment. Returns the
+// caCert to use (widget's own, else widgetDefaults', see mergeWidgetSecrets)
+// and the first resolution error encountered, if any — shared by pollWidget
+// and pollInfoWidget purely to keep each of their own cyclomatic complexity
+// down; see reconcileDeployment's doc comment for the project's general
+// stance on not collapsing call sites beyond this.
+func (p *Poller) resolveWidgetSecrets(
+	ctx context.Context,
+	namespace string,
+	widgetType string,
+	secrets map[string]pagev1alpha1.SecretValueSource,
+	secretRef *string,
+	caCertSrc *pagev1alpha1.SecretValueSource,
+	widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry,
+	cfgSecrets map[string]string,
+) (*pagev1alpha1.SecretValueSource, error) {
+	defaults, caCert := mergeWidgetSecrets(widgetType, nil, caCertSrc, widgetDefaults)
+	for field, src := range defaults {
+		value, err := p.resolveSecret(ctx, namespace, src)
+		if err != nil {
+			return nil, fmt.Errorf("resolving secret field %q: %w", field, err)
+		}
+		cfgSecrets[field] = value
+	}
+
+	if secretRef != nil {
+		refFields, err := p.resolveSecretRefFields(ctx, namespace, *secretRef)
+		if err != nil {
+			return nil, fmt.Errorf("resolving secretRef %q: %w", *secretRef, err)
+		}
+		maps.Copy(cfgSecrets, refFields)
+	}
+
+	for field, src := range secrets {
+		value, err := p.resolveSecret(ctx, namespace, src)
+		if err != nil {
+			return nil, fmt.Errorf("resolving secret field %q: %w", field, err)
+		}
+		cfgSecrets[field] = value
+	}
+
+	return caCert, nil
 }
 
 // siteDefaults returns the site-wide StatusStyle/HideErrors defaults from

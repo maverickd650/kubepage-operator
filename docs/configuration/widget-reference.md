@@ -14,7 +14,10 @@ secrets:
       key: apiKey
 ```
 
-See [Secrets & credentials](secrets.md) for creating the Secret itself.
+See [Secrets & credentials](secrets.md) for creating the Secret itself, and
+that page's `secretRef` shorthand for when your Secret's key names already
+match the credential field name(s) listed here — e.g. `secretRef: your-secret`
+in place of the `secrets:` block above.
 
 **Two families of widget:**
 

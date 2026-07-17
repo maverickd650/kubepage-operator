@@ -30,12 +30,12 @@ spec:
       app: plex
       statusStyle: dot
       widgets:
+        # secretRef names a Secret whose keys already match the widget's
+        # field names ("token"): every key becomes a resolved secret field,
+        # so this is equivalent to the long-form secrets.token.secretKeyRef
+        # (name: plex-credentials, key: token) — see docs/configuration/secrets.md.
         - type: plex
-          secrets:
-            token:
-              secretKeyRef:
-                name: plex-credentials
-                key: token
+          secretRef: plex-credentials
     # The one-URL shape: href doubles as the monitor probe target via
     # "monitor: self" — no URL is ever repeated.
     - name: Stash
@@ -54,17 +54,11 @@ spec:
       widgets:
         # admin/stats requires Grafana server-admin credentials; a scoped
         # viewer/editor API key/token will not work here. The widget inherits
-        # its base URL from href.
+        # its base URL from href. The grafana-credentials Secret holds both
+        # "username" and "password" keys, so secretRef resolves both fields
+        # in one line instead of a secrets.username/secrets.password pair.
         - type: grafana
-          secrets:
-            username:
-              secretKeyRef:
-                name: grafana-credentials
-                key: username
-            password:
-              secretKeyRef:
-                name: grafana-credentials
-                key: password
+          secretRef: grafana-credentials
     # A "/"-separated group nests this card inside the "Media" group as a
     # "Movies" subgroup (homepage parity: nested service groups, see
     # https://gethomepage.dev/configs/services/#nested-groups and

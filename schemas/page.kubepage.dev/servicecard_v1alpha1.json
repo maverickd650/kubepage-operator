@@ -338,6 +338,12 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "secretRef": {
+                      "description": "secretRef names a single Secret, in the same namespace, every key of\nwhich becomes a resolved secret field for this widget — as if each key\nwere listed under Secrets with secretKeyRef.key == that key name. A key\nalso present in Secrets is not overridden by secretRef: Secrets always\nwins for that key, so secretRef is a shorthand for the common case (one\nSecret whose key names already match the widget's field names, e.g.\nPlex's single \"token\" or Grafana's \"username\"/\"password\") while the\nlong form under Secrets remains available for a Secret whose key names\ndon't match, or that must be split across widgets of different types.\nPrecedence for a given field, low to high: DashboardSpec.WidgetDefaults\n(dashboard-wide) \u003c SecretRef (widget-level, whole-Secret) \u003c Secrets\n(widget-level, explicit per key) — a widget's own SecretRef is more\nspecific than a shared default, but its own explicit Secrets entry\nalways wins outright. Resolved under the same secretPolicy rules and\nthe same dashboard-pod RBAC as Secrets (see\ninternal/controller/dashboard_rbac.go's referencedSecretNames) — this\nfield widens convenience, not the trust model documented in\nSECURITY.md.",
+                      "maxLength": 253,
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "secrets": {
                       "additionalProperties": {
                         "description": "SecretValueSource is an inline value or a reference to a key in a Secret,\nused for any config field that may hold a credential (e.g. a widget API\nkey). Exactly one of Value or SecretKeyRef must be set; this is enforced by\nthe CRD schema's CEL rule below, so neither a secret that sets both nor one\nthat sets neither reaches the dashboard, which resolves whichever is set\nin-process at poll time.",

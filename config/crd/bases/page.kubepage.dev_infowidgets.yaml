@@ -189,6 +189,15 @@ spec:
                       format: int32
                       minimum: 1
                       type: integer
+                    secretRef:
+                      description: |-
+                        secretRef names a single Secret, in the same namespace, every key of
+                        which becomes a resolved secret field for this widget — see
+                        ServiceWidget.SecretRef's doc comment for the full rationale and the
+                        interaction with Secrets (Secrets always wins per key).
+                      maxLength: 253
+                      minLength: 1
+                      type: string
                     secrets:
                       additionalProperties:
                         description: |-

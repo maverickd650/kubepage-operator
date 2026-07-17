@@ -119,9 +119,10 @@ The **field name** on the left (`token`, `apiKey`, `username`, `password`, …)
 is fixed **per widget type** — the [reference](widget-reference.md) lists the
 right one for each. Getting it wrong is the single most common mistake.
 
-Creating the Secret itself, and a shortcut to share one key across many widgets,
-are covered in **[Secrets & credentials](secrets.md)**. That page is essential
-reading before your first credentialed widget.
+Creating the Secret itself, a `secretRef` shorthand for when your Secret's key
+names already match the widget's field names, and a shortcut to share one key
+across many widgets, are covered in **[Secrets & credentials](secrets.md)**.
+That page is essential reading before your first credentialed widget.
 
 > You *can* inline a value directly (`value: my-token`) instead of
 > `secretKeyRef`, but don't do it for real credentials — it ends up stored in

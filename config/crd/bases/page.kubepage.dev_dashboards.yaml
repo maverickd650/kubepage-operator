@@ -2448,7 +2448,7 @@ spec:
                 default: Unrestricted
                 description: |-
                   secretPolicy controls which Secrets a bound ServiceCard/InfoWidget
-                  widget may reference via secretKeyRef (or caCert):
+                  widget may reference via secretKeyRef, secretRef, or caCert:
                     - "Unrestricted" (default): any Secret in this namespace — the
                       documented trust model (see SECURITY.md): anyone who can author
                       these CRDs in a namespace is trusted with every Secret in it.
