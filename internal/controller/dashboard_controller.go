@@ -24,10 +24,13 @@ import (
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -195,8 +198,13 @@ type DashboardReconciler struct {
 // per-Dashboard Role granting the dashboard pod get on the specific Secrets its
 // widgets reference (internal/controller/instance_rbac.go), and the API
 // server's privilege-escalation check requires the manager to hold a verb to
-// grant it. The manager itself never reads Secret contents.
-// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get
+// grant it. list;watch is additionally needed for the metadata-only Secret
+// watch below (SetupWithManager's WatchesMetadata), which keeps
+// spec.secretPolicy: Labeled's Role grant current when a Secret's
+// allow-widgets label changes — only Secret metadata transits that watch's
+// informer, never contents, so the "manager never reads Secret contents"
+// invariant still holds.
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -581,7 +589,8 @@ func deploymentTemplateChanged(found, desired *appsv1.Deployment) bool {
 		// desired as "unspecified" rather than "must be zero", so a
 		// server-added default in found doesn't count as drift.
 		!apiequality.Semantic.DeepDerivative(desiredSpec.Volumes, foundSpec.Volumes) ||
-		foundSpec.PriorityClassName != desiredSpec.PriorityClassName
+		foundSpec.PriorityClassName != desiredSpec.PriorityClassName ||
+		foundSpec.ServiceAccountName != desiredSpec.ServiceAccountName
 }
 
 // reconcileDeployment ensures the dashboard Deployment for instance exists
@@ -1010,7 +1019,58 @@ func (r *DashboardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&pagev1alpha1.InfoWidget{},
 			handler.EnqueueRequestsFromMapFunc(mapToDashboard(func(w *pagev1alpha1.InfoWidget) string { return w.Spec.DashboardRef.Name })),
 		).
+		// Watch Secret metadata only (never contents — see the secrets RBAC
+		// comment above) so that under spec.secretPolicy: Labeled, adding or
+		// removing the allow-widgets label on a Secret promptly
+		// re-evaluates every Dashboard in that namespace's Role grants,
+		// instead of the stale grant surviving until an unrelated
+		// reconcile. secretAllowWidgetsLabelChanged keeps this from firing
+		// on every unrelated Secret create/update in the namespace.
+		WatchesMetadata(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.mapSecretToDashboards),
+			builder.WithPredicates(secretAllowWidgetsLabelChanged),
+		).
 		Complete(r)
+}
+
+// mapSecretToDashboards enqueues every Dashboard in secret's namespace, so a
+// relevant Secret metadata change (see secretAllowWidgetsLabelChanged)
+// re-evaluates each one's spec.secretPolicy: Labeled Role grant. Dashboards
+// per namespace are expected to be few, so listing them per event is cheap.
+func (r *DashboardReconciler) mapSecretToDashboards(ctx context.Context, obj client.Object) []reconcile.Request {
+	var dashboards pagev1alpha1.DashboardList
+	if err := r.List(ctx, &dashboards, client.InNamespace(obj.GetNamespace())); err != nil {
+		logf.FromContext(ctx).Error(err, "listing Dashboards for Secret watch", "namespace", obj.GetNamespace(), "secret", obj.GetName())
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(dashboards.Items))
+	for _, d := range dashboards.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: types.NamespacedName{
+			Name:      d.Name,
+			Namespace: d.Namespace,
+		}})
+	}
+	return requests
+}
+
+// secretAllowWidgetsLabelChanged only lets a Secret metadata event through
+// the watch when it could plausibly change a spec.secretPolicy: Labeled
+// Role grant: creation, deletion, or an update where the
+// SecretAllowWidgetsLabel's presence or value differs between old and new —
+// any other update (e.g. an unrelated label/annotation, or the Secret's
+// contents, which this metadata-only watch never even sees) is filtered
+// out so it doesn't trigger a reconcile of every Dashboard in the
+// namespace.
+var secretAllowWidgetsLabelChanged = predicate.Funcs{
+	CreateFunc:  func(event.TypedCreateEvent[client.Object]) bool { return true },
+	DeleteFunc:  func(event.TypedDeleteEvent[client.Object]) bool { return true },
+	GenericFunc: func(event.TypedGenericEvent[client.Object]) bool { return false },
+	UpdateFunc: func(e event.TypedUpdateEvent[client.Object]) bool {
+		oldVal := e.ObjectOld.GetLabels()[pagev1alpha1.SecretAllowWidgetsLabel]
+		newVal := e.ObjectNew.GetLabels()[pagev1alpha1.SecretAllowWidgetsLabel]
+		return oldVal != newVal
+	},
 }
 
 // mapToDashboard builds a handler.MapFunc that enqueues the Dashboard named by

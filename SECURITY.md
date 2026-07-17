@@ -167,7 +167,12 @@ reports:
   `resolveSecret`): Secret contents are read via an uncached client and must
   never reach pod env, a ConfigMap, a projected file, or an informer cache —
   the plaintext should only exist in memory for the duration of one poll. See
-  [`CLAUDE.md`](CLAUDE.md) for the full design rationale.
+  [`CLAUDE.md`](CLAUDE.md) for the full design rationale. The *manager's* own
+  Secret watch (`internal/controller/dashboard_controller.go`'s
+  `SetupWithManager`, added to keep `spec.secretPolicy: Labeled` Role grants
+  current when a Secret's `allow-widgets` label changes) is metadata-only
+  (`WatchesMetadata`) for the same reason — only Secret labels transit that
+  informer, never contents.
 - Outbound SSRF surface: every widget implementation under
   `internal/dashboard/` (`grafana.go`, `plex.go`, `prometheus.go`, `unifi.go`,
   etc.) polls a URL taken from a `ServiceCard`/`InfoWidget` CRD. Whoever can
