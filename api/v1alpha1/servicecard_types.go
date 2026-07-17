@@ -248,8 +248,8 @@ type ServiceEntry struct {
 
 	// errorDisplay controls whether a widget's error text is shown on the
 	// card (e.g. set false for a service that is expected to be
-	// intermittently unreachable). Defaults to true.
-	// +default=true
+	// intermittently unreachable). When unset, falls back to the
+	// DashboardStyle's site-wide errorDisplay (defaults to true).
 	// +optional
 	ErrorDisplay *bool `json:"errorDisplay,omitempty"`
 
