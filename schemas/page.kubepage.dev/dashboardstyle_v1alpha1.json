@@ -23,7 +23,6 @@
             "blur": {
               "description": "blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.\n\"sm\", \"md\", \"xl\", \"\"). An explicit \"\" is equivalent to leaving it\nunset (the default 8px blur).",
               "maxLength": 8,
-              "minLength": 0,
               "type": "string"
             },
             "brightness": {
@@ -62,7 +61,6 @@
         "cardBlur": {
           "description": "cardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur\nsize keyword (e.g. \"sm\", \"md\", \"xl\", \"\"). An explicit \"\" is equivalent\nto leaving it unset (the default 8px blur). Most visible over a\nbackground image.",
           "maxLength": 8,
-          "minLength": 0,
           "type": "string"
         },
         "collapse": {
