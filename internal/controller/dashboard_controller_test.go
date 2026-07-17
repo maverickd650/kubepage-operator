@@ -1072,6 +1072,36 @@ var _ = Describe("Dashboard controller", func() {
 			}).Should(Succeed())
 		})
 
+		It("rolls the Deployment when its ServiceAccountName drifts from the per-Dashboard ServiceAccount", func() {
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			reconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.ServiceAccountName).To(Equal(DashboardName))
+
+			By("mutating the Deployment's ServiceAccountName out from under the reconciler")
+			dep.Spec.Template.Spec.ServiceAccountName = "some-other-sa"
+			Expect(k8sClient.Update(ctx, dep)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.ServiceAccountName).To(Equal(DashboardName), "reconcile should correct a drifted ServiceAccountName back to the per-Dashboard ServiceAccount")
+			}).Should(Succeed())
+		})
+
 		It("does not perpetually re-reconcile a Deployment whose stored Volumes were server-defaulted, and still detects a real volume change", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: namespace.Name},
