@@ -1,5 +1,7 @@
 # Example NetworkPolicy for dashboard pods' /metrics port (see
-# docs/security-review.md P1.3). Only relevant when spec.metrics.enabled is
+# SECURITY.md's trust model, point 3 — dashboard viewers are trusted by
+# network reachability, which the metrics port shares no authn/authz for).
+# Only relevant when spec.metrics.enabled is
 # set on the Dashboard (the metrics Service port is opt-in and off by
 # default — see api/v1alpha1/instance_types.go's MetricsSpec). This is a
 # template, not applied by default — see allow-dashboard-ingress.yaml's
