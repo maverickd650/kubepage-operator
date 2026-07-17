@@ -194,8 +194,16 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	}
 
 	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
-	widgetDefaults := p.widgetDefaults(ctx)
-	allowedMonitorNamespaces := p.monitorNamespaces(ctx)
+	// One Get of the Dashboard covers discovery config, widget defaults, and
+	// allowed monitor namespaces — previously each of discoverySpec/
+	// widgetDefaults/monitorNamespaces Got it separately, three round-trips
+	// to the same object every cycle. dashboardSpecForPoll's single-Get
+	// result is reused below instead of calling those three methods (kept
+	// around, and still each doing their own Get, only because unit tests
+	// exercise them individually).
+	dashboardSpec, dashboardOK := p.dashboardSpecForPoll(ctx)
+	widgetDefaults := dashboardSpec.WidgetDefaults
+	allowedMonitorNamespaces := dashboardSpec.MonitorNamespaces
 
 	var entries pagev1alpha1.ServiceCardList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
@@ -244,7 +252,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		}
 	}
 
-	if spec, ok := p.discoverySpec(ctx); ok {
+	if spec, ok := discoverySpecFromDashboard(dashboardSpec, dashboardOK); ok {
 		if spec.HasSource(pagev1alpha1.DiscoverySourceIngress) {
 			services, err := discoverServices(ctx, p.Reader, p.Namespace, p.KubeReader, extraDiscoveryNamespaces(spec, p.Namespace), spec)
 			if err != nil {
@@ -1044,21 +1052,42 @@ func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErro
 	return statusStyle, hideErrors
 }
 
+// dashboardSpecForPoll Gets the Dashboard once and returns its Spec, or the
+// zero value and ok=false when the Get fails — a transient error here
+// should not fail the whole poll cycle, only make every field this backs
+// (discovery config, widget defaults, allowed monitor namespaces) fall back
+// to "unset" for this cycle. pollOnce calls this once per cycle and derives
+// all three from the single result; discoverySpec/widgetDefaults/
+// monitorNamespaces below wrap it for callers (currently only tests) that
+// want just one field.
+func (p *Poller) dashboardSpecForPoll(ctx context.Context) (pagev1alpha1.DashboardSpec, bool) {
+	var instance pagev1alpha1.Dashboard
+	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
+		pollerLog.Error(err, "getting Dashboard for poll cycle config")
+		return pagev1alpha1.DashboardSpec{}, false
+	}
+	return instance.Spec, true
+}
+
+// discoverySpecFromDashboard extracts the DiscoverySpec from an
+// already-fetched DashboardSpec (spec, ok as returned by
+// dashboardSpecForPoll), returning (zero value, false) when the Get failed
+// or Ingress annotation discovery isn't enabled.
+func discoverySpecFromDashboard(spec pagev1alpha1.DashboardSpec, ok bool) (pagev1alpha1.DiscoverySpec, bool) {
+	if !ok || spec.Discovery == nil || !spec.Discovery.Enabled {
+		return pagev1alpha1.DiscoverySpec{}, false
+	}
+	return *spec.Discovery, true
+}
+
 // discoverySpec returns the Dashboard's DiscoverySpec when Ingress annotation
 // discovery is enabled, or (zero value, false) otherwise (including when the
 // Dashboard can't be read — a transient error here should not make every
 // discovered card vanish from the log at more than Error level, but it must
 // not panic the poll cycle either).
 func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec, bool) {
-	var instance pagev1alpha1.Dashboard
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Dashboard for discovery config")
-		return pagev1alpha1.DiscoverySpec{}, false
-	}
-	if instance.Spec.Discovery == nil || !instance.Spec.Discovery.Enabled {
-		return pagev1alpha1.DiscoverySpec{}, false
-	}
-	return *instance.Spec.Discovery, true
+	spec, ok := p.dashboardSpecForPoll(ctx)
+	return discoverySpecFromDashboard(spec, ok)
 }
 
 // widgetDefaults returns the Dashboard's Spec.WidgetDefaults (the per-widget-
@@ -1068,12 +1097,11 @@ func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec,
 // every widget's poll for the cycle, only fall back to "no defaults" (same
 // behavior as today, before this field existed).
 func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.WidgetDefaultsEntry {
-	var instance pagev1alpha1.Dashboard
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Dashboard for widgetDefaults")
+	spec, ok := p.dashboardSpecForPoll(ctx)
+	if !ok {
 		return nil
 	}
-	return instance.Spec.WidgetDefaults
+	return spec.WidgetDefaults
 }
 
 // monitorNamespaces returns the Dashboard's Spec.MonitorNamespaces — the
@@ -1084,12 +1112,11 @@ func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.Wid
 // foreign-namespace pod monitor simply renders Down with a card error for
 // this cycle rather than failing every other card too.
 func (p *Poller) monitorNamespaces(ctx context.Context) []string {
-	var instance pagev1alpha1.Dashboard
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Dashboard for monitorNamespaces")
+	spec, ok := p.dashboardSpecForPoll(ctx)
+	if !ok {
 		return nil
 	}
-	return instance.Spec.MonitorNamespaces
+	return spec.MonitorNamespaces
 }
 
 // pollDiscoveredService builds and stores the Card for one Ingress-derived

@@ -1817,6 +1817,44 @@ func TestPollerWidgetDefaultsMissingDashboard(t *testing.T) {
 	}
 }
 
+func TestPollerMonitorNamespacesUnset(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
+
+	if got := p.monitorNamespaces(t.Context()); got != nil {
+		t.Errorf("monitorNamespaces() = %v, want nil when Dashboard.Spec.MonitorNamespaces is unset", got)
+	}
+}
+
+func TestPollerMonitorNamespacesSet(t *testing.T) {
+	scheme := testScheme(t)
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec:       pagev1alpha1.DashboardSpec{MonitorNamespaces: []string{"allowed-ns"}},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
+
+	got := p.monitorNamespaces(t.Context())
+	if !slices.Equal(got, []string{"allowed-ns"}) {
+		t.Errorf("monitorNamespaces() = %v, want [allowed-ns]", got)
+	}
+}
+
+func TestPollerMonitorNamespacesMissingDashboard(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	p := &Poller{Reader: cl, Namespace: testNamespace, DashboardName: testDashboardName}
+
+	if got := p.monitorNamespaces(t.Context()); got != nil {
+		t.Errorf("monitorNamespaces() = %v, want nil when the Dashboard can't be read", got)
+	}
+}
+
 func TestPollerPollDiscoveredServiceStoresCard(t *testing.T) {
 	svc := discoveredService{Key: "discovery/ns/app", Group: testDiscoveryGroup, Name: testDiscoveredAppName, Href: "https://app.invalid"}
 	store := NewStore()
