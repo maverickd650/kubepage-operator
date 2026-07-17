@@ -803,6 +803,13 @@
             }
           ]
         },
+        "clusterDomain": {
+          "default": "cluster.local",
+          "description": "clusterDomain is this cluster's DNS domain, used to build the\nin-cluster FQDN a ServiceEntry's \"internalUrl: auto\" resolves to:\n\"\u003cservice\u003e.\u003cnamespace\u003e.svc.\u003cclusterDomain\u003e\". Defaults to the\nwell-known \"cluster.local\"; set this when the cluster's kubelet\n--cluster-domain differs.",
+          "maxLength": 253,
+          "minLength": 1,
+          "type": "string"
+        },
         "containerPort": {
           "default": 8080,
           "description": "containerPort defines the port the dashboard HTTP server listens on",

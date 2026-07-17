@@ -305,6 +305,17 @@ type DashboardSpec struct {
 	// +listType=set
 	// +optional
 	MonitorNamespaces []string `json:"monitorNamespaces,omitempty"`
+
+	// clusterDomain is this cluster's DNS domain, used to build the
+	// in-cluster FQDN a ServiceEntry's "internalUrl: auto" resolves to:
+	// "<service>.<namespace>.svc.<clusterDomain>". Defaults to the
+	// well-known "cluster.local"; set this when the cluster's kubelet
+	// --cluster-domain differs.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +default="cluster.local"
+	// +optional
+	ClusterDomain *string `json:"clusterDomain,omitempty"`
 }
 
 // WidgetDefaultsEntry supplies default secret-bearing values for one widget

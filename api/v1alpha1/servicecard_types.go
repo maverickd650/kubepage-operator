@@ -250,7 +250,17 @@ type ServiceEntry struct {
 	// monitor probe — when set, e.g. "http://plex.media.svc:32400" while
 	// href points at the ingress URL the browser opens. A widget's own url,
 	// when set, still wins; without either, the pod falls back to href.
-	// +kubebuilder:validation:Pattern=`^https?://`
+	//
+	// The sentinel value "auto" has the dashboard pod derive this URL itself
+	// from the entry's app field: it looks up a Service named app (falling
+	// back to the app.kubernetes.io/name=app label selector, requiring
+	// exactly one match), and builds
+	// "http://<service>.<namespace>.svc.<clusterDomain>:<port>" from that
+	// Service's own namespace, its "http"-named port (else its first port),
+	// and the Dashboard's spec.clusterDomain. Requires app to be set; a
+	// zero/multiple-match lookup, or a missing app, renders a card error
+	// instead of a URL, the same as a disallowed monitor-namespace.
+	// +kubebuilder:validation:Pattern=`^(auto$|https?://)`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
 	// +optional
@@ -360,9 +370,21 @@ type ServiceEntry struct {
 // own base URL (InternalURL, else Href) rather than a separately spelled one.
 const MonitorSelf = "self"
 
+// InternalURLAuto is ServiceEntry.InternalURL's sentinel value: the dashboard
+// pod derives the in-cluster base URL itself from the entry's app field and
+// a Service lookup, rather than the field spelling out a literal URL — see
+// InternalURL's doc comment. Resolving it requires a Kubernetes lookup the
+// api package itself can't perform, so BaseURL returns this literal string
+// unresolved; the poller (internal/dashboard) is responsible for detecting
+// it and substituting the actual resolved URL before use.
+const InternalURLAuto = "auto"
+
 // BaseURL returns the base URL the dashboard pod uses for anything it
 // originates for this entry (widget polls without their own url, a
-// "monitor: self" probe): InternalURL when set, else Href, else "".
+// "monitor: self" probe): InternalURL when set, else Href, else "". When
+// InternalURL is the InternalURLAuto sentinel, this returns that literal
+// string unresolved — callers that need the actual in-cluster URL must
+// resolve it themselves (see the poller's resolveBaseURL).
 func (se *ServiceEntry) BaseURL() string {
 	if se.InternalURL != nil && *se.InternalURL != "" {
 		return *se.InternalURL
@@ -375,12 +397,23 @@ func (se *ServiceEntry) BaseURL() string {
 
 // MonitorURL resolves the entry's HTTP monitor probe URL: "" when Monitor is
 // unset, the entry's BaseURL for "monitor: self", the URL itself otherwise.
+// Like BaseURL, this returns the InternalURLAuto sentinel unresolved when
+// applicable — see MonitorURLWithBase for the poller's resolved-base variant.
 func (se *ServiceEntry) MonitorURL() string {
+	return se.MonitorURLWithBase(se.BaseURL())
+}
+
+// MonitorURLWithBase resolves the entry's HTTP monitor probe URL like
+// MonitorURL, but takes the entry's already-resolved base URL instead of
+// deriving it via BaseURL — needed by the poller, whose base URL may require
+// resolving the InternalURLAuto sentinel through a Service lookup BaseURL
+// itself can't perform.
+func (se *ServiceEntry) MonitorURLWithBase(base string) string {
 	if se.Monitor == nil || *se.Monitor == "" {
 		return ""
 	}
 	if *se.Monitor == MonitorSelf {
-		return se.BaseURL()
+		return base
 	}
 	return *se.Monitor
 }

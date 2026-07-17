@@ -54,7 +54,7 @@ Everything you can set on a single tile (an entry under `services:`):
 |-------|--------------|
 | `name` | **Required.** The tile's title. |
 | `href` | Makes the title a clickable link to the service (the browser-facing URL). Also the fallback base URL for widget polls and `monitor: self` when `internalUrl` isn't set. |
-| `internalUrl` | The in-cluster base URL the dashboard **pod** uses for widget polls and `monitor: self`, when it differs from `href` (e.g. `http://plex.media.svc:32400` behind an ingress). |
+| `internalUrl` | The in-cluster base URL the dashboard **pod** uses for widget polls and `monitor: self`, when it differs from `href`. See below for its three forms. |
 | `icon` | The logo. See [Icons](#icons). |
 | `description` | A line of text under the title. |
 | `group` | Which heading this tile appears under. Falls back to the file's top-level `group`. Supports nesting — see [Groups & nesting](#groups-and-nesting). |
@@ -67,6 +67,21 @@ Everything you can set on a single tile (an entry under `services:`):
 | `showStats` | Set `false` to hide widget numbers but keep the tile. Default `true`. |
 | `errorDisplay` | Set `false` to hide a widget's error text on a service you know is flaky. Default `true`. |
 | `widgets` | Live stats pulled from the service. Its own big topic — see [Widgets](widgets.md). |
+
+### `internalUrl`'s three forms
+
+| Form | Example | What the dashboard pod does |
+|------|---------|------------------------------|
+| Explicit URL | `internalUrl: http://plex.media.svc:32400` | Uses that URL as-is. |
+| `auto` | `internalUrl: auto` | Derives the URL itself from `app`: looks up a Service named `plex` (falling back to the `app.kubernetes.io/name=plex` label selector, requiring exactly one match), then builds `http://<service>.<namespace>.svc.<clusterDomain>:<port>` from that Service's `http`-named port (else its first port) and the Dashboard's `spec.clusterDomain` (defaults to `cluster.local`). Requires `app` to be set. A zero/multiple-match lookup, or a missing `app`, renders a card error instead of a URL. |
+| Inherited `href` | *(unset)* | Falls back to `href` — no separate in-cluster URL needed when it's reachable from inside the cluster too. |
+
+`auto` covers the common case (a plain HTTP Service, standard port naming); an
+upstream needing HTTPS or a nonstandard path still sets `internalUrl`
+explicitly. Since `auto` requires `app`, and `app` alone already enables the
+pod-readiness status light (see [Status lights](#status-lights)), an `auto`
+entry always shows one — there's no way to derive the URL from `app` without
+also getting the pod monitor for free.
 
 ## Icons
 

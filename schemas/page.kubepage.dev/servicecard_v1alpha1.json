@@ -80,10 +80,10 @@
                 "type": "string"
               },
               "internalUrl": {
-                "description": "internalUrl is the in-cluster base URL the dashboard pod uses for\nanything it originates for this entry — widget polls and the HTTP\nmonitor probe — when set, e.g. \"http://plex.media.svc:32400\" while\nhref points at the ingress URL the browser opens. A widget's own url,\nwhen set, still wins; without either, the pod falls back to href.",
+                "description": "internalUrl is the in-cluster base URL the dashboard pod uses for\nanything it originates for this entry — widget polls and the HTTP\nmonitor probe — when set, e.g. \"http://plex.media.svc:32400\" while\nhref points at the ingress URL the browser opens. A widget's own url,\nwhen set, still wins; without either, the pod falls back to href.\n\nThe sentinel value \"auto\" has the dashboard pod derive this URL itself\nfrom the entry's app field: it looks up a Service named app (falling\nback to the app.kubernetes.io/name=app label selector, requiring\nexactly one match), and builds\n\"http://\u003cservice\u003e.\u003cnamespace\u003e.svc.\u003cclusterDomain\u003e:\u003cport\u003e\" from that\nService's own namespace, its \"http\"-named port (else its first port),\nand the Dashboard's spec.clusterDomain. Requires app to be set; a\nzero/multiple-match lookup, or a missing app, renders a card error\ninstead of a URL, the same as a disallowed monitor-namespace.",
                 "maxLength": 2048,
                 "minLength": 1,
-                "pattern": "^https?://",
+                "pattern": "^(auto$|https?://)",
                 "type": "string"
               },
               "monitor": {

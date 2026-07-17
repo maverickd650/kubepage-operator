@@ -188,9 +188,13 @@ type DashboardReconciler struct {
 // +kubebuilder:rbac:groups=metrics.k8s.io,resources=nodes,verbs=get;list;watch
 // Pods get/list/watch, like the secrets rule below, is needed only so the
 // manager can delegate it: it provisions a per-Dashboard Role granting the
-// dashboard pod the same access, to evaluate a ServiceCard's PodSelector
+// dashboard pod the same access, to evaluate a ServiceCard's PodSelector and
+// resolve an "internalUrl: auto" entry's Service lookup
 // (internal/controller/instance_rbac.go, internal/dashboard/poller.go's
-// monitor). The manager itself never lists Pods.
+// monitor/resolveBaseURL). The manager itself never lists Pods; delegating
+// the same access to Services needs no separate marker here since the
+// broader Service CRUD rule below (for the dashboard's own owned Service)
+// already covers get/list/watch.
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // Secrets get is needed only so the manager can delegate it: it provisions a
 // per-Dashboard Role granting the dashboard pod get on the specific Secrets its

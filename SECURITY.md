@@ -28,7 +28,17 @@ trusted network:
    secret-free contents beyond what an author already opted into publishing
    via the discovery annotations) in the named namespaces — treat editing a
    Dashboard's `spec.discovery.namespaces` with the same trust level as
-   editing RBAC directly, since that's what it does.
+   editing RBAC directly, since that's what it does. The dashboard pod's own
+   namespace is different: it's granted `get`/`list`/`watch` on Pods and
+   Services there unconditionally (`dashboardPodsRule` in
+   `internal/controller/dashboard_rbac.go`), for a `ServiceCard` entry's pod
+   monitor (`app`/`podSelector`) and `internalUrl: auto` Service lookup — both
+   read-only metadata a Dashboard author in that namespace could already see
+   via `kubectl`, so this widens nothing beyond what point 2 below already
+   grants them. `spec.monitorNamespaces` extends the same two grants to
+   additional namespaces, via the same RoleBinding-per-namespace pattern as
+   `spec.discovery.namespaces` above — editing it deserves the same trust
+   level.
 2. **CRD authors are fully trusted within their namespace.** Anyone who can
    create a `ServiceCard`/`InfoWidget` in a namespace can name *any* Secret
    in that namespace via `secretKeyRef` and point the widget's own URL at a
