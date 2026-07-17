@@ -2005,6 +2005,342 @@
           },
           "type": "object"
         },
+        "style": {
+          "description": "style is the native dashboard's theme/color/background/header-style\nlook and its header search box, applied by internal/dashboard's\nLoadSite. Unset means every field takes its documented default,\nexactly like an absent DashboardStyle used to mean before the\nDashboardStyle CRD was folded into this field.",
+          "properties": {
+            "background": {
+              "description": "background image and filters, used instead of the solid theme color.",
+              "minProperties": 1,
+              "properties": {
+                "blur": {
+                  "description": "blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.\n\"sm\", \"md\", \"xl\", \"\"). An explicit \"\" is equivalent to leaving it\nunset (the default 8px blur).",
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                "brightness": {
+                  "description": "brightness is a backdrop brightness percentage (Tailwind\nbackdrop-brightness scale, e.g. 0, 50, 75).",
+                  "format": "int32",
+                  "type": "integer"
+                },
+                "image": {
+                  "description": "image is the full URL or path (relative to /app/public) to the\nbackground image.",
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "opacity": {
+                  "description": "opacity blends the background image with the background color, 0-100.",
+                  "format": "int32",
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "saturate": {
+                  "description": "saturate is a backdrop saturate percentage (Tailwind backdrop-saturate\nscale, e.g. 0, 50, 100).",
+                  "format": "int32",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "bookmarksStyle": {
+              "description": "bookmarksStyle renders every bookmark card icon-only (no name or\ndescription), matching homepage's `bookmarksStyle: icons`.",
+              "enum": [
+                "icons"
+              ],
+              "type": "string"
+            },
+            "cardBlur": {
+              "description": "cardBlur applies a backdrop blur to cards, a Tailwind backdrop-blur\nsize keyword (e.g. \"sm\", \"md\", \"xl\", \"\"). An explicit \"\" is equivalent\nto leaving it unset (the default 8px blur). Most visible over a\nbackground image.",
+              "maxLength": 8,
+              "type": "string"
+            },
+            "collapse": {
+              "default": true,
+              "description": "collapse controls the collapsible expand/collapse control on service\nand bookmark group headers. true (the default) shows the control;\nfalse renders every group with a plain, non-collapsible header.",
+              "type": "boolean"
+            },
+            "color": {
+              "description": "color is the fixed color palette, disabling the palette switcher.",
+              "enum": [
+                "slate",
+                "gray",
+                "zinc",
+                "neutral",
+                "stone",
+                "amber",
+                "yellow",
+                "lime",
+                "green",
+                "emerald",
+                "teal",
+                "cyan",
+                "sky",
+                "blue",
+                "indigo",
+                "violet",
+                "purple",
+                "fuchsia",
+                "pink",
+                "rose",
+                "red",
+                "white"
+              ],
+              "type": "string"
+            },
+            "customCSS": {
+              "description": "customCSS is raw CSS injected into the dashboard's page in a second\n\u003cstyle\u003e block appended after the built-in stylesheet, so its rules\ncan override it. Trusted, operator-supplied content — the same trust\nlevel as every other StyleSpec field (e.g. Background.Image).",
+              "maxLength": 10000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "customJS": {
+              "description": "customJS is raw JavaScript injected into the dashboard's page in a\n\u003cscript\u003e block, run once on page load. Trusted, operator-supplied\ncontent — the same trust level as CustomCSS/Background.Image.",
+              "maxLength": 10000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "description": {
+              "description": "description is shown as a header subtitle and the page's meta\ndescription.",
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            "errorDisplay": {
+              "default": true,
+              "description": "errorDisplay is the site-wide default for whether a widget's error\ntext is shown on its card, used when a ServiceCard doesn't set its own\nErrorDisplay. Defaults to true when unset here too.",
+              "type": "boolean"
+            },
+            "favicon": {
+              "description": "favicon is a URL to the dashboard's favicon.",
+              "maxLength": 2048,
+              "minLength": 1,
+              "pattern": "^https?://",
+              "type": "string"
+            },
+            "fullWidth": {
+              "description": "fullWidth uses the entire window width instead of a centered,\nconstrained layout.",
+              "type": "boolean"
+            },
+            "groupsInitiallyCollapsed": {
+              "description": "groupsInitiallyCollapsed collapses every group by default on first\nload. A LayoutGroupSpec's own InitiallyCollapsed overrides this per\ngroup. Ignored when Collapse is false.",
+              "type": "boolean"
+            },
+            "headerStyle": {
+              "description": "headerStyle for the header info-widget strip (datetime, greeting,\nweather, etc.): \"underlined\" draws a line under it, \"boxed\" wraps it in\na card, \"clean\" leaves it unstyled, and \"boxedWidgets\" additionally\ngives each individual widget its own boxed card.",
+              "enum": [
+                "underlined",
+                "boxed",
+                "clean",
+                "boxedWidgets"
+              ],
+              "type": "string"
+            },
+            "hideVersion": {
+              "description": "hideVersion hides the dashboard's version/commit footer.",
+              "type": "boolean"
+            },
+            "indexing": {
+              "default": true,
+              "description": "indexing controls whether search engines may index the dashboard:\ntrue (the default) leaves indexing unrestricted; false disallows all\ncrawlers in robots.txt and adds a noindex meta tag.",
+              "type": "boolean"
+            },
+            "language": {
+              "description": "language is the UI language, e.g. \"en\", \"fr\", \"de\".",
+              "maxLength": 16,
+              "minLength": 1,
+              "type": "string"
+            },
+            "layout": {
+              "description": "layout arranges ServiceCard Groups into tabs, mirroring homepage's\nsettings.yaml `layout:` map (group -\u003e style) with tabs added on top.\nOmitted/empty renders every group flat with no tab UI, as before.",
+              "items": {
+                "description": "LayoutTabSpec is one tab: a named, ordered set of Groups shown together.\nGroups not referenced by any tab still render, appended to an implicit\ntrailing \"Other\" tab; a Group referenced by more than one tab is shown\nunder the first tab that lists it. Tab placement is root-only: a nested\nsubgroup always renders in whatever tab its root group is placed in, so a\npath-named LayoutGroupSpec entry (e.g. \"Media/Movies\", only styling that\nsubgroup) must not appear in a tab unless an ancestor prefix of that path\n(\"Media\", or \"Media/Movies\" for a \"Media/Movies/4K\" entry) is also listed\nin this same tab's groups — applied to every path entry, this makes the\nroot itself required transitively; otherwise which tab the subgroup would\nrender under is ambiguous. (The rule checks the immediate prefix rather\nthan splitting out the root segment to stay within the apiserver's static\nCEL cost budget.)",
+                "properties": {
+                  "groups": {
+                    "description": "groups lists, in display order, the Groups shown under this tab.\nMaxItems is 32 (down from 64 pre-nesting) to keep the tab's\nparent-listed CEL rule within the apiserver's static cost budget —\nthe rule's estimated cost is quadratic in this bound.",
+                    "items": {
+                      "description": "LayoutGroupSpec configures one Group's placement and style within a\nLayoutTabSpec, mirroring homepage's settings.yaml `layout:` per-group\nstyle keys (style/columns/icon).\nSee https://gethomepage.dev/configs/settings/#layout",
+                      "properties": {
+                        "columns": {
+                          "description": "columns is the number of card columns to render this group in,\noverriding the dashboard's default auto-fill grid.",
+                          "format": "int32",
+                          "maximum": 6,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "header": {
+                          "description": "header renders this group's header (name + icon) when true (the\ndefault). Set false to hide it while still rendering the group's\ncards.",
+                          "type": "boolean"
+                        },
+                        "icon": {
+                          "description": "icon overrides the group header's icon. Same resolution rules as\nServiceCard/Bookmark Icon: a full URL passes through, homepage's icon\nprefix syntax (\"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\"fa6-solid-X\"/\"sh-X\",\nsee ServiceEntry.Icon) resolves to that icon set, and anything else is\nresolved as a dashboard-icons slug.",
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "initiallyCollapsed": {
+                          "description": "initiallyCollapsed collapses this group by default on first load,\noverriding the StyleSpec's GroupsInitiallyCollapsed. Ignored when\nCollapse is false.",
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "description": "name is the ServiceCard Group this entry places and styles, or a\n\"/\"-separated path (e.g. \"Media/Movies\") naming a nested subgroup to\nstyle (see ServiceEntry.Group). A root name (no \"/\") also places the\nwhole group — and everything nested under it — into this tab; a path\nentry only styles the subgroup it names and must not place it into a\ndifferent tab than its root (see LayoutTabSpec's validation rule).",
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[^/]+(/[^/]+){0,2}$",
+                          "type": "string"
+                        },
+                        "style": {
+                          "description": "style lays the group's cards out in a single horizontally-scrolling\nrow instead of a grid. Setting columns alongside \"row\" follows\nhomepage's layout semantics: the group renders as a normal wrapping\ngrid of that many columns (the single-row scroller applies only when\nno columns are set).",
+                          "enum": [
+                            "row",
+                            "column"
+                          ],
+                          "type": "string"
+                        },
+                        "useEqualHeights": {
+                          "description": "useEqualHeights makes every card in this group the same height,\noverriding the StyleSpec's UseEqualHeights.",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "x-kubernetes-list-type": "atomic"
+                  },
+                  "name": {
+                    "description": "name is the tab's label.",
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "groups",
+                  "name"
+                ],
+                "type": "object",
+                "x-kubernetes-validations": [
+                  {
+                    "message": "a nested group entry's parent group must be listed in the same tab",
+                    "rule": "self.groups.all(g, !g.name.contains('/') || self.groups.exists(r, g.name.startsWith(r.name + '/')))"
+                  }
+                ]
+              },
+              "maxItems": 32,
+              "minItems": 1,
+              "type": "array",
+              "x-kubernetes-list-type": "atomic"
+            },
+            "search": {
+              "description": "search configures the native dashboard's header search box (card\nfiltering + web-search fallthrough).",
+              "minProperties": 1,
+              "properties": {
+                "filterCards": {
+                  "default": true,
+                  "description": "filterCards enables as-you-type filtering of service and bookmark\ncards by name/description, independent of the Enter-to-search\nfallthrough.",
+                  "type": "boolean"
+                },
+                "internetSearchEntry": {
+                  "default": true,
+                  "description": "internetSearchEntry controls the quick-launch palette's \"search the\nweb\" fallthrough entry: true (the default) shows it alongside card\nmatches; false removes it, leaving only card matches (and, unless\nvisitURLEntry is also false, the direct-URL entry).",
+                  "type": "boolean"
+                },
+                "provider": {
+                  "default": "duckduckgo",
+                  "description": "provider is the web search engine Enter submits the query to.\n\"custom\" requires URL.",
+                  "enum": [
+                    "duckduckgo",
+                    "google",
+                    "bing",
+                    "custom"
+                  ],
+                  "type": "string"
+                },
+                "searchDescriptions": {
+                  "default": true,
+                  "description": "searchDescriptions includes each card's description, not just its\nname, when matching the quick-launch (Ctrl/Cmd-K) palette's query\nagainst cards. Independent of FilterCards, which controls the\ninline as-you-type card filter instead.",
+                  "type": "boolean"
+                },
+                "target": {
+                  "default": "_blank",
+                  "description": "target controls whether the search results page opens in the same tab\nor a new one.",
+                  "enum": [
+                    "_blank",
+                    "_self"
+                  ],
+                  "type": "string"
+                },
+                "url": {
+                  "description": "url is the search endpoint used when Provider is \"custom\". The query\nis appended as a URL-encoded \"q\" parameter. Must be an http(s) URL —\nthe dashboard passes this straight into a client-side window.open()/\nhref, so a non-http(s) scheme (e.g. \"javascript:\") would be a stored\nscript-injection vector rather than a search endpoint.",
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "pattern": "^https?://",
+                  "type": "string"
+                },
+                "visitURLEntry": {
+                  "default": true,
+                  "description": "visitURLEntry controls the quick-launch palette's \"visit \u003curl\u003e\" entry\nthat appears when the typed query itself looks like a URL or domain:\ntrue (the default) lets the query jump there directly; false removes\nthe entry, requiring a web search instead.",
+                  "type": "boolean"
+                }
+              },
+              "type": "object",
+              "x-kubernetes-validations": [
+                {
+                  "message": "url is required when provider is \"custom\"",
+                  "rule": "self.provider != 'custom' || has(self.url)"
+                }
+              ]
+            },
+            "startUrl": {
+              "description": "startUrl is the PWA manifest's start_url, used when the dashboard is\ninstalled as an app. Defaults to \"/\".",
+              "maxLength": 2048,
+              "minLength": 1,
+              "pattern": "^(https?://|/)",
+              "type": "string"
+            },
+            "statusStyle": {
+              "description": "statusStyle is the site-wide default for how a ServiceCard's Ping/\nSiteMonitor/PodSelector status renders (\"dot\" a colored status dot,\n\"basic\" a colored status pill with status word plus latency/\nready-count detail), used when a ServiceCard doesn't set its own\nStatusStyle. Defaults to \"dot\" when unset here too. Kept as an enum\nrather than a bool: a third rendering style is plausible here, unlike\nthis file's other converted fields.",
+              "enum": [
+                "dot",
+                "basic"
+              ],
+              "type": "string"
+            },
+            "target": {
+              "default": "_blank",
+              "description": "target is the default link target for service and bookmark cards.\nIndividual ServiceCards may override it via their own target.",
+              "enum": [
+                "_blank",
+                "_self"
+              ],
+              "type": "string"
+            },
+            "theme": {
+              "description": "theme is the fixed theme, disabling the theme switcher. One of \"light\"\nor \"dark\".",
+              "enum": [
+                "light",
+                "dark"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "description": "title is the dashboard's browser tab title and header heading.\nDefaults to \"kubepage\" when unset.",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "useEqualHeights": {
+              "description": "useEqualHeights makes every card in a group the same height. A\nLayoutGroupSpec's own UseEqualHeights overrides this per group.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
         "tolerations": {
           "description": "tolerations let the pod schedule onto nodes with matching taints (e.g.\na tainted Raspberry Pi or single-node control plane), passed straight\nthrough to the pod template.",
           "items": {
@@ -3770,11 +4106,6 @@
       "properties": {
         "boundBookmarks": {
           "description": "boundBookmarks is the number of Bookmark objects currently bound to\nthis Dashboard.",
-          "format": "int32",
-          "type": "integer"
-        },
-        "boundDashboardStyles": {
-          "description": "boundDashboardStyles is the number of DashboardStyle objects currently\nbound to (dashboardRef-ing) this Dashboard.",
           "format": "int32",
           "type": "integer"
         },

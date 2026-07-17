@@ -277,6 +277,14 @@ type DashboardSpec struct {
 	// +optional
 	WidgetDefaults map[string]WidgetDefaultsEntry `json:"widgetDefaults,omitempty"`
 
+	// style is the native dashboard's theme/color/background/header-style
+	// look and its header search box, applied by internal/dashboard's
+	// LoadSite. Unset means every field takes its documented default,
+	// exactly like an absent DashboardStyle used to mean before the
+	// DashboardStyle CRD was folded into this field.
+	// +optional
+	Style *StyleSpec `json:"style,omitempty"`
+
 	// monitorNamespaces lists the namespaces (beyond the Dashboard's own,
 	// which is always allowed) that a bound ServiceCard's pod monitor may
 	// name via its entries' namespace field. Each listed namespace gets a
@@ -622,11 +630,6 @@ type DashboardStatus struct {
 	// observedGeneration is the most recent generation this status reflects.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-	// boundDashboardStyles is the number of DashboardStyle objects currently
-	// bound to (dashboardRef-ing) this Dashboard.
-	// +optional
-	BoundDashboardStyles int32 `json:"boundDashboardStyles,omitempty"`
 
 	// boundServiceCards is the number of ServiceCard objects currently
 	// bound to this Dashboard.
