@@ -184,7 +184,7 @@ spec:
     name: home
   widgets:
     - type: greeting
-      options:
+      config:
         text: Welcome home
     - type: datetime
 ```

@@ -1055,8 +1055,8 @@ func TestServerHeaderRendersWidgets(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    headerTypeGreeting,
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Welcome"}`)},
+				Type:   headerTypeGreeting,
+				Config: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Welcome"}`)},
 			}},
 		},
 	}
@@ -1410,7 +1410,7 @@ func TestServerManifestLightThemeUsesC50Background(t *testing.T) {
 
 func TestBuildHeaderDatetimeWidget(t *testing.T) {
 	defs := []HeaderWidget{
-		{Type: headerTypeDatetime, Options: map[string]string{"format": "medium"}},
+		{Type: headerTypeDatetime, Config: map[string]string{"format": "medium"}},
 	}
 	views := buildHeader(defs, nil)
 	if len(views) != 1 || views[0].Format != "medium" {
@@ -1425,7 +1425,7 @@ func TestBuildHeaderDatetimeWidget(t *testing.T) {
 // see TestBuildHeaderDefaultIcons).
 func TestBuildHeaderGreetingAndDatetimeHaveNoIcon(t *testing.T) {
 	defs := []HeaderWidget{
-		{Type: headerTypeGreeting, Options: map[string]string{testOptionsText: "hi"}},
+		{Type: headerTypeGreeting, Config: map[string]string{testOptionsText: "hi"}},
 		{Type: headerTypeDatetime},
 	}
 	views := buildHeader(defs, nil)
@@ -2082,8 +2082,8 @@ func TestServerHeaderRendersErrAndDatetimeWidget(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    headerTypeDatetime,
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
+				Type:   headerTypeDatetime,
+				Config: &apiextensionsv1.JSON{Raw: []byte(`{"format":"medium"}`)},
 			}},
 		},
 	}
@@ -2488,9 +2488,9 @@ func TestServerHeaderRendersLogoWidget(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    headerTypeLogo,
-				Icon:    new("https://example.invalid/logo.png"),
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
+				Type:   headerTypeLogo,
+				Icon:   new("https://example.invalid/logo.png"),
+				Config: &apiextensionsv1.JSON{Raw: []byte(`{"href":"` + href + `"}`)},
 			}},
 		},
 	}

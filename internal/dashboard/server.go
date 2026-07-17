@@ -923,12 +923,12 @@ func buildHeader(defs []HeaderWidget, cards []Card) []headerWidgetView {
 		v := headerWidgetView{Type: d.Type}
 		switch d.Type {
 		case headerTypeGreeting:
-			v.Greeting = d.Options["text"]
+			v.Greeting = d.Config["text"]
 		case headerTypeDatetime:
-			v.Format = d.Options["format"]
+			v.Format = d.Config["format"]
 		case headerTypeLogo:
 			v.IconURL = d.IconURL
-			v.Href = d.Options["href"]
+			v.Href = d.Config["href"]
 		default:
 			v.IconURL = d.IconURL
 			var liveFields []Field

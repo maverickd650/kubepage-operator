@@ -139,7 +139,7 @@ type HeaderWidget struct {
 	Type    string
 	Order   *int32
 	IconURL string
-	Options map[string]string
+	Config  map[string]string
 
 	// Align is "left" or "right", already defaulted (see
 	// defaultHeaderAlign) against InfoWidgetSpec.Align.
@@ -260,9 +260,9 @@ type headerWidget struct {
 
 // headerWidgets returns the instance's bound InfoWidgets, flattened via
 // InfoWidgetSpec.Entries(), as render-ready header widget definitions,
-// ordered by Order (nil last), then object name, then entry index. Options'
+// ordered by Order (nil last), then object name, then entry index. Config's
 // passthrough JSON is flattened into a string map; nested/array values are
-// skipped (header widgets only use scalar options like text, latitude,
+// skipped (header widgets only use scalar config like text, latitude,
 // format).
 func headerWidgets(items []pagev1alpha1.InfoWidget, dashboardName string) []HeaderWidget {
 	var flat []headerWidget
@@ -299,7 +299,7 @@ func headerWidgets(items []pagev1alpha1.InfoWidget, dashboardName string) []Head
 			Type:    hw.entry.Type,
 			Order:   hw.entry.Order,
 			IconURL: IconURL(hw.entry.Icon),
-			Options: scalarOptions(hw.entry.Options),
+			Config:  scalarConfig(hw.entry.Config),
 			Align:   align,
 		})
 	}
@@ -318,29 +318,29 @@ func defaultHeaderAlign(widgetType string) string {
 	}
 }
 
-// scalarOptions flattens an InfoWidget's passthrough Options JSON object into
+// scalarConfig flattens an InfoWidget's passthrough Config JSON object into
 // a string map, keeping only scalar values (string/number/bool).
-func scalarOptions(raw *apiextensionsv1.JSON) map[string]string {
-	opts := map[string]string{}
+func scalarConfig(raw *apiextensionsv1.JSON) map[string]string {
+	cfg := map[string]string{}
 	if raw == nil || len(raw.Raw) == 0 {
-		return opts
+		return cfg
 	}
 	var m map[string]any
 	if err := json.Unmarshal(raw.Raw, &m); err != nil {
-		siteLog.Error(err, "parsing InfoWidget options")
-		return opts
+		siteLog.Error(err, "parsing InfoWidget config")
+		return cfg
 	}
 	for k, v := range m {
 		switch val := v.(type) {
 		case string:
-			opts[k] = val
+			cfg[k] = val
 		case bool:
-			opts[k] = strconv.FormatBool(val)
+			cfg[k] = strconv.FormatBool(val)
 		case float64:
-			opts[k] = strconv.FormatFloat(val, 'f', -1, 64)
+			cfg[k] = strconv.FormatFloat(val, 'f', -1, 64)
 		}
 	}
-	return opts
+	return cfg
 }
 
 // boundStyleSpec returns the Dashboard named dashboardName's spec.style, or

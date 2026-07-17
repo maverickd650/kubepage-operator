@@ -707,8 +707,8 @@ func (in *InfoWidgetEntry) DeepCopyInto(out *InfoWidgetEntry) {
 		*out = new(SecretValueSource)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.Options != nil {
-		in, out := &in.Options, &out.Options
+	if in.Config != nil {
+		in, out := &in.Config, &out.Config
 		*out = new(apiextensionsv1.JSON)
 		(*in).DeepCopyInto(*out)
 	}

@@ -20,12 +20,8 @@ type widgetConfigInstance struct {
 	Location string
 	// WidgetType is the ServiceWidget.Type/InfoWidgetEntry.Type value.
 	WidgetType string
-	// Raw is the widget's Config/Options block, verbatim from the CRD.
+	// Raw is the widget's Config block, verbatim from the CRD.
 	Raw *apiextensionsv1.JSON
-	// URLSet is true when the entry also carries a typed URL field
-	// (InfoWidgetEntry.URL) that satisfies a schema's "url" key the same
-	// way setting it in Options would (glances, longhorn).
-	URLSet bool
 }
 
 // validateWidgetConfigs checks every instance's Raw config against
@@ -51,10 +47,6 @@ func validateWidgetConfigs(instances []widgetConfigInstance, generation int64) (
 			invalidMsgs = append(invalidMsgs, fmt.Sprintf("%s: config is not a JSON object", inst.Location))
 			continue
 		}
-		if inst.URLSet {
-			keys["url"] = struct{}{}
-		}
-
 		missing, unknown := widgetschema.ValidateConfig(keys, schema)
 		if len(missing) > 0 {
 			invalidMsgs = append(invalidMsgs, fmt.Sprintf("%s: missing required config keys: %s", inst.Location, strings.Join(missing, ", ")))

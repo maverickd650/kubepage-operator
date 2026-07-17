@@ -139,6 +139,24 @@ spec:
                       - message: exactly one of value or secretKeyRef must be set
                         rule: '(has(self.value) ? 1 : 0) + (has(self.secretKeyRef)
                           ? 1 : 0) == 1'
+                    config:
+                      description: |-
+                        config holds every widget-type-specific field; unrecognized keys are
+                        silently ignored rather than rejected (see internal/dashboard's
+                        per-widget source for the authoritative shape). Known keys by type:
+                          - greeting: text (the message shown)
+                          - datetime: format (a JSON-encoded Intl.DateTimeFormat options
+                            object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
+                            to medium date/short time, i.e. no seconds)
+                          - openmeteo, openweathermap: latitude, longitude (both required),
+                            units ("metric"/"imperial"), label
+                          - kubemetrics: cpuLabel, memoryLabel
+                          - glances: apiVersion ("3" or "4"; defaults to "4")
+                          - longhorn: no config keys; url above is required
+                        glances and longhorn also require the typed url field above (Glances/
+                        Longhorn Manager REST API base URL, e.g.
+                        http://longhorn-frontend.longhorn-system:80). logo takes no config.
+                      x-kubernetes-preserve-unknown-fields: true
                     icon:
                       description: |-
                         icon shown to the left of this widget's value(s) in the header strip,
@@ -156,28 +174,6 @@ spec:
                       maxLength: 256
                       minLength: 1
                       type: string
-                    options:
-                      description: |-
-                        options holds every widget-type-specific field; unrecognized keys are
-                        silently ignored rather than rejected (see internal/dashboard's
-                        per-widget source for the authoritative shape). Known keys by type:
-                          - greeting: text (the message shown)
-                          - datetime: format (a JSON-encoded Intl.DateTimeFormat options
-                            object, e.g. {"dateStyle":"short","timeStyle":"short"}; defaults
-                            to medium date/short time, i.e. no seconds)
-                          - openmeteo, openweathermap: latitude, longitude (both required),
-                            units ("metric"/"imperial"), label
-                          - kubemetrics: cpuLabel, memoryLabel
-                          - glances: url (required unless the typed URL field below is set;
-                            Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
-                          - longhorn: url (required unless the typed URL field below is set;
-                            Longhorn Manager REST API base URL, e.g.
-                            http://longhorn-frontend.longhorn-system:80)
-                        For a header widget type that polls an HTTP upstream, the typed URL
-                        field above takes precedence over this options block's "url" key,
-                        which remains supported for backwards compatibility.
-                        logo takes no options.
-                      x-kubernetes-preserve-unknown-fields: true
                     order:
                       description: |-
                         order controls rendering position: widgets are sorted by Order (nil
@@ -244,12 +240,12 @@ spec:
                         secrets are secret-bearing option fields, resolved in-process at poll
                         time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
                         WidgetConfig.Secrets map, keyed by the same field names used here —
-                        distinct from Options/Config, which never carry secret values.
+                        distinct from Config, which never carries secret values.
 
                         RBAC note: the same caveat as ServiceCard's widgets.secrets applies
                         here — see ServiceWidget.Secrets' doc comment. Anyone who can create
                         an InfoWidget in this namespace can read any Secret in it by
-                        referencing it via secretKeyRef and pointing this widget's options at
+                        referencing it via secretKeyRef and pointing this widget's config at
                         a server they control.
                       maxProperties: 32
                       minProperties: 1
@@ -274,8 +270,7 @@ spec:
                     url:
                       description: |-
                         url is the base URL this widget polls, for widget types with an HTTP
-                        upstream (glances, longhorn). Takes precedence over options' "url"
-                        key, which remains supported for backwards compatibility.
+                        upstream (glances, longhorn); required for those types.
                       maxLength: 2048
                       minLength: 1
                       pattern: ^https?://
@@ -283,6 +278,9 @@ spec:
                   required:
                   - type
                   type: object
+                  x-kubernetes-validations:
+                  - message: url is required when type is "glances" or "longhorn"
+                    rule: '!(self.type in [''glances'',''longhorn'']) || has(self.url)'
                 maxItems: 32
                 minItems: 1
                 type: array

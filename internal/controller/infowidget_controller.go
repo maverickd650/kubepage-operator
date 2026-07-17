@@ -111,17 +111,14 @@ func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // infoWidgetConfigInstances flattens entries into the widgetConfigInstance
-// form validateWidgetConfigs expects. URLSet is derived from each entry's
-// typed URL field, which satisfies a schema's "url" key (glances, longhorn)
-// the same way setting it via Options would.
+// form validateWidgetConfigs expects.
 func infoWidgetConfigInstances(entries []pagev1alpha1.InfoWidgetEntry) []widgetConfigInstance {
 	instances := make([]widgetConfigInstance, 0, len(entries))
 	for widgetIdx, e := range entries {
 		instances = append(instances, widgetConfigInstance{
 			Location:   fmt.Sprintf("widget[%d] (type %q)", widgetIdx, e.Type),
 			WidgetType: e.Type,
-			Raw:        e.Options,
-			URLSet:     e.URL != nil,
+			Raw:        e.Config,
 		})
 	}
 	return instances

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -909,7 +908,7 @@ func metricErr(err error, fields []Field) error {
 // site.go's headerWidgets assigns the corresponding HeaderWidget.Key, since
 // server.go's buildHeader correlates the two by this key rather than by
 // object name (a multi-widget InfoWidget yields multiple entries sharing one
-// name). Options become the widget's Config; Secrets are resolved in-process
+// name). Config becomes the widget's Config; Secrets are resolved in-process
 // like service widgets. When entry sets its own PollIntervalSeconds and this
 // cycle isn't due yet, it returns immediately, leaving the previous cycle's
 // card in place (see pollWidget's doc comment for the same pattern).
@@ -931,17 +930,8 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 	impl, _ := Lookup(entry.Type) // presence already checked by caller
 
 	cfg := WidgetConfig{Secrets: map[string]string{}}
-	if entry.Options != nil {
-		cfg.Config = entry.Options.Raw
-		// Options' "url" key remains supported for backwards compatibility
-		// (widgets ignore the key in their own config decode); entry.URL,
-		// when set, takes precedence over it.
-		var opts struct {
-			URL string `json:"url"`
-		}
-		if err := json.Unmarshal(entry.Options.Raw, &opts); err == nil {
-			cfg.URL = opts.URL
-		}
+	if entry.Config != nil {
+		cfg.Config = entry.Config.Raw
 	}
 	if entry.URL != nil {
 		cfg.URL = *entry.URL

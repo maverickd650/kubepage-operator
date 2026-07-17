@@ -160,36 +160,35 @@ on a service card.
 
 ### Static (not polled, no service)
 
-| Type | Shows | Options |
-|------|-------|---------|
+| Type | Shows | Config |
+|------|-------|--------|
 | `greeting` | Static text | `text` |
 | `datetime` | A live clock (runs in your browser) | `format` (advanced; a JSON date-format object) |
 | `logo` | A static logo image | `icon` for the image; `config.href` to link it |
 
 ### Live
 
-| Type | Shows | Credential | Config / options |
-|------|-------|-----------|------------------|
+| Type | Shows | Credential | Config |
+|------|-------|-----------|--------|
 | `openmeteo` | Current weather, **no API key needed** | — | **`latitude`, `longitude`** required; `units` (`metric`/`imperial`), `label` |
 | `openweathermap` | Current weather via OpenWeatherMap | `apiKey` (required) | **`latitude`, `longitude`** required; `units`, `label` |
 | `kubemetrics` | Cluster-wide CPU/RAM (reads the cluster, no URL) | — | `cpuLabel`, `memoryLabel` |
-| `glances` | Host CPU/RAM via Glances | — | `url` (required unless the typed `url:` field is set); `apiVersion` (`3`/`4`, default `4`) |
-| `longhorn` | Aggregate Longhorn storage usage | — | `url` (required unless the typed `url:` field is set) — the Longhorn Manager address |
+| `glances` | Host CPU/RAM via Glances | — | requires the typed `url:` field; `apiVersion` (`3`/`4`, default `4`) |
+| `longhorn` | Aggregate Longhorn storage usage | — | requires the typed `url:` field — the Longhorn Manager address |
 
 ```yaml
 # inside an InfoWidget's widgets: list
 - type: openmeteo
-  options:
+  config:
     latitude: 51.5074
     longitude: -0.1278
     units: metric
     label: London
 ```
 
-> Header widgets put their extra settings under **`options:`**, whereas
-> service-card widgets use **`config:`**. Same idea, different key name — it's
-> just how the two building blocks are named. Both also support a top-level
-> typed `url:` field for the ones that poll an address.
+> Header widgets and service-card widgets both use **`config:`** for their
+> extra settings, and both support a top-level typed `url:` field for the
+> ones that poll an address.
 
 ---
 

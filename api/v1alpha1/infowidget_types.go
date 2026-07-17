@@ -22,6 +22,7 @@ const (
 // Unlike BookmarkEntry/ServiceEntry there is no Group field: header widgets
 // are a flat, ordered list rather than grouped like ServiceCard/Bookmark, so
 // InfoWidgetSpec.Entries() has no shared-default pass to reconcile.
+// +kubebuilder:validation:XValidation:rule="!(self.type in ['glances','longhorn']) || has(self.url)",message="url is required when type is \"glances\" or \"longhorn\""
 type InfoWidgetEntry struct {
 	// type is the widget type: "greeting"/"datetime" render statically
 	// (internal/dashboard/server.go); the rest are polled header widgets
@@ -33,8 +34,7 @@ type InfoWidgetEntry struct {
 	Type string `json:"type"`
 
 	// url is the base URL this widget polls, for widget types with an HTTP
-	// upstream (glances, longhorn). Takes precedence over options' "url"
-	// key, which remains supported for backwards compatibility.
+	// upstream (glances, longhorn); required for those types.
 	// +kubebuilder:validation:Pattern=`^https?://`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
@@ -76,12 +76,12 @@ type InfoWidgetEntry struct {
 	// secrets are secret-bearing option fields, resolved in-process at poll
 	// time (internal/dashboard/poller.go's pollInfoWidget) into the widget's
 	// WidgetConfig.Secrets map, keyed by the same field names used here —
-	// distinct from Options/Config, which never carry secret values.
+	// distinct from Config, which never carries secret values.
 	//
 	// RBAC note: the same caveat as ServiceCard's widgets.secrets applies
 	// here — see ServiceWidget.Secrets' doc comment. Anyone who can create
 	// an InfoWidget in this namespace can read any Secret in it by
-	// referencing it via secretKeyRef and pointing this widget's options at
+	// referencing it via secretKeyRef and pointing this widget's config at
 	// a server they control.
 	// +kubebuilder:validation:MinProperties=1
 	// +kubebuilder:validation:MaxProperties=32
@@ -95,7 +95,7 @@ type InfoWidgetEntry struct {
 	// +optional
 	CACert *SecretValueSource `json:"caCert,omitempty"`
 
-	// options holds every widget-type-specific field; unrecognized keys are
+	// config holds every widget-type-specific field; unrecognized keys are
 	// silently ignored rather than rejected (see internal/dashboard's
 	// per-widget source for the authoritative shape). Known keys by type:
 	//   - greeting: text (the message shown)
@@ -105,18 +105,14 @@ type InfoWidgetEntry struct {
 	//   - openmeteo, openweathermap: latitude, longitude (both required),
 	//     units ("metric"/"imperial"), label
 	//   - kubemetrics: cpuLabel, memoryLabel
-	//   - glances: url (required unless the typed URL field below is set;
-	//     Glances REST API base URL), apiVersion ("3" or "4"; defaults to "4")
-	//   - longhorn: url (required unless the typed URL field below is set;
-	//     Longhorn Manager REST API base URL, e.g.
-	//     http://longhorn-frontend.longhorn-system:80)
-	// For a header widget type that polls an HTTP upstream, the typed URL
-	// field above takes precedence over this options block's "url" key,
-	// which remains supported for backwards compatibility.
-	// logo takes no options.
+	//   - glances: apiVersion ("3" or "4"; defaults to "4")
+	//   - longhorn: no config keys; url above is required
+	// glances and longhorn also require the typed url field above (Glances/
+	// Longhorn Manager REST API base URL, e.g.
+	// http://longhorn-frontend.longhorn-system:80). logo takes no config.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
-	Options *apiextensionsv1.JSON `json:"options,omitempty"`
+	Config *apiextensionsv1.JSON `json:"config,omitempty"`
 
 	// pollIntervalSeconds overrides the dashboard's global --poll-interval
 	// for this widget only; see ServiceWidget.PollIntervalSeconds. Ignored by
@@ -128,10 +124,10 @@ type InfoWidgetEntry struct {
 
 // InfoWidgetSpec defines one or more header/info widgets, rendered by the
 // native dashboard in the header strip above the service cards. Supported
-// types: "datetime" (client-side clock; Options.format), "greeting" (static
-// text; Options.text), "openmeteo" (current weather; Options.latitude/
+// types: "datetime" (client-side clock; Config.format), "greeting" (static
+// text; Config.text), "openmeteo" (current weather; Config.latitude/
 // longitude/units), and "kubemetrics" (cluster-wide CPU/memory usage from
-// metrics-server; optional Options.cpuLabel/memoryLabel). Has no Group field
+// metrics-server; optional Config.cpuLabel/memoryLabel). Has no Group field
 // since header widgets are a flat, ordered list rather than grouped like
 // ServiceCard/Bookmark.
 type InfoWidgetSpec struct {
