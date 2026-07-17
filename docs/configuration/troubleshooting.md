@@ -38,7 +38,9 @@ Objects report their health as **conditions**. The ones you'll meet:
 | Condition | Meaning |
 |-----------|---------|
 | `Available: True` | All good. |
-| `Available: False` | Something's wrong — the `Reason`/`Message` say what. |
+| `Available: False` (reason `DashboardNotFound`) | `dashboardRef` names a Dashboard that doesn't exist in this namespace, or `dashboardRef` is unset and this namespace has **no** Dashboard at all. |
+| `Available: False` (reason `AmbiguousDashboardRef`) | `dashboardRef` is unset and this namespace has **more than one** Dashboard — there's no sole Dashboard to default to. The message names every candidate; set `dashboardRef` explicitly to pick one. |
+| `Available: False` (other reasons) | Something's wrong — the `Reason`/`Message` say what. |
 | `ConfigValid: False` (reason `UnknownConfigKeys`) | A `config` key isn't recognised — likely a **typo**. The card still works; the unknown key is just ignored. |
 
 A common `Available: False` reason is **`InvalidWidgetConfig`** — a widget is
@@ -50,16 +52,25 @@ missing key.
 
 ### "My card / widget / bookmark isn't on the page at all"
 
-Almost always the **`dashboardRef.name` doesn't match**, or the object is in the
-**wrong namespace**.
+Almost always the **`dashboardRef.name` doesn't match**, the namespace has more
+than one Dashboard and no explicit `dashboardRef` to disambiguate, or the
+object is in the **wrong namespace**.
 
-1. Confirm the reference points at the right Dashboard:
+1. If `dashboardRef` is set, confirm it points at the right Dashboard:
    ```sh
    kubectl get pcard media -n dashboards -o jsonpath='{.spec.dashboardRef.name}'
    ```
    It must exactly equal your Dashboard's `metadata.name`.
-2. Confirm both live in the **same namespace**. Cross-namespace links don't work.
-3. Check the Dashboard's bound counts — they should include your object:
+2. If `dashboardRef` is unset, confirm the namespace has **exactly one**
+   Dashboard — an unset ref only defaults when there's a sole one to bind to:
+   ```sh
+   kubectl get pdash -n dashboards
+   ```
+   Two or more Dashboards and no `dashboardRef` leaves the object unbound
+   (`Available: False`, reason `AmbiguousDashboardRef`); add `dashboardRef`
+   naming the one it belongs to.
+3. Confirm both live in the **same namespace**. Cross-namespace links don't work.
+4. Check the Dashboard's bound counts — they should include your object:
    ```sh
    kubectl get pdash home -n dashboards
    # SERVICES / BOOKMARKS / WIDGETS columns count what's bound

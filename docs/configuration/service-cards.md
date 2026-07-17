@@ -16,8 +16,6 @@ metadata:
   name: my-services
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home            # your Dashboard's name
   group: Media            # the heading this card sits under
   services:
     - name: Plex
@@ -34,8 +32,6 @@ acts as the default heading; any tile can override it with its own `group:`.
 
 ```yaml
 spec:
-  dashboardRef:
-    name: home
   group: Media                     # default heading for tiles below
   services:
     - name: Plex

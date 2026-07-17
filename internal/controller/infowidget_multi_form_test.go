@@ -20,7 +20,7 @@ var _ = Describe("InfoWidget CRD schema validation", func() {
 		iw := &pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: "iw-multi-ok", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Widgets: []pagev1alpha1.InfoWidgetEntry{
 					{Type: testWidgetTypeDatetime},
 					{Type: testWidgetTypeOpenMeteo},
@@ -35,7 +35,7 @@ var _ = Describe("InfoWidget CRD schema validation", func() {
 		iw := &pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: "iw-no-widgets", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 			},
 		}
 		err := k8sClient.Create(ctx, iw)
@@ -47,7 +47,7 @@ var _ = Describe("InfoWidget CRD schema validation", func() {
 		iw := &pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: "iw-entry-no-type", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Widgets:      []pagev1alpha1.InfoWidgetEntry{{}},
 			},
 		}

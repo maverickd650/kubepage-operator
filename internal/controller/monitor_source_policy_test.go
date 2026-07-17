@@ -108,7 +108,7 @@ func serviceEntryWithMonitors(name string, m monitorSources) *pagev1alpha1.Servi
 	return &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 			Group:        policyTestGroup,
 			Services: []pagev1alpha1.ServiceEntry{
 				{

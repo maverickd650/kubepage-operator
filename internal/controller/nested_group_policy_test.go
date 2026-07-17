@@ -122,7 +122,7 @@ func serviceCardWithGroup(name, group string) *pagev1alpha1.ServiceCard {
 	return &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 			Services: []pagev1alpha1.ServiceEntry{
 				{Name: "svc", Group: group},
 			},

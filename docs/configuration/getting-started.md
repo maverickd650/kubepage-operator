@@ -6,7 +6,16 @@ status light, and a clock — and you'll understand what each file does.
 
 If you haven't yet, skim [How it all fits together](README.md#how-it-all-fits-together)
 first. The one idea to hold onto: **you assemble a dashboard from several small
-files, all tied together by a shared name.**
+files, all landing in the same namespace as the Dashboard they belong to.**
+
+Each of those files (ServiceCard, Bookmark, InfoWidget) has an optional
+`spec.dashboardRef.name` field for naming the Dashboard explicitly. You can
+leave it out: with exactly one Dashboard in the namespace — the common case,
+and what this guide assumes — every file in it binds to that Dashboard
+automatically. Only add a namespace's second Dashboard once you're ready to
+start setting `dashboardRef` explicitly on everything in it; see
+[Troubleshooting](troubleshooting.md) for what an ambiguous or missing ref
+looks like.
 
 Throughout this page we'll use:
 
@@ -94,8 +103,6 @@ metadata:
   name: media
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home
   group: Media                       # the heading these tiles appear under
   services:
     - name: Plex
@@ -136,8 +143,6 @@ metadata:
   name: media
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home
   group: Media
   services:
     - name: Plex
@@ -180,8 +185,6 @@ metadata:
   name: header
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home
   widgets:
     - type: greeting
       config:

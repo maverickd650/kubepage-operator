@@ -24,7 +24,7 @@ var _ = Describe("InfoWidget status.entries", func() {
 		iw := &pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 				Widgets: []pagev1alpha1.InfoWidgetEntry{
 					{Type: testWidgetTypeDatetime},
 					{Type: testWidgetTypeOpenMeteo},

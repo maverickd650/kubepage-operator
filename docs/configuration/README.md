@@ -66,8 +66,10 @@ The four building blocks:
 | **InfoWidget** | The header strip along the top (clock, greeting, weather, cluster CPU/RAM). | As many as you like. |
 | **Bookmark** | Plain link tiles, grouped like service cards but with no live data. | As many as you like. |
 
-**The golden rule:** every building block except the Dashboard itself carries a
-line that names the Dashboard it belongs to:
+**The golden rule:** every building block except the Dashboard itself lives in
+the **same namespace** as the Dashboard it belongs to (see the glossary), and
+carries an *optional* `spec.dashboardRef.name` for naming that Dashboard
+explicitly:
 
 ```yaml
 spec:
@@ -75,9 +77,12 @@ spec:
     name: home      # <- must match your Dashboard's metadata.name
 ```
 
-That name is the glue. Get it right and things appear on the page; get it wrong
-and they silently don't. They must all also live in the **same namespace** as
-the Dashboard (see the glossary).
+Leave `dashboardRef` out entirely and it defaults to the namespace's **sole**
+Dashboard — the common case, since most homelab setups run one Dashboard per
+namespace. Only set it explicitly once a namespace has more than one
+Dashboard and you need to say which one a given file belongs to; with two or
+more Dashboards and no `dashboardRef`, the file binds to none of them (see
+[Troubleshooting](troubleshooting.md)).
 
 ## The shape of every configuration file
 
@@ -91,8 +96,7 @@ metadata:
   name: media-services                   # a name of YOUR choosing for this file
   namespace: dashboards                  # where it lives (must match the Dashboard)
 spec:
-  dashboardRef:
-    name: home                           # which Dashboard it belongs to
+  # dashboardRef: {name: home}           # optional — needed only with >1 Dashboard in this namespace
   # ... the actual settings go here ...
 ```
 

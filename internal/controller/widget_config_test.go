@@ -40,7 +40,7 @@ var _ = Describe("Widget config validation", func() {
 			sc := &pagev1alpha1.ServiceCard{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.ServiceCardSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Group:        policyTestGroup,
 					Services: []pagev1alpha1.ServiceEntry{{
 						Name: testMultiFormNamePlex,
@@ -73,7 +73,7 @@ var _ = Describe("Widget config validation", func() {
 			sc := &pagev1alpha1.ServiceCard{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.ServiceCardSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Group:        policyTestGroup,
 					Services: []pagev1alpha1.ServiceEntry{{
 						Name: testMultiFormNamePlex,
@@ -110,7 +110,7 @@ var _ = Describe("Widget config validation", func() {
 			sc := &pagev1alpha1.ServiceCard{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.ServiceCardSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Group:        policyTestGroup,
 					Services: []pagev1alpha1.ServiceEntry{{
 						Name: testMultiFormNamePlex,
@@ -148,7 +148,7 @@ var _ = Describe("Widget config validation", func() {
 			iw := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
 						Type:   testWidgetTypeOpenMeteo,
 						Config: &apiextensionsv1.JSON{Raw: []byte(`{"longitude":1.2}`)},
@@ -177,7 +177,7 @@ var _ = Describe("Widget config validation", func() {
 			iw := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
 						Type: "glances",
 						URL:  new("http://glances.example.invalid"),
@@ -208,7 +208,7 @@ var _ = Describe("Widget config validation", func() {
 			iw := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
 						Type:   testWidgetTypeOpenMeteo,
 						Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0,"latitude2":3.0}`)},
@@ -241,7 +241,7 @@ var _ = Describe("Widget config validation", func() {
 			iw := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
 						Type:   testWidgetTypeOpenMeteo,
 						Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0}`)},

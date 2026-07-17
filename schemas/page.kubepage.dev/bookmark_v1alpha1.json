@@ -84,7 +84,7 @@
           "x-kubernetes-list-type": "atomic"
         },
         "dashboardRef": {
-          "description": "dashboardRef names the Dashboard this Bookmark belongs to.",
+          "description": "dashboardRef names the Dashboard this Bookmark belongs to. Optional: if\nunset, this Bookmark binds to the namespace's sole Dashboard: a\nnamespace with zero or more than one Dashboard leaves it unbound (see\napi/v1alpha1.BoundTo).",
           "properties": {
             "name": {
               "description": "name of the Dashboard this object belongs to.",
@@ -106,8 +106,7 @@
         }
       },
       "required": [
-        "bookmarks",
-        "dashboardRef"
+        "bookmarks"
       ],
       "type": "object",
       "x-kubernetes-validations": [

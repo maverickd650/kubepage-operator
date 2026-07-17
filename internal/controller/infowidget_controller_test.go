@@ -39,7 +39,7 @@ var _ = Describe("InfoWidget Controller", func() {
 						Namespace: resourceNamespace,
 					},
 					Spec: pagev1alpha1.InfoWidgetSpec{
-						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+						DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 						Widgets: []pagev1alpha1.InfoWidgetEntry{
 							{Type: "datetime"},
 						},

@@ -50,7 +50,7 @@ func (r *ServiceCardReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	cond, err := boundDashboardCondition(ctx, r.Client, entry.Namespace, entry.Spec.DashboardRef.Name, entry.Generation)
+	cond, err := boundDashboardCondition(ctx, r.Client, entry.Namespace, pagev1alpha1.RefName(entry.Spec.DashboardRef), entry.Generation)
 	if err != nil {
 		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
@@ -96,7 +96,7 @@ func (r *ServiceCardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 				var reqs []reconcile.Request
 				for _, e := range entries.Items {
-					if e.Spec.DashboardRef.Name == instance.Name {
+					if dashboardWatchMayAffect(pagev1alpha1.RefName(e.Spec.DashboardRef), instance.Name) {
 						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
 							Name:      e.Name,
 							Namespace: e.Namespace,

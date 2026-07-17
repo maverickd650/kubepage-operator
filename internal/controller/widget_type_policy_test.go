@@ -119,7 +119,7 @@ func serviceEntryWithWidgetType(name, widgetType string) *pagev1alpha1.ServiceCa
 	return &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 			Group:        policyTestGroup,
 			Services:     []pagev1alpha1.ServiceEntry{entry},
 		},
@@ -132,7 +132,7 @@ func infoWidgetWithType(name, widgetType string) *pagev1alpha1.InfoWidget {
 	return &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{
 				{Type: widgetType},
 			},

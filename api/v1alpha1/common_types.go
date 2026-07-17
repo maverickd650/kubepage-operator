@@ -31,6 +31,37 @@ type DashboardRef struct {
 	Name string `json:"name"`
 }
 
+// RefName returns ref's Name, or "" if ref is nil (the object's dashboardRef
+// is unset). Every reader of a config object's dashboardRef — controllers
+// and the dashboard pod alike — goes through this plus BoundTo rather than
+// dereferencing the pointer directly, so the two can't drift on nil
+// handling.
+func RefName(ref *DashboardRef) string {
+	if ref == nil {
+		return ""
+	}
+	return ref.Name
+}
+
+// BoundTo reports whether a config object (ServiceCard/Bookmark/InfoWidget)
+// whose dashboardRef.name is refName (as returned by RefName; "" means
+// dashboardRef is unset) is bound to the Dashboard named dashboardName,
+// given namespaceDashboardCount Dashboards total in that namespace.
+//
+// An explicit ref binds only to the Dashboard it names. An unset ref binds
+// to dashboardName only when the namespace has exactly one Dashboard: since
+// dashboardName is assumed to name a Dashboard that actually exists in the
+// namespace, namespaceDashboardCount == 1 necessarily means that Dashboard
+// is dashboardName. Zero or multiple Dashboards leave an unset ref unbound
+// (ambiguous), matching the Available=False conditions controllers set in
+// that case.
+func BoundTo(refName, dashboardName string, namespaceDashboardCount int) bool {
+	if refName != "" {
+		return refName == dashboardName
+	}
+	return namespaceDashboardCount == 1
+}
+
 // SecretValueSource is an inline value or a reference to a key in a Secret,
 // used for any config field that may hold a credential (e.g. a widget API
 // key). Exactly one of Value or SecretKeyRef must be set; this is enforced by

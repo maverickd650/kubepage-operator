@@ -140,9 +140,12 @@ type InfoWidgetEntry struct {
 // since header widgets are a flat, ordered list rather than grouped like
 // ServiceCard/Bookmark.
 type InfoWidgetSpec struct {
-	// dashboardRef names the Dashboard this InfoWidget belongs to.
-	// +required
-	DashboardRef DashboardRef `json:"dashboardRef"`
+	// dashboardRef names the Dashboard this InfoWidget belongs to. Optional:
+	// if unset, this InfoWidget binds to the namespace's sole Dashboard: a
+	// namespace with zero or more than one Dashboard leaves it unbound (see
+	// api/v1alpha1.BoundTo).
+	// +optional
+	DashboardRef *DashboardRef `json:"dashboardRef,omitempty"`
 
 	// widgets defines one entry per header widget, for an InfoWidget that
 	// groups multiple header widgets (a whole dashboard's worth) into one

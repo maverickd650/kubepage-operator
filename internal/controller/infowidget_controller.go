@@ -51,7 +51,7 @@ func (r *InfoWidgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	cond, err := boundDashboardCondition(ctx, r.Client, widget.Namespace, widget.Spec.DashboardRef.Name, widget.Generation)
+	cond, err := boundDashboardCondition(ctx, r.Client, widget.Namespace, pagev1alpha1.RefName(widget.Spec.DashboardRef), widget.Generation)
 	if err != nil {
 		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
@@ -97,7 +97,7 @@ func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 				var reqs []reconcile.Request
 				for _, w := range widgets.Items {
-					if w.Spec.DashboardRef.Name == instance.Name {
+					if dashboardWatchMayAffect(pagev1alpha1.RefName(w.Spec.DashboardRef), instance.Name) {
 						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
 							Name:      w.Name,
 							Namespace: w.Namespace,

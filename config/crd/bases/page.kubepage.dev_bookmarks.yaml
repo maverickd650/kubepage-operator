@@ -149,8 +149,11 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
               dashboardRef:
-                description: dashboardRef names the Dashboard this Bookmark belongs
-                  to.
+                description: |-
+                  dashboardRef names the Dashboard this Bookmark belongs to. Optional: if
+                  unset, this Bookmark binds to the namespace's sole Dashboard: a
+                  namespace with zero or more than one Dashboard leaves it unbound (see
+                  api/v1alpha1.BoundTo).
                 properties:
                   name:
                     description: name of the Dashboard this object belongs to.
@@ -171,7 +174,6 @@ spec:
                 type: string
             required:
             - bookmarks
-            - dashboardRef
             type: object
             x-kubernetes-validations:
             - message: 'every bookmarks entry must resolve a group: set spec.group

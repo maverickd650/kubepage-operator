@@ -204,13 +204,19 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	widgetDefaults := dashboardSpec.WidgetDefaults
 	allowedMonitorNamespaces := dashboardSpec.MonitorNamespaces
 
+	dashCount, err := namespaceDashboardCount(ctx, p.Reader, p.Namespace)
+	if err != nil {
+		pollerLog.Error(err, "counting Dashboards")
+		return
+	}
+
 	var entries pagev1alpha1.ServiceCardList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
 		pollerLog.Error(err, "listing ServiceCards")
 		return
 	}
 	for _, entry := range entries.Items {
-		if entry.Spec.DashboardRef.Name != p.DashboardName {
+		if !pagev1alpha1.BoundTo(pagev1alpha1.RefName(entry.Spec.DashboardRef), p.DashboardName, dashCount) {
 			continue
 		}
 
@@ -300,7 +306,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		pollerLog.Error(err, "listing InfoWidgets")
 	} else {
 		for _, iw := range infoWidgets.Items {
-			if iw.Spec.DashboardRef.Name != p.DashboardName {
+			if !pagev1alpha1.BoundTo(pagev1alpha1.RefName(iw.Spec.DashboardRef), p.DashboardName, dashCount) {
 				continue
 			}
 			for idx, entry := range iw.Spec.Entries() {
