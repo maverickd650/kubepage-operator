@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1041,8 +1042,11 @@ func TestPollerPollWidgetCopiesDescriptionTargetAndConfig(t *testing.T) {
 
 // TestPollerPollWidgetHonorsPollIntervalSeconds exercises the
 // PollIntervalSeconds skip path: a widget whose override hasn't elapsed yet
-// must not be polled (and must leave any existing card untouched), while one
-// whose override has elapsed must be polled as normal.
+// must not be re-polled (leaving Fields from the last widget poll
+// untouched), but the entry's monitor result — probed every cycle
+// regardless of the widget's own interval — must still be merged into the
+// existing card so its Status doesn't go stale. Once the override has
+// elapsed, the widget must be polled as normal again.
 func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1068,27 +1072,83 @@ func TestPollerPollWidgetHonorsPollIntervalSeconds(t *testing.T) {
 	p := &Poller{HTTPClient: srv.Client(), Store: store, Interval: time.Second}
 
 	// First poll of key is always due, regardless of override.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{status: "Up"}, false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Fatalf("after first poll, upstream hit %d times, want 1", n)
 	}
-	if len(store.Snapshot()) != 1 {
-		t.Fatalf("Snapshot() = %d cards, want 1", len(store.Snapshot()))
+	cards := store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
 	}
+	if len(cards[0].Fields) == 0 {
+		t.Fatalf("after first poll, card.Fields is empty, want widget fields populated")
+	}
+	wantFields := cards[0].Fields
 
-	// Immediately polling again is within the 100s override: skipped.
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
+	// Immediately polling again is within the 100s override: the widget is
+	// not re-polled, but a changed monitor status must still land on the
+	// stored card.
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{status: statusDown}, false, nil)
 	if n := hits.Load(); n != 1 {
 		t.Errorf("after second (not-yet-due) poll, upstream hit %d times, want still 1", n)
+	}
+	cards = store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+	}
+	if cards[0].Status != statusDown {
+		t.Errorf("after second (not-yet-due) poll, card.Status = %q, want %q (fresh monitor result must not go stale)", cards[0].Status, statusDown)
+	}
+	if !slices.Equal(cards[0].Fields, wantFields) {
+		t.Errorf("after second (not-yet-due) poll, card.Fields = %+v, want unchanged %+v", cards[0].Fields, wantFields)
 	}
 
 	// Back-date the last-polled time past the override: due again.
 	p.widgetLastPolledMu.Lock()
 	p.widgetLastPolled[testCardKeyA] = time.Now().Add(-101 * time.Second)
 	p.widgetLastPolledMu.Unlock()
-	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{}, false, nil)
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{status: "Up"}, false, nil)
 	if n := hits.Load(); n != 2 {
 		t.Errorf("after third (due) poll, upstream hit %d times, want 2", n)
+	}
+}
+
+// TestPollerMergeMonitorIntoStoredCardFirstCycle covers pollWidget's skip
+// path when no card has been stored yet for the key (the widget's very
+// first cycle happens to already be past due for some other reason, or the
+// override skip races the very first poll): the merge must still produce a
+// card carrying the monitor result, with no fields.
+func TestPollerMergeMonitorIntoStoredCardFirstCycle(t *testing.T) {
+	overrideSeconds := int32(100)
+	entry := pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			Group: testGroup,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcAName,
+			}},
+		},
+	}
+	url := "http://example.invalid"
+	widget := &pagev1alpha1.ServiceWidget{Type: testWidgetType, URL: &url, PollIntervalSeconds: &overrideSeconds}
+
+	store := NewStore()
+	p := &Poller{Store: store, Interval: time.Second}
+	// Pre-seed widgetLastPolled so duePoll reports not-due even on the
+	// first call, exercising the "no previous card" branch of the merge.
+	p.widgetLastPolled = map[string]time.Time{testCardKeyA: time.Now()}
+
+	p.pollWidget(t.Context(), testCardKeyA, entry.Namespace, entry.Spec.Entries()[0], widget, monitorProbeResult{status: "Up"}, false, nil)
+
+	cards := store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+	}
+	if cards[0].Status != "Up" {
+		t.Errorf("card.Status = %q, want %q", cards[0].Status, "Up")
+	}
+	if len(cards[0].Fields) != 0 {
+		t.Errorf("card.Fields = %+v, want empty (widget never polled yet)", cards[0].Fields)
 	}
 }
 

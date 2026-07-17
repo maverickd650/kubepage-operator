@@ -629,11 +629,14 @@ func podReady(pod *corev1.Pod) bool {
 // the entry's already-probed monitor result attached. A nil widget means the
 // entry has a monitor but no widget: the card shows only title/icon/monitor.
 // When widget sets its own PollIntervalSeconds and this cycle isn't due yet,
-// pollWidget returns immediately without touching Store, leaving the
-// previous cycle's card (monitor status included) in place — key is already
-// in this cycle's keep set from the caller, so it survives Store.Prune.
+// pollWidget doesn't re-run the widget poll — the entry's monitor is still
+// probed every cycle regardless of the widget's own interval, so the fresh
+// monitor result is merged into the previously stored card (see
+// mergeMonitorIntoStoredCard) instead of being discarded, keeping the
+// card's Up/Down status current even between widget polls.
 func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, se pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, m monitorProbeResult, defaultHideErrors bool, widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry) {
 	if widget != nil && !p.duePoll(key, widget.PollIntervalSeconds) {
+		p.mergeMonitorIntoStoredCard(key, se, m, defaultHideErrors)
 		return
 	}
 
@@ -727,6 +730,56 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		card.Err = err.Error()
 	case err == nil && card.ShowStats:
 		card.Fields = applyHighlights(filterFields(fields, widget.Fields), widget.Highlight)
+	}
+	p.Store.Set(card)
+}
+
+// mergeMonitorIntoStoredCard updates the fresh-this-cycle monitor fields
+// (Status, StatusStyle, Latency, PodStatus, PodReadyText, plus a
+// monitor-sourced Err when hideErrors allows one) on the card already in
+// Store for key, leaving everything the widget poll produced (Fields,
+// WidgetType, and any widget-sourced Err) untouched. Used when a widget's
+// own PollIntervalSeconds override skips this cycle's poll: without this,
+// the card would show the widget's last fields next to a stale monitor
+// status for up to the override interval. If no card is stored yet (the
+// widget's very first cycle), a new card is stored with the monitor result
+// and no fields — the next due poll fills those in.
+func (p *Poller) mergeMonitorIntoStoredCard(key string, se pagev1alpha1.ServiceEntry, m monitorProbeResult, defaultHideErrors bool) {
+	hideErrors := defaultHideErrors
+	if se.ErrorDisplay != nil {
+		hideErrors = !*se.ErrorDisplay
+	}
+
+	card, ok := p.Store.Get(key)
+	if !ok {
+		card = Card{
+			Key:         key,
+			Group:       se.Group,
+			ServiceName: se.Name,
+			Order:       se.Order,
+			IconURL:     IconURL(se.Icon),
+			ShowStats:   se.ShowStats == nil || *se.ShowStats,
+		}
+		if se.Description != nil {
+			card.Description = *se.Description
+		}
+		if se.Href != nil {
+			card.Href = *se.Href
+		}
+		if se.Target != nil {
+			card.Target = *se.Target
+		}
+	}
+
+	card.HideErrors = hideErrors
+	card.Status = m.status
+	card.StatusStyle = m.statusStyle
+	card.Latency = m.latency
+	card.PodStatus = m.podStatus
+	card.PodReadyText = m.podReadyText
+	card.UpdatedAt = time.Now()
+	if m.err != "" && !hideErrors {
+		card.Err = m.err
 	}
 	p.Store.Set(card)
 }

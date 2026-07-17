@@ -69,6 +69,14 @@ func (s *Store) Set(c Card) {
 	s.cards[c.Key] = c
 }
 
+// Get returns the currently stored Card for key, if any.
+func (s *Store) Get(key string) (Card, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c, ok := s.cards[key]
+	return c, ok
+}
+
 // Prune removes any stored card whose key is not in keep, so cards for
 // deleted/rebound ServiceCards don't linger forever.
 func (s *Store) Prune(keep map[string]bool) {
