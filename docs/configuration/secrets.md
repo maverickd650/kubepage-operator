@@ -77,6 +77,36 @@ Two things to get right — they cause most credential problems:
    `token` means "no credential given".
 2. **`name` and `key`** must exactly match your Secret and the entry inside it.
 
+## Shorthand: point at a whole Secret with `secretRef`
+
+When your Secret's key names already match the field names a widget expects
+— Plex's Secret has one key, `token`; Grafana's has `username` and
+`password` — you can skip `secrets` entirely and just name the Secret:
+
+```yaml
+widgets:
+  - type: plex
+    url: http://plex.example.com
+    secretRef: plex-credentials
+```
+
+Every key in `plex-credentials` becomes a resolved secret field, as if you'd
+written it out under `secrets` with `key` equal to that key name. Grafana's
+two-credential case collapses the same way:
+
+```yaml
+widgets:
+  - type: grafana
+    secretRef: grafana-credentials   # Secret holds both username and password
+```
+
+`secretRef` and `secrets` can be combined: `secrets` always wins per key, so
+you can use `secretRef` for the common fields and `secrets` to override or
+add one that doesn't match (e.g. a Secret whose key is named differently, or
+one shared across widgets that need only some of its keys renamed). The long
+form under `secrets` remains the way to point at a Secret whose key names
+don't match the widget's field names at all.
+
 ## Please don't inline real credentials
 
 You *can* write a value straight into the config:
