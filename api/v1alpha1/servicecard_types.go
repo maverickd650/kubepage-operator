@@ -391,9 +391,12 @@ func (se *ServiceEntry) MonitorURL() string {
 // entry that doesn't set its own.
 // +kubebuilder:validation:XValidation:rule="has(self.group) || self.services.all(s, has(s.group))",message="every services entry must resolve a group: set spec.group as a default, or set group on every entry"
 type ServiceCardSpec struct {
-	// dashboardRef names the Dashboard this ServiceCard belongs to.
-	// +required
-	DashboardRef DashboardRef `json:"dashboardRef"`
+	// dashboardRef names the Dashboard this ServiceCard belongs to. Optional:
+	// if unset, this ServiceCard binds to the namespace's sole Dashboard: a
+	// namespace with zero or more than one Dashboard leaves it unbound (see
+	// api/v1alpha1.BoundTo).
+	// +optional
+	DashboardRef *DashboardRef `json:"dashboardRef,omitempty"`
 
 	// group is the name of the group this ServiceCard belongs to, or a
 	// "/"-separated path nesting it inside one or more parent groups (see

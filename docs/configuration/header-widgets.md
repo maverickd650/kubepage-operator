@@ -20,8 +20,6 @@ metadata:
   name: header
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home
   widgets:
     - type: greeting
       config:

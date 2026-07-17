@@ -39,7 +39,7 @@ var _ = Describe("Bookmark Controller", func() {
 						Namespace: resourceNamespace,
 					},
 					Spec: pagev1alpha1.BookmarkSpec{
-						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+						DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 						Group:        "Group",
 						Bookmarks: []pagev1alpha1.BookmarkEntry{
 							{Name: "Name", Href: "https://example.com"},
@@ -84,7 +84,7 @@ var _ = Describe("Bookmark Controller", func() {
 			return &pagev1alpha1.Bookmark{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: hrefTestNamespace},
 				Spec: pagev1alpha1.BookmarkSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 					Group:        "HrefTest",
 					Bookmarks:    []pagev1alpha1.BookmarkEntry{{Name: "Entry", Href: href}},
 				},

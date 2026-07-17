@@ -414,7 +414,7 @@ var _ = Describe("Dashboard controller", func() {
 			entry := &pagev1alpha1.ServiceCard{
 				ObjectMeta: metav1.ObjectMeta{Name: "prom", Namespace: namespace.Name},
 				Spec: pagev1alpha1.ServiceCardSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: DashboardName},
 					Group:        "Monitoring",
 					Services: []pagev1alpha1.ServiceEntry{{
 						Name: "Prometheus",
@@ -470,7 +470,7 @@ var _ = Describe("Dashboard controller", func() {
 			widget := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: "metrics", Namespace: namespace.Name},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: DashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{
 						{Type: kubeMetricsWidgetType},
 					},
@@ -677,7 +677,7 @@ var _ = Describe("Dashboard controller", func() {
 			bm := &pagev1alpha1.Bookmark{
 				ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: namespace.Name},
 				Spec: pagev1alpha1.BookmarkSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: DashboardName},
 					Group:        "Developer",
 					Bookmarks: []pagev1alpha1.BookmarkEntry{
 						{Name: "Github", Href: "https://github.com/"},
@@ -689,7 +689,7 @@ var _ = Describe("Dashboard controller", func() {
 			entry := &pagev1alpha1.ServiceCard{
 				ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: namespace.Name},
 				Spec: pagev1alpha1.ServiceCardSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: DashboardName},
 					Group:        testMultiFormGroupMedia,
 					Services: []pagev1alpha1.ServiceEntry{
 						{Name: "Sonarr"},
@@ -1192,7 +1192,7 @@ var _ = Describe("Dashboard controller", func() {
 			widget := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: "metrics", Namespace: namespace.Name},
 				Spec: pagev1alpha1.InfoWidgetSpec{
-					DashboardRef: pagev1alpha1.DashboardRef{Name: DashboardName},
+					DashboardRef: &pagev1alpha1.DashboardRef{Name: DashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{
 						{Type: kubeMetricsWidgetType},
 					},

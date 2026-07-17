@@ -513,20 +513,24 @@ func (r *DashboardReconciler) boundCountsForDashboard(ctx context.Context, insta
 	if err := r.List(ctx, &infoWidgets, client.InNamespace(instance.Namespace)); err != nil {
 		return boundCounts{}, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
+	dashCount, err := namespaceDashboardCount(ctx, r.Client, instance.Namespace)
+	if err != nil {
+		return boundCounts{}, fmt.Errorf("counting Dashboards: %w", err)
+	}
 
 	counts := boundCounts{}
 	for _, s := range serviceEntries.Items {
-		if s.Spec.DashboardRef.Name == instance.Name {
+		if pagev1alpha1.BoundTo(pagev1alpha1.RefName(s.Spec.DashboardRef), instance.Name, dashCount) {
 			counts.serviceEntries++
 		}
 	}
 	for _, b := range bookmarks.Items {
-		if b.Spec.DashboardRef.Name == instance.Name {
+		if pagev1alpha1.BoundTo(pagev1alpha1.RefName(b.Spec.DashboardRef), instance.Name, dashCount) {
 			counts.bookmarks++
 		}
 	}
 	for _, w := range infoWidgets.Items {
-		if w.Spec.DashboardRef.Name == instance.Name {
+		if pagev1alpha1.BoundTo(pagev1alpha1.RefName(w.Spec.DashboardRef), instance.Name, dashCount) {
 			counts.infoWidgets++
 		}
 	}
@@ -992,15 +996,15 @@ func (r *DashboardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// longer drives any render or rollout — only status visibility.
 		Watches(
 			&pagev1alpha1.ServiceCard{},
-			handler.EnqueueRequestsFromMapFunc(mapToDashboard(func(s *pagev1alpha1.ServiceCard) string { return s.Spec.DashboardRef.Name })),
+			handler.EnqueueRequestsFromMapFunc(mapToDashboard(mgr.GetClient(), func(s *pagev1alpha1.ServiceCard) string { return pagev1alpha1.RefName(s.Spec.DashboardRef) })),
 		).
 		Watches(
 			&pagev1alpha1.Bookmark{},
-			handler.EnqueueRequestsFromMapFunc(mapToDashboard(func(b *pagev1alpha1.Bookmark) string { return b.Spec.DashboardRef.Name })),
+			handler.EnqueueRequestsFromMapFunc(mapToDashboard(mgr.GetClient(), func(b *pagev1alpha1.Bookmark) string { return pagev1alpha1.RefName(b.Spec.DashboardRef) })),
 		).
 		Watches(
 			&pagev1alpha1.InfoWidget{},
-			handler.EnqueueRequestsFromMapFunc(mapToDashboard(func(w *pagev1alpha1.InfoWidget) string { return w.Spec.DashboardRef.Name })),
+			handler.EnqueueRequestsFromMapFunc(mapToDashboard(mgr.GetClient(), func(w *pagev1alpha1.InfoWidget) string { return pagev1alpha1.RefName(w.Spec.DashboardRef) })),
 		).
 		// Watch Secret metadata only (never contents — see the secrets RBAC
 		// comment above) so that under spec.secretPolicy: Labeled, adding or
@@ -1058,21 +1062,35 @@ var secretAllowWidgetsLabelChanged = predicate.Funcs{
 
 // mapToDashboard builds a handler.MapFunc that enqueues the Dashboard named by
 // extract(obj) (in obj's own namespace), for watching a config CRD that
-// carries a DashboardRef. Returns no requests if obj isn't a T or its
-// dashboardRef name is empty.
-func mapToDashboard[T client.Object](extract func(T) string) handler.MapFunc {
-	return func(_ context.Context, obj client.Object) []reconcile.Request {
+// carries a DashboardRef. Returns no requests if obj isn't a T. When
+// extract(obj) is "" (dashboardRef unset — see pagev1alpha1.RefName), obj
+// could bind to whichever Dashboard is or becomes the namespace's sole
+// Dashboard, so every Dashboard in the namespace is enqueued to keep each
+// one's bound-count status current as that ambiguity resolves.
+func mapToDashboard[T client.Object](c client.Client, extract func(T) string) handler.MapFunc {
+	return func(ctx context.Context, obj client.Object) []reconcile.Request {
 		t, ok := obj.(T)
 		if !ok {
 			return nil
 		}
-		name := extract(t)
-		if name == "" {
+		if name := extract(t); name != "" {
+			return []reconcile.Request{{NamespacedName: types.NamespacedName{
+				Name:      name,
+				Namespace: t.GetNamespace(),
+			}}}
+		}
+
+		var dashboards pagev1alpha1.DashboardList
+		if err := c.List(ctx, &dashboards, client.InNamespace(t.GetNamespace())); err != nil {
 			return nil
 		}
-		return []reconcile.Request{{NamespacedName: types.NamespacedName{
-			Name:      name,
-			Namespace: t.GetNamespace(),
-		}}}
+		reqs := make([]reconcile.Request, 0, len(dashboards.Items))
+		for _, d := range dashboards.Items {
+			reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
+				Name:      d.Name,
+				Namespace: t.GetNamespace(),
+			}})
+		}
+		return reqs
 	}
 }

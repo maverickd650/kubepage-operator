@@ -24,7 +24,7 @@ var _ = Describe("Bookmark status.entries", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 				Group:        policyTestGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{
 					{Name: testBookmarkNameGithub, Href: testBookmarkHrefExample},

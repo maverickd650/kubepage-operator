@@ -326,7 +326,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	greeting := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type:   headerTypeGreeting,
 				Order:  &order2,
@@ -337,7 +337,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	clock := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type:  headerTypeDatetime,
 				Order: &order1,
@@ -347,7 +347,7 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	other := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testDiscoverySkipKey, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type: headerTypeGreeting,
 			}},
@@ -370,6 +370,73 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	}
 }
 
+// TestLoadSiteDefaultsUnsetDashboardRefToSoleDashboard verifies that a
+// Bookmark/InfoWidget with no dashboardRef binds to the namespace's sole
+// Dashboard (issue #174's "dashboardRef optional" defaulting).
+func TestLoadSiteDefaultsUnsetDashboardRefToSoleDashboard(t *testing.T) {
+	scheme := testScheme(t)
+	dash := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace}}
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			Group:     "Developer",
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{Name: "Github", Href: "https://github.com/"}},
+		},
+	}
+	widget := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{Type: headerTypeDatetime}},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dash, bookmark, widget).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if len(site.BookmarkGroups) != 1 {
+		t.Fatalf("BookmarkGroups = %+v, want 1 (unset dashboardRef bound to sole Dashboard)", site.BookmarkGroups)
+	}
+	if len(site.HeaderWidgets) != 1 {
+		t.Fatalf("HeaderWidgets = %+v, want 1 (unset dashboardRef bound to sole Dashboard)", site.HeaderWidgets)
+	}
+}
+
+// TestLoadSiteAmbiguousDashboardRefLeavesUnbound verifies that a Bookmark/
+// InfoWidget with no dashboardRef stays unbound (from every Dashboard) once
+// the namespace has more than one Dashboard.
+func TestLoadSiteAmbiguousDashboardRefLeavesUnbound(t *testing.T) {
+	scheme := testScheme(t)
+	dash := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace}}
+	other := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Name: testNameOther, Namespace: testNamespace}}
+	bookmark := &pagev1alpha1.Bookmark{
+		ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: testNamespace},
+		Spec: pagev1alpha1.BookmarkSpec{
+			Group:     "Developer",
+			Bookmarks: []pagev1alpha1.BookmarkEntry{{Name: "Github", Href: "https://github.com/"}},
+		},
+	}
+	widget := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testClockName, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{Type: headerTypeDatetime}},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dash, other, bookmark, widget).Build()
+
+	site, err := LoadSite(t.Context(), cl, testNamespace, testDashboardName)
+	if err != nil {
+		t.Fatalf("LoadSite() error = %v", err)
+	}
+	if len(site.BookmarkGroups) != 0 {
+		t.Errorf("BookmarkGroups = %+v, want 0 (unset dashboardRef ambiguous across 2 Dashboards)", site.BookmarkGroups)
+	}
+	if len(site.HeaderWidgets) != 0 {
+		t.Errorf("HeaderWidgets = %+v, want 0 (unset dashboardRef ambiguous across 2 Dashboards)", site.HeaderWidgets)
+	}
+}
+
 // TestHeaderWidgetsResolvesAlign verifies the InfoWidgetSpec.Align default
 // (greeting/datetime left, everything else right) and its explicit
 // left/right override (gap-analysis §4.3).
@@ -377,19 +444,19 @@ func TestHeaderWidgetsResolvesAlign(t *testing.T) {
 	explicitLeft := pagev1alpha1.AlignLeft
 	items := []pagev1alpha1.InfoWidget{
 		{ObjectMeta: metav1.ObjectMeta{Name: testGreetName}, Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type: headerTypeGreeting,
 			}},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather}, Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type: testOpenMeteoType,
 			}},
 		}},
 		{ObjectMeta: metav1.ObjectMeta{Name: testCPUName}, Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type:  testKubeMetricsType,
 				Align: &explicitLeft,
@@ -397,7 +464,7 @@ func TestHeaderWidgetsResolvesAlign(t *testing.T) {
 		}},
 	}
 
-	out := headerWidgets(items, testDashboardName)
+	out := headerWidgets(items, testDashboardName, 1)
 	got := map[string]string{}
 	for _, w := range out {
 		got[w.Name] = w.Align
@@ -425,7 +492,7 @@ func TestHeaderWidgetsFlattensMultiWidgetFormWithDistinctKeys(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: multiName},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Widgets: []pagev1alpha1.InfoWidgetEntry{
 					{Type: headerTypeGreeting, Config: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hi"}`)}},
 					{Type: headerTypeDatetime},
@@ -434,7 +501,7 @@ func TestHeaderWidgetsFlattensMultiWidgetFormWithDistinctKeys(t *testing.T) {
 		},
 	}
 
-	out := headerWidgets(items, testDashboardName)
+	out := headerWidgets(items, testDashboardName, 1)
 	if len(out) != 2 {
 		t.Fatalf("headerWidgets() = %+v, want 2 entries", out)
 	}
@@ -497,7 +564,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	bm1 := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm1", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
 			Bookmarks: []pagev1alpha1.BookmarkEntry{{
 				Name:  "Second",
@@ -509,7 +576,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	bm2 := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm2", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Group:        testBookmarkGroup,
 			Bookmarks: []pagev1alpha1.BookmarkEntry{{
 				Name:  testLabelFirst,
@@ -521,7 +588,7 @@ func TestLoadSiteGroupsBookmarksByGroupAndOrder(t *testing.T) {
 	other := &pagev1alpha1.Bookmark{
 		ObjectMeta: metav1.ObjectMeta{Name: "bm3", Namespace: testNamespace},
 		Spec: pagev1alpha1.BookmarkSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: "not-" + testDashboardName},
 			Group:        testBookmarkGroup,
 			Bookmarks: []pagev1alpha1.BookmarkEntry{{
 				Name: "Skip me",
@@ -650,7 +717,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testBookmarkGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{{
 					Name:  "Z",
@@ -661,7 +728,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		},
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testBookmarkGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{{
 					Name:        "A",
@@ -674,7 +741,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		},
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testOtherGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{{
 					Name: "Only",
@@ -684,7 +751,7 @@ func TestGroupBookmarksGroupOrderImprovesFromALaterEntry(t *testing.T) {
 		},
 	}
 
-	groups := groupBookmarks(items, testDashboardName, Site{})
+	groups := groupBookmarks(items, testDashboardName, 1, Site{})
 
 	if len(groups) != 2 || groups[0].Name != testBookmarkGroup {
 		t.Fatalf("groupBookmarks() groups = %+v, want %s first (lower effective Order after the second entry improves it)", groups, testBookmarkGroup)
@@ -707,7 +774,7 @@ func TestGroupBookmarksMultiFormGroupDefaultingAndOverride(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testBookmarkGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{
 					{Name: testLabelFirst, Href: testBookmarkHrefA},
@@ -717,7 +784,7 @@ func TestGroupBookmarksMultiFormGroupDefaultingAndOverride(t *testing.T) {
 		},
 	}
 
-	groups := groupBookmarks(items, testDashboardName, Site{})
+	groups := groupBookmarks(items, testDashboardName, 1, Site{})
 
 	if len(groups) != 2 {
 		t.Fatalf("groupBookmarks() = %d groups, want 2 (%s and %s)", len(groups), testBookmarkGroup, testOtherGroup)
@@ -747,7 +814,7 @@ func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testBookmarkGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{{
 					Name: "A",
@@ -771,7 +838,7 @@ func TestGroupBookmarksAppliesMatchingLayoutGroup(t *testing.T) {
 		}},
 	}
 
-	groups := groupBookmarks(items, testDashboardName, site)
+	groups := groupBookmarks(items, testDashboardName, 1, site)
 	if len(groups) != 1 {
 		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
 	}
@@ -798,7 +865,7 @@ func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
 	items := []pagev1alpha1.Bookmark{
 		{
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Group:        testBookmarkGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{{
 					Name: "A",
@@ -809,7 +876,7 @@ func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
 	}
 	site := Site{GroupsInitiallyCollapsed: true, UseEqualHeights: true}
 
-	groups := groupBookmarks(items, testDashboardName, site)
+	groups := groupBookmarks(items, testDashboardName, 1, site)
 	if len(groups) != 1 {
 		t.Fatalf("groupBookmarks() = %d groups, want 1", len(groups))
 	}

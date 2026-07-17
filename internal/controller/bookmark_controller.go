@@ -47,7 +47,7 @@ func (r *BookmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	cond, err := boundDashboardCondition(ctx, r.Client, bookmark.Namespace, bookmark.Spec.DashboardRef.Name, bookmark.Generation)
+	cond, err := boundDashboardCondition(ctx, r.Client, bookmark.Namespace, pagev1alpha1.RefName(bookmark.Spec.DashboardRef), bookmark.Generation)
 	if err != nil {
 		log.Error(err, "Failed to get referenced Dashboard")
 		return ctrl.Result{}, err
@@ -86,7 +86,7 @@ func (r *BookmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 				var reqs []reconcile.Request
 				for _, b := range bookmarks.Items {
-					if b.Spec.DashboardRef.Name == instance.Name {
+					if dashboardWatchMayAffect(pagev1alpha1.RefName(b.Spec.DashboardRef), instance.Name) {
 						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
 							Name:      b.Name,
 							Namespace: b.Namespace,

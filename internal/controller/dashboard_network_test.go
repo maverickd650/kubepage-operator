@@ -708,14 +708,16 @@ func TestReconcileHTTPRouteLifecycle(t *testing.T) {
 }
 
 func TestMapToDashboard(t *testing.T) {
-	extract := func(b *pagev1alpha1.Bookmark) string { return b.Spec.DashboardRef.Name }
-	mapFn := mapToDashboard(extract)
+	extract := func(b *pagev1alpha1.Bookmark) string { return pagev1alpha1.RefName(b.Spec.DashboardRef) }
 	ctx := t.Context()
 
 	t.Run("enqueues the referenced Dashboard in the object's namespace", func(t *testing.T) {
+		scheme := networkTestScheme(t)
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+		mapFn := mapToDashboard(cl, extract)
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: "ns"},
-			Spec:       pagev1alpha1.BookmarkSpec{DashboardRef: pagev1alpha1.DashboardRef{Name: testRefDashboardName}},
+			Spec:       pagev1alpha1.BookmarkSpec{DashboardRef: &pagev1alpha1.DashboardRef{Name: testRefDashboardName}},
 		}
 		reqs := mapFn(ctx, bm)
 		if len(reqs) != 1 || reqs[0].Name != testRefDashboardName || reqs[0].Namespace != "ns" {
@@ -723,14 +725,23 @@ func TestMapToDashboard(t *testing.T) {
 		}
 	})
 
-	t.Run("returns nil when the dashboardRef name is empty", func(t *testing.T) {
+	t.Run("enqueues every Dashboard in the namespace when dashboardRef is unset", func(t *testing.T) {
+		scheme := networkTestScheme(t)
+		one := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"}}
+		other := &pagev1alpha1.Dashboard{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "ns"}}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(one, other).Build()
+		mapFn := mapToDashboard(cl, extract)
 		bm := &pagev1alpha1.Bookmark{ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: "ns"}}
-		if reqs := mapFn(ctx, bm); reqs != nil {
-			t.Errorf("mapFn() = %+v, want nil", reqs)
+		reqs := mapFn(ctx, bm)
+		if len(reqs) != 2 {
+			t.Errorf("mapFn() = %+v, want 2 requests (one per namespace Dashboard)", reqs)
 		}
 	})
 
 	t.Run("returns nil for an object of the wrong type", func(t *testing.T) {
+		scheme := networkTestScheme(t)
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+		mapFn := mapToDashboard(cl, extract)
 		cfg := &pagev1alpha1.ServiceCard{ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: "ns"}}
 		if reqs := mapFn(ctx, cfg); reqs != nil {
 			t.Errorf("mapFn() = %+v, want nil for a non-Bookmark object", reqs)

@@ -20,7 +20,7 @@ var _ = Describe("Bookmark CRD schema validation", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm-multi-default-group", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 				Bookmarks: []pagev1alpha1.BookmarkEntry{
 					{Name: testBookmarkNameGithub, Href: testBookmarkHrefExample},
@@ -36,7 +36,7 @@ var _ = Describe("Bookmark CRD schema validation", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm-multi-per-entry-group", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Bookmarks: []pagev1alpha1.BookmarkEntry{
 					{Name: testBookmarkNameGithub, Href: testBookmarkHrefExample, Group: testMultiFormGroupMedia},
 					{Name: testBookmarkNameWikipedia, Href: testBookmarkHrefExample, Group: "Reference"},
@@ -51,7 +51,7 @@ var _ = Describe("Bookmark CRD schema validation", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm-no-bookmarks", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 			},
 		}
@@ -64,7 +64,7 @@ var _ = Describe("Bookmark CRD schema validation", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm-entry-no-name", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 				Bookmarks:    []pagev1alpha1.BookmarkEntry{{Href: testBookmarkHrefExample}},
 			},
@@ -78,7 +78,7 @@ var _ = Describe("Bookmark CRD schema validation", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm-entry-no-href", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 				Bookmarks:    []pagev1alpha1.BookmarkEntry{{Name: testBookmarkNameGithub}},
 			},
@@ -92,7 +92,7 @@ var _ = Describe("Bookmark CRD schema validation", func() {
 		bm := &pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bm-multi-no-group", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Bookmarks: []pagev1alpha1.BookmarkEntry{
 					{Name: testBookmarkNameGithub, Href: testBookmarkHrefExample, Group: testMultiFormGroupMedia},
 					{Name: testBookmarkNameWikipedia, Href: testBookmarkHrefExample}, // no own group, and spec.group is unset

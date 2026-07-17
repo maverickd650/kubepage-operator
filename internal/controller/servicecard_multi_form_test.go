@@ -20,7 +20,7 @@ var _ = Describe("ServiceCard CRD schema validation", func() {
 		se := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-multi-default-group", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 				Services: []pagev1alpha1.ServiceEntry{
 					{Name: testMultiFormNamePlex},
@@ -36,7 +36,7 @@ var _ = Describe("ServiceCard CRD schema validation", func() {
 		se := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-multi-per-entry-group", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Services: []pagev1alpha1.ServiceEntry{
 					{Name: testMultiFormNamePlex, Group: testMultiFormGroupMedia},
 					{Name: "Grafana", Group: "Observability"},
@@ -51,7 +51,7 @@ var _ = Describe("ServiceCard CRD schema validation", func() {
 		se := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-no-services", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 			},
 		}
@@ -64,7 +64,7 @@ var _ = Describe("ServiceCard CRD schema validation", func() {
 		se := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-services-entry-no-name", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Group:        policyTestGroup,
 				Services:     []pagev1alpha1.ServiceEntry{{}},
 			},
@@ -78,7 +78,7 @@ var _ = Describe("ServiceCard CRD schema validation", func() {
 		se := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: "sc-multi-no-group", Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: policyDashboardRef},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: policyDashboardRef},
 				Services: []pagev1alpha1.ServiceEntry{
 					{Name: testMultiFormNamePlex, Group: testMultiFormGroupMedia},
 					{Name: testMultiFormNameStash}, // no own group, and spec.group is unset

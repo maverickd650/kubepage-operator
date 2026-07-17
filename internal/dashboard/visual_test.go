@@ -136,7 +136,7 @@ func startVisualServer(t *testing.T, theme, headerStyle string) (baseURL string,
 		&pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: "greet", Namespace: testNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Widgets: []pagev1alpha1.InfoWidgetEntry{{
 					Type:   "greeting",
 					Config: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Good afternoon"}`)},
@@ -146,14 +146,14 @@ func startVisualServer(t *testing.T, theme, headerStyle string) (baseURL string,
 		&pagev1alpha1.InfoWidget{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster", Namespace: testNamespace},
 			Spec: pagev1alpha1.InfoWidgetSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Widgets:      []pagev1alpha1.InfoWidgetEntry{{Type: "kubemetrics"}},
 			},
 		},
 		&pagev1alpha1.Bookmark{
 			ObjectMeta: metav1.ObjectMeta{Name: "bookmarks", Namespace: testNamespace},
 			Spec: pagev1alpha1.BookmarkSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Bookmarks: []pagev1alpha1.BookmarkEntry{
 					{Name: "Github", Group: "Links", Href: "https://github.com"},
 					{Name: "Docs", Group: "Links", Href: "https://example.com/docs"},

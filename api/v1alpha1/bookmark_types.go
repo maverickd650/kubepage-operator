@@ -87,9 +87,12 @@ type BookmarkEntry struct {
 // entry that doesn't set its own.
 // +kubebuilder:validation:XValidation:rule="has(self.group) || self.bookmarks.all(b, has(b.group))",message="every bookmarks entry must resolve a group: set spec.group as a default, or set group on every entry"
 type BookmarkSpec struct {
-	// dashboardRef names the Dashboard this Bookmark belongs to.
-	// +required
-	DashboardRef DashboardRef `json:"dashboardRef"`
+	// dashboardRef names the Dashboard this Bookmark belongs to. Optional: if
+	// unset, this Bookmark binds to the namespace's sole Dashboard: a
+	// namespace with zero or more than one Dashboard leaves it unbound (see
+	// api/v1alpha1.BoundTo).
+	// +optional
+	DashboardRef *DashboardRef `json:"dashboardRef,omitempty"`
 
 	// group is the name of the (top-level) bookmarks.yaml group this
 	// Bookmark belongs to, used as the default group for any Bookmarks

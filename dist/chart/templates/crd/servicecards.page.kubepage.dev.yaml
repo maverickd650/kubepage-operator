@@ -61,8 +61,11 @@ spec:
             description: spec defines the desired state of ServiceCard
             properties:
               dashboardRef:
-                description: dashboardRef names the Dashboard this ServiceCard belongs
-                  to.
+                description: |-
+                  dashboardRef names the Dashboard this ServiceCard belongs to. Optional:
+                  if unset, this ServiceCard binds to the namespace's sole Dashboard: a
+                  namespace with zero or more than one Dashboard leaves it unbound (see
+                  api/v1alpha1.BoundTo).
                 properties:
                   name:
                     description: name of the Dashboard this object belongs to.
@@ -651,7 +654,6 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
             required:
-            - dashboardRef
             - services
             type: object
             x-kubernetes-validations:

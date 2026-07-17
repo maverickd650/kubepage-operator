@@ -234,19 +234,35 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, dashboardNam
 		applyStyle(&site, spec)
 	}
 
+	dashCount, err := namespaceDashboardCount(ctx, reader, namespace)
+	if err != nil {
+		return site, fmt.Errorf("counting Dashboards: %w", err)
+	}
+
 	var bookmarks pagev1alpha1.BookmarkList
 	if err := reader.List(ctx, &bookmarks, client.InNamespace(namespace)); err != nil {
 		return site, fmt.Errorf("listing Bookmarks: %w", err)
 	}
-	site.BookmarkGroups = groupBookmarks(bookmarks.Items, dashboardName, site)
+	site.BookmarkGroups = groupBookmarks(bookmarks.Items, dashboardName, dashCount, site)
 
 	var infoWidgets pagev1alpha1.InfoWidgetList
 	if err := reader.List(ctx, &infoWidgets, client.InNamespace(namespace)); err != nil {
 		return site, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
-	site.HeaderWidgets = headerWidgets(infoWidgets.Items, dashboardName)
+	site.HeaderWidgets = headerWidgets(infoWidgets.Items, dashboardName, dashCount)
 
 	return site, nil
+}
+
+// namespaceDashboardCount returns how many Dashboards exist in namespace, so
+// pagev1alpha1.BoundTo callers can decide whether a config object with an
+// unset dashboardRef resolves unambiguously to a sole Dashboard.
+func namespaceDashboardCount(ctx context.Context, reader client.Reader, namespace string) (int, error) {
+	var dashboards pagev1alpha1.DashboardList
+	if err := reader.List(ctx, &dashboards, client.InNamespace(namespace)); err != nil {
+		return 0, err
+	}
+	return len(dashboards.Items), nil
 }
 
 // headerWidget pairs a flattened InfoWidgetEntry with its owning object's
@@ -264,10 +280,10 @@ type headerWidget struct {
 // passthrough JSON is flattened into a string map; nested/array values are
 // skipped (header widgets only use scalar config like text, latitude,
 // format).
-func headerWidgets(items []pagev1alpha1.InfoWidget, dashboardName string) []HeaderWidget {
+func headerWidgets(items []pagev1alpha1.InfoWidget, dashboardName string, namespaceDashboardCount int) []HeaderWidget {
 	var flat []headerWidget
 	for _, w := range items {
-		if w.Spec.DashboardRef.Name != dashboardName {
+		if !pagev1alpha1.BoundTo(pagev1alpha1.RefName(w.Spec.DashboardRef), dashboardName, namespaceDashboardCount) {
 			continue
 		}
 		for idx, entry := range w.Spec.Entries() {
@@ -566,12 +582,12 @@ func layoutGroupsByName(layout []LayoutTab) map[string]LayoutGroup {
 	return byName
 }
 
-func groupBookmarks(items []pagev1alpha1.Bookmark, dashboardName string, site Site) []BookmarkGroup {
+func groupBookmarks(items []pagev1alpha1.Bookmark, dashboardName string, namespaceDashboardCount int, site Site) []BookmarkGroup {
 	layoutByName := layoutGroupsByName(site.Layout)
 
 	var bound []pagev1alpha1.BookmarkEntry
 	for _, b := range items {
-		if b.Spec.DashboardRef.Name == dashboardName {
+		if pagev1alpha1.BoundTo(pagev1alpha1.RefName(b.Spec.DashboardRef), dashboardName, namespaceDashboardCount) {
 			bound = append(bound, b.Spec.Entries()...)
 		}
 	}

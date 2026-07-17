@@ -39,7 +39,7 @@ var _ = Describe("ServiceCard Controller", func() {
 						Namespace: resourceNamespace,
 					},
 					Spec: pagev1alpha1.ServiceCardSpec{
-						DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+						DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 						Group:        "Group",
 						Services: []pagev1alpha1.ServiceEntry{
 							{Name: "Name"},

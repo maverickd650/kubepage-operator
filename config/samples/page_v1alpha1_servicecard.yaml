@@ -6,8 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: servicecard-sample
 spec:
-  dashboardRef:
-    name: dashboard-sample
+  # dashboardRef is omitted: this namespace has exactly one Dashboard
+  # (dashboard-sample), so this ServiceCard binds to it automatically.
   # group is the default group for any entry below that doesn't set its own
   # (Grafana overrides it to "Observability").
   group: Media

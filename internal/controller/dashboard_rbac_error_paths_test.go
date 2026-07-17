@@ -37,7 +37,7 @@ func newKubeMetricsInfoWidget(instance *pagev1alpha1.Dashboard) *pagev1alpha1.In
 	return &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testInfoWidgetNameMetrics, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{
 				{Type: kubeMetricsWidgetType},
 			},
@@ -121,7 +121,7 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 	matchingEntry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Group:        "G",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name: "N",
@@ -140,7 +140,7 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 	otherDashboardEntry := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: "svc-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
 			Group:        "G",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name: "N",
@@ -159,7 +159,7 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 	otherDashboardWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw-other", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{
 				{Type: testWidgetTypeOpenMeteo},
 			},
@@ -169,7 +169,7 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 	matchingWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type: testWidgetTypeOpenMeteo,
 				Secrets: map[string]pagev1alpha1.SecretValueSource{
@@ -210,7 +210,7 @@ func TestReferencedSecretNamesCollectsInfoWidgetSecretRef(t *testing.T) {
 	iw := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type:      testWidgetTypeOpenMeteo,
 				SecretRef: &wantSecret,
@@ -249,7 +249,7 @@ func TestReferencedSecretNamesCollectsCACertKeyRefs(t *testing.T) {
 	serviceCard := &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Group:        "G",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name: "N",
@@ -266,7 +266,7 @@ func TestReferencedSecretNamesCollectsCACertKeyRefs(t *testing.T) {
 	infoWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type: testWidgetTypeOpenMeteo,
 				CACert: &pagev1alpha1.SecretValueSource{SecretKeyRef: &corev1.SecretKeySelector{
@@ -537,7 +537,7 @@ func TestInstanceHasKubeMetricsWidgetIgnoresOtherDashboards(t *testing.T) {
 	otherWidget := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testInfoWidgetNameMetrics, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testOtherDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{
 				{Type: kubeMetricsWidgetType},
 			},

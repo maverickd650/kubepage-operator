@@ -183,12 +183,17 @@ func dashboardRoles(secretNames []string, discovery *pagev1alpha1.DiscoverySpec,
 func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instance *pagev1alpha1.Dashboard) ([]string, error) {
 	names := map[string]struct{}{}
 
+	dashCount, err := namespaceDashboardCount(ctx, r.Client, instance.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("counting Dashboards: %w", err)
+	}
+
 	var entries pagev1alpha1.ServiceCardList
 	if err := r.List(ctx, &entries, client.InNamespace(instance.Namespace)); err != nil {
 		return nil, fmt.Errorf("listing ServiceCards: %w", err)
 	}
 	for _, e := range entries.Items {
-		if e.Spec.DashboardRef.Name != instance.Name {
+		if !pagev1alpha1.BoundTo(pagev1alpha1.RefName(e.Spec.DashboardRef), instance.Name, dashCount) {
 			continue
 		}
 		for _, entry := range e.Spec.Entries() {
@@ -213,7 +218,7 @@ func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instanc
 		return nil, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
 	for _, w := range infoWidgets.Items {
-		if w.Spec.DashboardRef.Name != instance.Name {
+		if !pagev1alpha1.BoundTo(pagev1alpha1.RefName(w.Spec.DashboardRef), instance.Name, dashCount) {
 			continue
 		}
 		for _, entry := range w.Spec.Entries() {
@@ -534,8 +539,12 @@ func (r *DashboardReconciler) instanceHasKubeMetricsWidget(ctx context.Context, 
 	if err := r.List(ctx, &infoWidgets, client.InNamespace(instance.Namespace)); err != nil {
 		return false, fmt.Errorf("listing InfoWidgets: %w", err)
 	}
+	dashCount, err := namespaceDashboardCount(ctx, r.Client, instance.Namespace)
+	if err != nil {
+		return false, fmt.Errorf("counting Dashboards: %w", err)
+	}
 	for _, w := range infoWidgets.Items {
-		if w.Spec.DashboardRef.Name != instance.Name {
+		if !pagev1alpha1.BoundTo(pagev1alpha1.RefName(w.Spec.DashboardRef), instance.Name, dashCount) {
 			continue
 		}
 		for _, entry := range w.Spec.Entries() {

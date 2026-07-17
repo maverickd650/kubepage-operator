@@ -6,8 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: infowidget-sample
 spec:
-  dashboardRef:
-    name: dashboard-sample
+  # dashboardRef is omitted: this namespace has exactly one Dashboard
+  # (dashboard-sample), so this InfoWidget binds to it automatically.
   # widgets defines the whole header strip in one object instead of one
   # InfoWidget per widget; there's no group concept here (header widgets are
   # a flat, ordered list).

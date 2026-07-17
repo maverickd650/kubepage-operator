@@ -26,7 +26,7 @@ var _ = Describe("ServiceEntry schema defaults", func() {
 		sc := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
 			Spec: pagev1alpha1.ServiceCardSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDoesNotExistDashboardName},
 				Group:        policyTestGroup,
 				Services: []pagev1alpha1.ServiceEntry{
 					{Name: "svc"},

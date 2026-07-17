@@ -36,7 +36,7 @@ func newSecretRefServiceCard(instance *pagev1alpha1.Dashboard, secretName string
 	return &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Group:        "g",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name: testServiceCardObjName,
@@ -116,7 +116,7 @@ func newSecretRefWidgetServiceCard(instance *pagev1alpha1.Dashboard, secretName 
 	return &pagev1alpha1.ServiceCard{
 		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
 		Spec: pagev1alpha1.ServiceCardSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: instance.Name},
 			Group:        "g",
 			Services: []pagev1alpha1.ServiceEntry{{
 				Name: testServiceCardObjName,

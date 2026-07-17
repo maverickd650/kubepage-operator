@@ -17,8 +17,6 @@ metadata:
   name: dev-links
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home
   group: Developer          # the heading these bookmarks sit under
   bookmarks:
     - name: GitHub

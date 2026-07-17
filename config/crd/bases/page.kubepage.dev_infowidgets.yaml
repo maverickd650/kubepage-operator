@@ -55,8 +55,11 @@ spec:
             description: spec defines the desired state of InfoWidget
             properties:
               dashboardRef:
-                description: dashboardRef names the Dashboard this InfoWidget belongs
-                  to.
+                description: |-
+                  dashboardRef names the Dashboard this InfoWidget belongs to. Optional:
+                  if unset, this InfoWidget binds to the namespace's sole Dashboard: a
+                  namespace with zero or more than one Dashboard leaves it unbound (see
+                  api/v1alpha1.BoundTo).
                 properties:
                   name:
                     description: name of the Dashboard this object belongs to.
@@ -295,7 +298,6 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
             required:
-            - dashboardRef
             - widgets
             type: object
           status:
