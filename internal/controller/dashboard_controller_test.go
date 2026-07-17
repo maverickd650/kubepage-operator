@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -239,7 +238,7 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.DashboardSpec{
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
-					HostUsers:     ptr.To(false),
+					HostUsers:     new(false),
 					Labels: map[string]string{
 						"team": "platform",
 					},

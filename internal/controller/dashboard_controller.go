@@ -729,7 +729,7 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 	// latter compares nil != 1 forever and self-sustains a requeue loop.
 	replicas := instance.Spec.Replicas
 	if replicas == nil {
-		replicas = ptr.To(int32(1))
+		replicas = new(int32(1))
 	}
 
 	dep := &appsv1.Deployment{
