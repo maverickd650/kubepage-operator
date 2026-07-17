@@ -87,7 +87,11 @@ disjoint sets: "(header only)" types are valid on `InfoWidget` and not
 
 Never put a credential in a widget's `url` as a query parameter (e.g.
 `?apikey=...`) — use the `Secrets`/`secretKeyRef` fields in the table above
-instead. A poll failure renders the raw upstream error text on the card, and
+instead (or the `secretRef` shorthand — one Secret name whose keys resolve to
+matching field names, e.g. `secretRef: plex-credentials` in place of a
+`secrets.token.secretKeyRef` stanza — see
+[docs/configuration/secrets.md](docs/configuration/secrets.md)). A poll
+failure renders the raw upstream error text on the card, and
 Go's HTTP client errors include the full request URL, so a URL-embedded
 credential leaks to any dashboard viewer the moment that request fails. See
 [SECURITY.md](SECURITY.md#trust-model) for the full trust model.
@@ -315,7 +319,7 @@ unchanged:
 | `spec.auth.basicAuthSecretRef` | unset (no auth) | Gates every dashboard route except `/healthz` behind HTTP Basic, checked against a bcrypt htpasswd Secret. See [SECURITY.md](SECURITY.md#optional-built-in-authentication). |
 | `spec.metrics.enabled` | `Disabled` | Exposes the dashboard's `/metrics` port (9090) on its Service. Off by default since, unlike the manager's own metrics, the dashboard's has no authn/authz — any pod that can reach the Service port would otherwise read per-service up/down status and poll metrics. |
 | `spec.networkPolicy.enabled` | `Disabled` | Creates an owner-referenced `NetworkPolicy` scoping which pods may reach the dashboard/metrics ports (`ingressNamespaceSelector`/`metricsNamespaceSelector`) and, when `egressCIDRs` is set, which addresses its pods may reach. |
-| `spec.secretPolicy` | `Unrestricted` | Set to `Labeled` to restrict which Secrets a `ServiceCard`/`InfoWidget` widget may reference via `secretKeyRef`/`caCert` to only those carrying the `page.kubepage.dev/allow-widgets: "true"` label — see [SECURITY.md](SECURITY.md#trust-model) for the exfiltration path this closes. |
+| `spec.secretPolicy` | `Unrestricted` | Set to `Labeled` to restrict which Secrets a `ServiceCard`/`InfoWidget` widget may reference via `secretKeyRef`/`secretRef`/`caCert` to only those carrying the `page.kubepage.dev/allow-widgets: "true"` label — see [SECURITY.md](SECURITY.md#trust-model) for the exfiltration path this closes. |
 
 Per-widget, `ServiceWidget`/`InfoWidget`'s `caCert` field supplies a
 PEM-encoded CA certificate (resolved the same way as any other secret-bearing

@@ -2713,7 +2713,7 @@ spec:
                 default: Unrestricted
                 description: |-
                   secretPolicy controls which Secrets a bound ServiceCard/InfoWidget
-                  widget may reference via secretKeyRef (or caCert):
+                  widget may reference via secretKeyRef, secretRef, or caCert:
                     - "Unrestricted" (default): any Secret in this namespace — the
                       documented trust model (see SECURITY.md): anyone who can author
                       these CRDs in a namespace is trusted with every Secret in it.
@@ -5824,6 +5824,15 @@ spec:
                       format: int32
                       minimum: 1
                       type: integer
+                    secretRef:
+                      description: |-
+                        secretRef names a single Secret, in the same namespace, every key of
+                        which becomes a resolved secret field for this widget — see
+                        ServiceWidget.SecretRef's doc comment for the full rationale and the
+                        interaction with Secrets (Secrets always wins per key).
+                      maxLength: 253
+                      minLength: 1
+                      type: string
                     secrets:
                       additionalProperties:
                         description: |-
@@ -6494,6 +6503,24 @@ spec:
                             format: int32
                             minimum: 1
                             type: integer
+                          secretRef:
+                            description: |-
+                              secretRef names a single Secret, in the same namespace, every key of
+                              which becomes a resolved secret field for this widget — as if each key
+                              were listed under Secrets with secretKeyRef.key == that key name. A key
+                              also present in Secrets is not overridden by secretRef: Secrets always
+                              wins for that key, so secretRef is a shorthand for the common case (one
+                              Secret whose key names already match the widget's field names, e.g.
+                              Plex's single "token" or Grafana's "username"/"password") while the
+                              long form under Secrets remains available for a Secret whose key names
+                              don't match, or that must be split across widgets of different types.
+                              Resolved under the same secretPolicy rules and the same dashboard-pod
+                              RBAC as Secrets (see internal/controller/dashboard_rbac.go's
+                              referencedSecretNames) — this field widens convenience, not the trust
+                              model documented in SECURITY.md.
+                            maxLength: 253
+                            minLength: 1
+                            type: string
                           secrets:
                             additionalProperties:
                               description: |-

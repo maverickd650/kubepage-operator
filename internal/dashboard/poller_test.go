@@ -1052,6 +1052,305 @@ func TestPollerWidgetDefaultsSuppliesMissingSecret(t *testing.T) {
 	}
 }
 
+// TestPollerSecretRefSuppliesFields drives a full pollOnce with a widget that
+// sets SecretRef (and no explicit Secrets of its own): proves the poller
+// expands every key of the named Secret into a resolved secret field, by
+// having the stub upstream assert the X-Plex-Token header it receives
+// matches the "token" key of the SecretRef'd Secret.
+func TestPollerSecretRefSuppliesFields(t *testing.T) {
+	const wantToken = "secret-ref-token"
+	const secretRefName = "plex-credentials"
+
+	var gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-Plex-Token")
+		_, _ = w.Write([]byte(`{"MediaContainer":{"size":0}}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	secretRef := secretRefName
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type:      testWidgetTypePlex,
+					URL:       &url,
+					SecretRef: &secretRef,
+				}},
+			}},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretRefName, Namespace: testNamespace},
+		Data:       map[string][]byte{testSecretField: []byte(wantToken)},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, secret).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err != "" {
+		t.Fatalf("Snapshot() = %+v, want one card with no Err", cards)
+	}
+	if gotToken != wantToken {
+		t.Errorf("upstream saw X-Plex-Token = %q, want %q (secretRef's key should have reached the widget)", gotToken, wantToken)
+	}
+}
+
+// TestPollerSecretRefPerKeyOverrideWins proves that a widget's own Secrets
+// map wins, per key, over a field of the same name supplied by SecretRef —
+// the documented precedence (see ServiceWidget.SecretRef's doc comment).
+func TestPollerSecretRefPerKeyOverrideWins(t *testing.T) {
+	const refToken = "from-secret-ref"
+	const overrideToken = "explicit-override"
+	const secretRefName = "plex-credentials"
+
+	var gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-Plex-Token")
+		_, _ = w.Write([]byte(`{"MediaContainer":{"size":0}}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	secretRef := secretRefName
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type:      testWidgetTypePlex,
+					URL:       &url,
+					SecretRef: &secretRef,
+					Secrets: map[string]pagev1alpha1.SecretValueSource{
+						testSecretField: *ptrSVS(overrideToken),
+					},
+				}},
+			}},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretRefName, Namespace: testNamespace},
+		Data:       map[string][]byte{testSecretField: []byte(refToken)},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, secret).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err != "" {
+		t.Fatalf("Snapshot() = %+v, want one card with no Err", cards)
+	}
+	if gotToken != overrideToken {
+		t.Errorf("upstream saw X-Plex-Token = %q, want %q (widget's own Secrets should win over SecretRef)", gotToken, overrideToken)
+	}
+}
+
+// TestPollerSecretRefDenied simulates spec.secretPolicy: Labeled denying the
+// dashboard pod's RBAC access to a SecretRef'd Secret (Get fails, mirroring
+// what an actual RBAC-scoped client returns for a Secret the Role doesn't
+// list — see internal/controller/dashboard_rbac.go's referencedSecretNames/
+// filterLabeledSecrets), proving the card surfaces a clear error rather than
+// silently polling with no fields.
+func TestPollerSecretRefDenied(t *testing.T) {
+	const secretRefName = "unlabeled-secret"
+
+	url := testExampleURL
+	secretRef := secretRefName
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type:      testWidgetTypePlex,
+					URL:       &url,
+					SecretRef: &secretRef,
+				}},
+			}},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretRefName, Namespace: testNamespace},
+		Data:       map[string][]byte{testSecretField: []byte("s3cr3t")},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, secret).Build()
+	denied := errInjectingReader{
+		Reader: cl,
+		failGet: func(key client.ObjectKey, obj client.Object) bool {
+			_, ok := obj.(*corev1.Secret)
+			return ok && key.Name == secretRefName
+		},
+	}
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: denied, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err == "" {
+		t.Fatalf("Snapshot() = %+v, want one card with a non-empty Err for a denied SecretRef Get", cards)
+	}
+}
+
+// TestPollerInfoWidgetSecretRefSuppliesFields is TestPollerSecretRefSuppliesFields'
+// InfoWidget counterpart: proves pollInfoWidget's SecretRef branch expands
+// every key of the named Secret into a resolved secret field too, by having
+// the stub upstream assert the "appid" query parameter (openweathermap's API
+// key) matches the SecretRef'd Secret's "apiKey" key.
+func TestPollerInfoWidgetSecretRefSuppliesFields(t *testing.T) {
+	const wantAPIKey = "owm-secret-ref-key"
+	const secretRefName = "owm-credentials"
+
+	var gotAPIKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIKey = r.URL.Query().Get("appid")
+		_, _ = w.Write([]byte(`{"main":{"temp":10},"weather":[{"main":"Clouds"}]}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	secretRef := secretRefName
+	iw := pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:      widgetTypeOpenWeatherMap,
+				URL:       &url,
+				SecretRef: &secretRef,
+				Config:    &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12}`)},
+			}},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretRefName, Namespace: testNamespace},
+		Data:       map[string][]byte{openWeatherMapSecretAPIKey: []byte(wantAPIKey)},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&iw, secret).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err != "" {
+		t.Fatalf("Snapshot() = %+v, want one card with no Err", cards)
+	}
+	if gotAPIKey != wantAPIKey {
+		t.Errorf("upstream saw appid = %q, want %q (InfoWidget secretRef's key should have reached the widget)", gotAPIKey, wantAPIKey)
+	}
+}
+
+// TestPollerSecretRefWinsOverWidgetDefaults proves the documented precedence
+// (ServiceWidget.SecretRef's doc comment): a widget-level SecretRef field
+// wins over the same field name supplied by a dashboard-wide widgetDefaults
+// entry, even though the widget sets no explicit Secrets of its own.
+func TestPollerSecretRefWinsOverWidgetDefaults(t *testing.T) {
+	const defaultsToken = "from-widget-defaults"
+	const refToken = "from-secret-ref"
+	const secretRefName = "plex-credentials"
+	const defaultsSecretName = "shared-plex-defaults"
+
+	var gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-Plex-Token")
+		_, _ = w.Write([]byte(`{"MediaContainer":{"size":0}}`))
+	}))
+	defer srv.Close()
+
+	url := srv.URL
+	secretRef := secretRefName
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testSvcDisplayName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type:      testWidgetTypePlex,
+					URL:       &url,
+					SecretRef: &secretRef,
+				}},
+			}},
+		},
+	}
+	refSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretRefName, Namespace: testNamespace},
+		Data:       map[string][]byte{testSecretField: []byte(refToken)},
+	}
+	defaultsSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: defaultsSecretName, Namespace: testNamespace},
+		Data:       map[string][]byte{testSecretField: []byte(defaultsToken)},
+	}
+	instance := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			WidgetDefaults: map[string]pagev1alpha1.WidgetDefaultsEntry{
+				testWidgetTypePlex: {Secrets: map[string]pagev1alpha1.SecretValueSource{
+					testSecretField: {SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: defaultsSecretName},
+						Key:                  testSecretField,
+					}},
+				}},
+			},
+		},
+	}
+
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry, refSecret, defaultsSecret, instance).Build()
+
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: srv.Client(), Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 || cards[0].Err != "" {
+		t.Fatalf("Snapshot() = %+v, want one card with no Err", cards)
+	}
+	if gotToken != refToken {
+		t.Errorf("upstream saw X-Plex-Token = %q, want %q (widget-level SecretRef should win over dashboard-wide widgetDefaults)", gotToken, refToken)
+	}
+}
+
 // TestPollerPollWidgetCopiesDescriptionTargetAndConfig drives pollWidget
 // directly to exercise three of its field-copy branches in one pass:
 // entry.Spec.Description/Target onto the Card, and widget.Config.Raw into

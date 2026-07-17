@@ -1974,7 +1974,7 @@
         },
         "secretPolicy": {
           "default": "Unrestricted",
-          "description": "secretPolicy controls which Secrets a bound ServiceCard/InfoWidget\nwidget may reference via secretKeyRef (or caCert):\n  - \"Unrestricted\" (default): any Secret in this namespace — the\n    documented trust model (see SECURITY.md): anyone who can author\n    these CRDs in a namespace is trusted with every Secret in it.\n  - \"Labeled\": only Secrets carrying the\n    page.kubepage.dev/allow-widgets: \"true\" label are granted to the\n    dashboard pod's RBAC; a widget referencing an unlabeled (or\n    nonexistent) Secret surfaces a clear card error instead.",
+          "description": "secretPolicy controls which Secrets a bound ServiceCard/InfoWidget\nwidget may reference via secretKeyRef, secretRef, or caCert:\n  - \"Unrestricted\" (default): any Secret in this namespace — the\n    documented trust model (see SECURITY.md): anyone who can author\n    these CRDs in a namespace is trusted with every Secret in it.\n  - \"Labeled\": only Secrets carrying the\n    page.kubepage.dev/allow-widgets: \"true\" label are granted to the\n    dashboard pod's RBAC; a widget referencing an unlabeled (or\n    nonexistent) Secret surfaces a clear card error instead.",
           "enum": [
             "Unrestricted",
             "Labeled"

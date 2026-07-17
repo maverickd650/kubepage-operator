@@ -22,6 +22,7 @@ const (
 	secretPolicyTestNamespace = "secretpolicy-ns"
 	testAuthSecretRefName     = "htpasswd"
 	testLabeledSecretName     = "labeled-secret"
+	testUnlabeledSecretName   = "unlabeled-secret"
 )
 
 func newSecretPolicyTestDashboard(policy *string) *pagev1alpha1.Dashboard {
@@ -56,7 +57,7 @@ func newSecretRefServiceCard(instance *pagev1alpha1.Dashboard, secretName string
 func TestReferencedSecretNamesUnrestrictedIncludesEveryReferencedSecret(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newSecretPolicyTestDashboard(nil)
-	entry := newSecretRefServiceCard(instance, "unlabeled-secret")
+	entry := newSecretRefServiceCard(instance, testUnlabeledSecretName)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry).Build()
 	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
@@ -65,7 +66,7 @@ func TestReferencedSecretNamesUnrestrictedIncludesEveryReferencedSecret(t *testi
 	if err != nil {
 		t.Fatalf("referencedSecretNames() error = %v", err)
 	}
-	if len(got) != 1 || got[0] != "unlabeled-secret" {
+	if len(got) != 1 || got[0] != testUnlabeledSecretName {
 		t.Errorf("referencedSecretNames() = %v, want [unlabeled-secret] under the default Unrestricted policy", got)
 	}
 }
@@ -73,8 +74,8 @@ func TestReferencedSecretNamesUnrestrictedIncludesEveryReferencedSecret(t *testi
 func TestReferencedSecretNamesLabeledExcludesUnlabeledSecret(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
-	entry := newSecretRefServiceCard(instance, "unlabeled-secret")
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "unlabeled-secret", Namespace: instance.Namespace}}
+	entry := newSecretRefServiceCard(instance, testUnlabeledSecretName)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: testUnlabeledSecretName, Namespace: instance.Namespace}}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry, secret).Build()
 	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
@@ -92,6 +93,81 @@ func TestReferencedSecretNamesLabeledIncludesLabeledSecret(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
 	entry := newSecretRefServiceCard(instance, testLabeledSecretName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testLabeledSecretName, Namespace: instance.Namespace,
+			Labels: map[string]string{pagev1alpha1.SecretAllowWidgetsLabel: testValueTrue},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry, secret).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
+
+	got, err := r.referencedSecretNames(t.Context(), instance)
+	if err != nil {
+		t.Fatalf("referencedSecretNames() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != testLabeledSecretName {
+		t.Errorf("referencedSecretNames() = %v, want [labeled-secret]", got)
+	}
+}
+
+func newSecretRefWidgetServiceCard(instance *pagev1alpha1.Dashboard, secretName string) *pagev1alpha1.ServiceCard {
+	return &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testServiceCardObjName, Namespace: instance.Namespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			Group:        "g",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name: testServiceCardObjName,
+				Widgets: []pagev1alpha1.ServiceWidget{{
+					Type:      "prometheus",
+					SecretRef: &secretName,
+				}},
+			}},
+		},
+	}
+}
+
+func TestReferencedSecretNamesUnrestrictedIncludesSecretRefSecret(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newSecretPolicyTestDashboard(nil)
+	entry := newSecretRefWidgetServiceCard(instance, testUnlabeledSecretName)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
+
+	got, err := r.referencedSecretNames(t.Context(), instance)
+	if err != nil {
+		t.Fatalf("referencedSecretNames() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != testUnlabeledSecretName {
+		t.Errorf("referencedSecretNames() = %v, want [unlabeled-secret]: a widget's secretRef should be included the same as secretKeyRef", got)
+	}
+}
+
+func TestReferencedSecretNamesLabeledExcludesUnlabeledSecretRefSecret(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
+	entry := newSecretRefWidgetServiceCard(instance, testUnlabeledSecretName)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: testUnlabeledSecretName, Namespace: instance.Namespace}}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry, secret).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
+
+	got, err := r.referencedSecretNames(t.Context(), instance)
+	if err != nil {
+		t.Fatalf("referencedSecretNames() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("referencedSecretNames() = %v, want none: secretRef's Secret isn't labeled page.kubepage.dev/allow-widgets", got)
+	}
+}
+
+func TestReferencedSecretNamesLabeledIncludesLabeledSecretRefSecret(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
+	entry := newSecretRefWidgetServiceCard(instance, testLabeledSecretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testLabeledSecretName, Namespace: instance.Namespace,

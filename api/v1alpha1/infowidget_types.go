@@ -88,6 +88,15 @@ type InfoWidgetEntry struct {
 	// +optional
 	Secrets map[string]SecretValueSource `json:"secrets,omitempty"`
 
+	// secretRef names a single Secret, in the same namespace, every key of
+	// which becomes a resolved secret field for this widget — see
+	// ServiceWidget.SecretRef's doc comment for the full rationale and the
+	// interaction with Secrets (Secrets always wins per key).
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	SecretRef *string `json:"secretRef,omitempty"`
+
 	// caCert optionally supplies a PEM-encoded CA certificate (or bundle)
 	// used, in addition to the system trust store, to verify this widget's
 	// upstream. See ServiceWidget.CACert's doc comment for the full

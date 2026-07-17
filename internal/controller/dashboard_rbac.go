@@ -165,7 +165,8 @@ func dashboardRoles(secretNames []string, discovery *pagev1alpha1.DiscoverySpec,
 
 // referencedSecretNames returns the sorted, de-duplicated set of Secret names
 // that ServiceCards and InfoWidgets bound to instance reference via a
-// secretKeyRef, plus any referenced from instance.Spec.WidgetDefaults (the
+// secretKeyRef or secretRef, plus any referenced from
+// instance.Spec.WidgetDefaults (the
 // per-widget-type shared secret defaults — see DashboardSpec.WidgetDefaults'
 // doc comment). It's what scopes the dashboard pod's Secret access (see
 // dashboardRoles); the DashboardReconciler already re-reconciles on
@@ -197,6 +198,9 @@ func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instanc
 						names[src.SecretKeyRef.Name] = struct{}{}
 					}
 				}
+				if w.SecretRef != nil {
+					names[*w.SecretRef] = struct{}{}
+				}
 				if w.CACert != nil && w.CACert.SecretKeyRef != nil {
 					names[w.CACert.SecretKeyRef.Name] = struct{}{}
 				}
@@ -217,6 +221,9 @@ func (r *DashboardReconciler) referencedSecretNames(ctx context.Context, instanc
 				if src.SecretKeyRef != nil {
 					names[src.SecretKeyRef.Name] = struct{}{}
 				}
+			}
+			if entry.SecretRef != nil {
+				names[*entry.SecretRef] = struct{}{}
 			}
 			if entry.CACert != nil && entry.CACert.SecretKeyRef != nil {
 				names[entry.CACert.SecretKeyRef.Name] = struct{}{}

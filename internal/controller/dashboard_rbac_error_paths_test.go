@@ -197,6 +197,39 @@ func TestReferencedSecretNamesIgnoresOtherDashboardsAndCollectsKeyRefs(t *testin
 	}
 }
 
+// TestReferencedSecretNamesCollectsInfoWidgetSecretRef verifies
+// referencedSecretNames collects a Secret named via an InfoWidget entry's
+// SecretRef, mirroring the ServiceWidget.SecretRef coverage in
+// dashboard_rbac_secretpolicy_test.go — the two widget kinds wire
+// referencedSecretNames independently, so each needs its own assertion.
+func TestReferencedSecretNamesCollectsInfoWidgetSecretRef(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newRBACTestDashboard()
+
+	wantSecret := "owm-credentials"
+	iw := &pagev1alpha1.InfoWidget{
+		ObjectMeta: metav1.ObjectMeta{Name: "iw", Namespace: instance.Namespace},
+		Spec: pagev1alpha1.InfoWidgetSpec{
+			DashboardRef: pagev1alpha1.DashboardRef{Name: instance.Name},
+			Widgets: []pagev1alpha1.InfoWidgetEntry{{
+				Type:      testWidgetTypeOpenMeteo,
+				SecretRef: &wantSecret,
+			}},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, iw).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme}
+
+	got, err := r.referencedSecretNames(t.Context(), instance)
+	if err != nil {
+		t.Fatalf("referencedSecretNames() unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0] != wantSecret {
+		t.Errorf("referencedSecretNames() = %v, want [%s]: an InfoWidget entry's secretRef should be included the same as secretKeyRef", got, wantSecret)
+	}
+}
+
 // TestReferencedSecretNamesCollectsCACertKeyRefs verifies referencedSecretNames
 // collects a Secret named via caCert.secretKeyRef, not just via a widget's
 // secrets map — from a ServiceCard widget, an InfoWidget entry, and

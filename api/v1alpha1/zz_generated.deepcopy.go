@@ -702,6 +702,11 @@ func (in *InfoWidgetEntry) DeepCopyInto(out *InfoWidgetEntry) {
 			(*out)[key] = *val.DeepCopy()
 		}
 	}
+	if in.SecretRef != nil {
+		in, out := &in.SecretRef, &out.SecretRef
+		*out = new(string)
+		**out = **in
+	}
 	if in.CACert != nil {
 		in, out := &in.CACert, &out.CACert
 		*out = new(SecretValueSource)
@@ -1267,6 +1272,11 @@ func (in *ServiceWidget) DeepCopyInto(out *ServiceWidget) {
 		for key, val := range *in {
 			(*out)[key] = *val.DeepCopy()
 		}
+	}
+	if in.SecretRef != nil {
+		in, out := &in.SecretRef, &out.SecretRef
+		*out = new(string)
+		**out = **in
 	}
 	if in.CACert != nil {
 		in, out := &in.CACert, &out.CACert
