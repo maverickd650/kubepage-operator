@@ -1,6 +1,6 @@
 # Combined HTTP + pod monitor status (homepage parity)
 
-Status: proposed — this is an implementation plan, no code has landed yet.
+Status: shipped — implemented as described below.
 
 ## Goal
 
