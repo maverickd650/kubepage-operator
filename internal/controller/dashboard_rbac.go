@@ -70,7 +70,7 @@ var clusterMetricsRules = []rbacv1.PolicyRule{
 // benefit.
 var dashboardConfigRule = rbacv1.PolicyRule{
 	APIGroups: []string{pagev1alpha1.GroupVersion.Group},
-	Resources: []string{"dashboards", "dashboardstyles", "servicecards", "bookmarks", "infowidgets"},
+	Resources: []string{"dashboards", "servicecards", "bookmarks", "infowidgets"},
 	Verbs:     []string{verbGet, verbList, verbWatch},
 }
 

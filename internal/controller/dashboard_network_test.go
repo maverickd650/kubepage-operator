@@ -731,7 +731,7 @@ func TestMapToDashboard(t *testing.T) {
 	})
 
 	t.Run("returns nil for an object of the wrong type", func(t *testing.T) {
-		cfg := &pagev1alpha1.DashboardStyle{ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: "ns"}}
+		cfg := &pagev1alpha1.ServiceCard{ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: "ns"}}
 		if reqs := mapFn(ctx, cfg); reqs != nil {
 			t.Errorf("mapFn() = %+v, want nil for a non-Bookmark object", reqs)
 		}

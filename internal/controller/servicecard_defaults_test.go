@@ -13,15 +13,15 @@ import (
 )
 
 // This spec locks in that ServiceEntry's per-entry override fields with a
-// site-wide DashboardStyle fallback (ErrorDisplay, StatusStyle) carry no
-// schema default. A `+default=true` on ErrorDisplay previously caused the
+// site-wide Dashboard.spec.style fallback (ErrorDisplay, StatusStyle) carry
+// no schema default. A `+default=true` on ErrorDisplay previously caused the
 // apiserver to stamp every entry with errorDisplay: true at admission,
 // which made internal/dashboard/poller.go's "entry value if non-nil, else
-// site default" resolution never fall back to DashboardStyle.spec.errorDisplay.
+// site default" resolution never fall back to spec.style.errorDisplay.
 var _ = Describe("ServiceEntry schema defaults", func() {
 	ctx := context.Background()
 
-	It("leaves ErrorDisplay and StatusStyle nil when omitted, so the DashboardStyle default can apply", func() {
+	It("leaves ErrorDisplay and StatusStyle nil when omitted, so the spec.style default can apply", func() {
 		name := "sc-defaults-fallback"
 		sc := &pagev1alpha1.ServiceCard{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},

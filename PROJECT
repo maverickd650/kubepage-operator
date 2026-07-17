@@ -41,15 +41,6 @@ resources:
   controller: true
   domain: kubepage.dev
   group: page
-  kind: DashboardStyle
-  path: github.com/maverickd650/kubepage-operator/api/v1alpha1
-  version: v1alpha1
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: kubepage.dev
-  group: page
   kind: ServiceCard
   path: github.com/maverickd650/kubepage-operator/api/v1alpha1
   version: v1alpha1

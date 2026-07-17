@@ -15,8 +15,8 @@ import (
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
-// reconcilerErrorPathCase describes one of the four thin config-CRD
-// controllers (Bookmark/DashboardStyle/InfoWidget/ServiceCard), which all
+// reconcilerErrorPathCase describes one of the three thin config-CRD
+// controllers (Bookmark/InfoWidget/ServiceCard), which all
 // share the same Reconcile shape: Get the CRD, resolve its DashboardRef via
 // boundDashboardCondition, then Status().Update. The table-driven tests below
 // exercise each of those three error returns once per controller, since
@@ -45,20 +45,6 @@ func reconcilerErrorPathCases() []reconcilerErrorPathCase {
 						Bookmarks: []pagev1alpha1.BookmarkEntry{
 							{Name: "N", Href: "https://example.com"},
 						},
-					},
-				}
-			},
-		},
-		{
-			name: "DashboardStyle",
-			newReconciler: func(c client.Client) reconcile.Reconciler {
-				return &DashboardStyleReconciler{Client: c, Scheme: c.Scheme()}
-			},
-			newObject: func(ns, name, ref string) client.Object {
-				return &pagev1alpha1.DashboardStyle{
-					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-					Spec: pagev1alpha1.DashboardStyleSpec{
-						DashboardRef: pagev1alpha1.DashboardRef{Name: ref},
 					},
 				}
 			},
