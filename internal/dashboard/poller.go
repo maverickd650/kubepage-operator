@@ -194,8 +194,15 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	}
 
 	defaultStatusStyle, defaultHideErrors := p.siteDefaults(ctx)
-	widgetDefaults := p.widgetDefaults(ctx)
-	allowedMonitorNamespaces := p.monitorNamespaces(ctx)
+	// One Get of the Dashboard covers discovery config, widget defaults, and
+	// allowed monitor namespaces — previously a per-field accessor Got it
+	// separately for each, three round-trips to the same object every cycle.
+	// dashboardSpecForPoll's single-Get result is reused below instead
+	// (discoverySpec/widgetDefaults survive as thin wrappers over it, only
+	// because unit tests exercise them individually).
+	dashboardSpec, dashboardOK := p.dashboardSpecForPoll(ctx)
+	widgetDefaults := dashboardSpec.WidgetDefaults
+	allowedMonitorNamespaces := dashboardSpec.MonitorNamespaces
 
 	var entries pagev1alpha1.ServiceCardList
 	if err := p.Reader.List(ctx, &entries, client.InNamespace(p.Namespace)); err != nil {
@@ -244,7 +251,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		}
 	}
 
-	if spec, ok := p.discoverySpec(ctx); ok {
+	if spec, ok := discoverySpecFromDashboard(dashboardSpec, dashboardOK); ok {
 		if spec.HasSource(pagev1alpha1.DiscoverySourceIngress) {
 			services, err := discoverServices(ctx, p.Reader, p.Namespace, p.KubeReader, extraDiscoveryNamespaces(spec, p.Namespace), spec)
 			if err != nil {
@@ -629,11 +636,14 @@ func podReady(pod *corev1.Pod) bool {
 // the entry's already-probed monitor result attached. A nil widget means the
 // entry has a monitor but no widget: the card shows only title/icon/monitor.
 // When widget sets its own PollIntervalSeconds and this cycle isn't due yet,
-// pollWidget returns immediately without touching Store, leaving the
-// previous cycle's card (monitor status included) in place — key is already
-// in this cycle's keep set from the caller, so it survives Store.Prune.
+// pollWidget doesn't re-run the widget poll — the entry's monitor is still
+// probed every cycle regardless of the widget's own interval, so the fresh
+// monitor result is merged into the previously stored card (see
+// mergeMonitorIntoStoredCard) instead of being discarded, keeping the
+// card's Up/Down status current even between widget polls.
 func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, se pagev1alpha1.ServiceEntry, widget *pagev1alpha1.ServiceWidget, m monitorProbeResult, defaultHideErrors bool, widgetDefaults map[string]pagev1alpha1.WidgetDefaultsEntry) {
 	if widget != nil && !p.duePoll(key, widget.PollIntervalSeconds) {
+		p.mergeMonitorIntoStoredCard(key, se, m, defaultHideErrors)
 		return
 	}
 
@@ -727,6 +737,56 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		card.Err = err.Error()
 	case err == nil && card.ShowStats:
 		card.Fields = applyHighlights(filterFields(fields, widget.Fields), widget.Highlight)
+	}
+	p.Store.Set(card)
+}
+
+// mergeMonitorIntoStoredCard updates the fresh-this-cycle monitor fields
+// (Status, StatusStyle, Latency, PodStatus, PodReadyText, plus a
+// monitor-sourced Err when hideErrors allows one) on the card already in
+// Store for key, leaving everything the widget poll produced (Fields,
+// WidgetType, and any widget-sourced Err) untouched. Used when a widget's
+// own PollIntervalSeconds override skips this cycle's poll: without this,
+// the card would show the widget's last fields next to a stale monitor
+// status for up to the override interval. If no card is stored yet (the
+// widget's very first cycle), a new card is stored with the monitor result
+// and no fields — the next due poll fills those in.
+func (p *Poller) mergeMonitorIntoStoredCard(key string, se pagev1alpha1.ServiceEntry, m monitorProbeResult, defaultHideErrors bool) {
+	hideErrors := defaultHideErrors
+	if se.ErrorDisplay != nil {
+		hideErrors = !*se.ErrorDisplay
+	}
+
+	card, ok := p.Store.Get(key)
+	if !ok {
+		card = Card{
+			Key:         key,
+			Group:       se.Group,
+			ServiceName: se.Name,
+			Order:       se.Order,
+			IconURL:     IconURL(se.Icon),
+			ShowStats:   se.ShowStats == nil || *se.ShowStats,
+		}
+		if se.Description != nil {
+			card.Description = *se.Description
+		}
+		if se.Href != nil {
+			card.Href = *se.Href
+		}
+		if se.Target != nil {
+			card.Target = *se.Target
+		}
+	}
+
+	card.HideErrors = hideErrors
+	card.Status = m.status
+	card.StatusStyle = m.statusStyle
+	card.Latency = m.latency
+	card.PodStatus = m.podStatus
+	card.PodReadyText = m.podReadyText
+	card.UpdatedAt = time.Now()
+	if m.err != "" && !hideErrors {
+		card.Err = m.err
 	}
 	p.Store.Set(card)
 }
@@ -991,21 +1051,44 @@ func (p *Poller) siteDefaults(ctx context.Context) (statusStyle string, hideErro
 	return statusStyle, hideErrors
 }
 
+// dashboardSpecForPoll Gets the Dashboard once and returns its Spec, or the
+// zero value and ok=false when the Get fails — a transient error here
+// should not fail the whole poll cycle, only make every field this backs
+// (discovery config, widget defaults, allowed monitor namespaces) fall back
+// to "unset" for this cycle — e.g. a foreign-namespace pod monitor simply
+// renders Down with a card error for the cycle (MonitorNamespaces falls back
+// to nil) rather than failing every other card too. pollOnce calls this once
+// per cycle and derives all three from the single result;
+// discoverySpec/widgetDefaults below wrap it for callers (currently only
+// tests) that want just one field.
+func (p *Poller) dashboardSpecForPoll(ctx context.Context) (pagev1alpha1.DashboardSpec, bool) {
+	var instance pagev1alpha1.Dashboard
+	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
+		pollerLog.Error(err, "getting Dashboard for poll cycle config")
+		return pagev1alpha1.DashboardSpec{}, false
+	}
+	return instance.Spec, true
+}
+
+// discoverySpecFromDashboard extracts the DiscoverySpec from an
+// already-fetched DashboardSpec (spec, ok as returned by
+// dashboardSpecForPoll), returning (zero value, false) when the Get failed
+// or Ingress annotation discovery isn't enabled.
+func discoverySpecFromDashboard(spec pagev1alpha1.DashboardSpec, ok bool) (pagev1alpha1.DiscoverySpec, bool) {
+	if !ok || spec.Discovery == nil || !spec.Discovery.Enabled {
+		return pagev1alpha1.DiscoverySpec{}, false
+	}
+	return *spec.Discovery, true
+}
+
 // discoverySpec returns the Dashboard's DiscoverySpec when Ingress annotation
 // discovery is enabled, or (zero value, false) otherwise (including when the
 // Dashboard can't be read — a transient error here should not make every
 // discovered card vanish from the log at more than Error level, but it must
 // not panic the poll cycle either).
 func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec, bool) {
-	var instance pagev1alpha1.Dashboard
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Dashboard for discovery config")
-		return pagev1alpha1.DiscoverySpec{}, false
-	}
-	if instance.Spec.Discovery == nil || !instance.Spec.Discovery.Enabled {
-		return pagev1alpha1.DiscoverySpec{}, false
-	}
-	return *instance.Spec.Discovery, true
+	spec, ok := p.dashboardSpecForPoll(ctx)
+	return discoverySpecFromDashboard(spec, ok)
 }
 
 // widgetDefaults returns the Dashboard's Spec.WidgetDefaults (the per-widget-
@@ -1015,28 +1098,11 @@ func (p *Poller) discoverySpec(ctx context.Context) (pagev1alpha1.DiscoverySpec,
 // every widget's poll for the cycle, only fall back to "no defaults" (same
 // behavior as today, before this field existed).
 func (p *Poller) widgetDefaults(ctx context.Context) map[string]pagev1alpha1.WidgetDefaultsEntry {
-	var instance pagev1alpha1.Dashboard
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Dashboard for widgetDefaults")
+	spec, ok := p.dashboardSpecForPoll(ctx)
+	if !ok {
 		return nil
 	}
-	return instance.Spec.WidgetDefaults
-}
-
-// monitorNamespaces returns the Dashboard's Spec.MonitorNamespaces — the
-// namespaces (beyond the Dashboard's own, which a pod monitor entry never
-// needs to name explicitly) a ServiceEntry's pod monitor may list pods in —
-// or nil when unset or the Dashboard can't be read, mirroring
-// widgetDefaults'/discoverySpec's tolerance of a transient Get failure: a
-// foreign-namespace pod monitor simply renders Down with a card error for
-// this cycle rather than failing every other card too.
-func (p *Poller) monitorNamespaces(ctx context.Context) []string {
-	var instance pagev1alpha1.Dashboard
-	if err := p.Reader.Get(ctx, types.NamespacedName{Name: p.DashboardName, Namespace: p.Namespace}, &instance); err != nil {
-		pollerLog.Error(err, "getting Dashboard for monitorNamespaces")
-		return nil
-	}
-	return instance.Spec.MonitorNamespaces
+	return spec.WidgetDefaults
 }
 
 // pollDiscoveredService builds and stores the Card for one Ingress-derived

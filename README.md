@@ -478,9 +478,11 @@ relationships).
 
 ### Namespace-scoped install (optional)
 
-By default the manager holds its RBAC (including `secrets get`, needed to
-provision each Dashboard's own scoped Secret access — see
-[SECURITY.md](SECURITY.md#supply-chain)) cluster-wide via a `ClusterRole`/
+By default the manager holds its RBAC (including `secrets get;list;watch` —
+`get` to provision each Dashboard's own scoped Secret access, `list;watch`
+for a metadata-only watch that keeps `spec.secretPolicy: Labeled` Role
+grants current when a Secret's `allow-widgets` label changes, never Secret
+contents — see [SECURITY.md](SECURITY.md#supply-chain)) cluster-wide via a `ClusterRole`/
 `ClusterRoleBinding`. [`config/namespace-scoped/`](config/namespace-scoped)
 is an overlay that instead binds the same `ClusterRole` via a namespaced
 `RoleBinding` per watched namespace, paired with the manager's own

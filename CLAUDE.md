@@ -112,8 +112,10 @@ its own controller-runtime cache, so a CRD change takes effect on the next
 poll cycle with no Dashboard-mediated round-trip.
 
 Cross-field schema invariants (e.g. `SecretValueSource` sets exactly one of
-`value`/`secretKeyRef`; a `ServiceCard` sets at most one of `ping`/
-`siteMonitor`/`podSelector`; widget `type` is one of the registered set) are
+`value`/`secretKeyRef`; a `ServiceCard` entry's `ping`/`siteMonitor` are
+mutually exclusive with each other but freely combinable with the pod
+monitor (`app`/`podSelector`) — a service can show both an HTTP status and a
+pod status at once; widget `type` is one of the registered set) are
 enforced as CEL `+kubebuilder:validation:XValidation` markers directly on the
 `api/v1alpha1` types (K8s 1.29+ for most rules; the `egressCIDRs` rule uses
 the `isCIDR()` CEL function added in 1.31, making **1.31+** the effective CRD

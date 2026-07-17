@@ -22,7 +22,6 @@ type BackgroundSpec struct {
 	// blur is a backdrop blur, a Tailwind backdrop-blur size keyword (e.g.
 	// "sm", "md", "xl", ""). An explicit "" is equivalent to leaving it
 	// unset (the default 8px blur).
-	// +kubebuilder:validation:MinLength=0
 	// +kubebuilder:validation:MaxLength=8
 	// +optional
 	Blur *string `json:"blur,omitempty"`
@@ -238,7 +237,6 @@ type DashboardStyleSpec struct {
 	// size keyword (e.g. "sm", "md", "xl", ""). An explicit "" is equivalent
 	// to leaving it unset (the default 8px blur). Most visible over a
 	// background image.
-	// +kubebuilder:validation:MinLength=0
 	// +kubebuilder:validation:MaxLength=8
 	// +optional
 	CardBlur *string `json:"cardBlur,omitempty"`

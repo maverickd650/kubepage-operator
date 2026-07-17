@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -20,6 +21,7 @@ import (
 const (
 	secretPolicyTestNamespace = "secretpolicy-ns"
 	testAuthSecretRefName     = "htpasswd"
+	testLabeledSecretName     = "labeled-secret"
 )
 
 func newSecretPolicyTestDashboard(policy *string) *pagev1alpha1.Dashboard {
@@ -89,10 +91,10 @@ func TestReferencedSecretNamesLabeledExcludesUnlabeledSecret(t *testing.T) {
 func TestReferencedSecretNamesLabeledIncludesLabeledSecret(t *testing.T) {
 	scheme := networkTestScheme(t)
 	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
-	entry := newSecretRefServiceCard(instance, "labeled-secret")
+	entry := newSecretRefServiceCard(instance, testLabeledSecretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "labeled-secret", Namespace: instance.Namespace,
+			Name: testLabeledSecretName, Namespace: instance.Namespace,
 			Labels: map[string]string{pagev1alpha1.SecretAllowWidgetsLabel: testValueTrue},
 		},
 	}
@@ -104,7 +106,7 @@ func TestReferencedSecretNamesLabeledIncludesLabeledSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("referencedSecretNames() error = %v", err)
 	}
-	if len(got) != 1 || got[0] != "labeled-secret" {
+	if len(got) != 1 || got[0] != testLabeledSecretName {
 		t.Errorf("referencedSecretNames() = %v, want [labeled-secret]", got)
 	}
 }
@@ -288,6 +290,69 @@ func TestReconcileRoleIncludesAuthSecretRegardlessOfSecretPolicy(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("reconciled Role rules = %+v, want a secrets rule granting get on %q", role.Rules, testAuthSecretRefName)
+	}
+}
+
+// TestReconcileRoleDropsGrantWhenAllowWidgetsLabelRemoved covers the fix for
+// the Secret watch in SetupWithManager: under spec.secretPolicy: Labeled, a
+// Secret carrying page.kubepage.dev/allow-widgets: "true" grants its Role
+// entry, and removing that label (with no change to the Dashboard itself)
+// must drop the grant on the next reconcile — proving reconcileRole's
+// output tracks the Secret's current label state rather than anything
+// cached from when the Role was first created. In the running manager, the
+// metadata-only Secret watch is what triggers this reconcile promptly;
+// here we call reconcileRole directly to prove the RBAC computation itself
+// is correct once triggered.
+func TestReconcileRoleDropsGrantWhenAllowWidgetsLabelRemoved(t *testing.T) {
+	scheme := networkTestScheme(t)
+	instance := newSecretPolicyTestDashboard(ptr.To(pagev1alpha1.SecretPolicyLabeled))
+	entry := newSecretRefServiceCard(instance, testLabeledSecretName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testLabeledSecretName, Namespace: instance.Namespace,
+			Labels: map[string]string{pagev1alpha1.SecretAllowWidgetsLabel: testValueTrue},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance, entry, secret).Build()
+	r := &DashboardReconciler{Client: cl, Scheme: scheme, DirectReader: cl}
+
+	roleHasSecretGrant := func() bool {
+		var role rbacv1.Role
+		if err := cl.Get(t.Context(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, &role); err != nil {
+			t.Fatalf("getting reconciled Role: %v", err)
+		}
+		for _, rule := range role.Rules {
+			if len(rule.Resources) == 1 && rule.Resources[0] == resourceSecrets {
+				if slices.Contains(rule.ResourceNames, testLabeledSecretName) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	if err := r.reconcileRole(t.Context(), instance); err != nil {
+		t.Fatalf("reconcileRole() error = %v", err)
+	}
+	if !roleHasSecretGrant() {
+		t.Fatalf("Role does not grant labeled-secret while it still carries the allow-widgets label")
+	}
+
+	var current corev1.Secret
+	if err := cl.Get(t.Context(), types.NamespacedName{Name: testLabeledSecretName, Namespace: instance.Namespace}, &current); err != nil {
+		t.Fatalf("getting Secret: %v", err)
+	}
+	delete(current.Labels, pagev1alpha1.SecretAllowWidgetsLabel)
+	if err := cl.Update(t.Context(), &current); err != nil {
+		t.Fatalf("removing allow-widgets label: %v", err)
+	}
+
+	if err := r.reconcileRole(t.Context(), instance); err != nil {
+		t.Fatalf("reconcileRole() error = %v", err)
+	}
+	if roleHasSecretGrant() {
+		t.Errorf("Role still grants labeled-secret after its allow-widgets label was removed, want the grant dropped")
 	}
 }
 

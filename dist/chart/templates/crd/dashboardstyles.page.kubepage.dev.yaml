@@ -71,7 +71,6 @@ spec:
                       "sm", "md", "xl", ""). An explicit "" is equivalent to leaving it
                       unset (the default 8px blur).
                     maxLength: 8
-                    minLength: 0
                     type: string
                   brightness:
                     description: |-
@@ -114,7 +113,6 @@ spec:
                   to leaving it unset (the default 8px blur). Most visible over a
                   background image.
                 maxLength: 8
-                minLength: 0
                 type: string
               collapse:
                 default: true

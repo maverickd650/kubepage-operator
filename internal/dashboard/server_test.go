@@ -123,6 +123,49 @@ func TestServerFragmentGzipsWhenAccepted(t *testing.T) {
 	}
 }
 
+// TestServerFragmentVaryHeaderAlwaysSet verifies writeCachedHTML sends
+// Vary: Accept-Encoding on every response whose body encoding depends on
+// the request's Accept-Encoding — the plain (non-gzip) 200 response, the
+// gzip-compressed 200 response, and the bodyless 304 revalidation — not
+// only the gzip branch, so a cache sitting in front of the dashboard never
+// serves a gzip response to a client that didn't ask for one.
+// testAcceptEncodingHeader is the header name reused across this test's
+// three assertions (request header set, response Vary value) — pulled into
+// a constant so goconst doesn't flag the repetition.
+const testAcceptEncodingHeader = "Accept-Encoding"
+
+func TestServerFragmentVaryHeaderAlwaysSet(t *testing.T) {
+	store := NewStore()
+	store.Set(Card{Key: testFragmentCardKey, Group: testGroup, ServiceName: testServiceName})
+	srv := newTestServer(t, store)
+
+	plain := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(plain, httptest.NewRequest(http.MethodGet, "/fragment", nil))
+	if got := plain.Header().Get("Vary"); got != testAcceptEncodingHeader {
+		t.Errorf("plain response Vary = %q, want %q", got, testAcceptEncodingHeader)
+	}
+	etag := plain.Header().Get("ETag")
+
+	gzipReq := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	gzipReq.Header.Set(testAcceptEncodingHeader, "gzip")
+	gzipRec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(gzipRec, gzipReq)
+	if got := gzipRec.Header().Get("Vary"); got != testAcceptEncodingHeader {
+		t.Errorf("gzip response Vary = %q, want %q", got, testAcceptEncodingHeader)
+	}
+
+	revalReq := httptest.NewRequest(http.MethodGet, "/fragment", nil)
+	revalReq.Header.Set("If-None-Match", etag)
+	revalRec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(revalRec, revalReq)
+	if revalRec.Code != http.StatusNotModified {
+		t.Fatalf("revalidated request status = %d, want 304", revalRec.Code)
+	}
+	if got := revalRec.Header().Get("Vary"); got != testAcceptEncodingHeader {
+		t.Errorf("304 response Vary = %q, want %q", got, testAcceptEncodingHeader)
+	}
+}
+
 // failingResponseWriter fails every Write, simulating a client that
 // disconnects mid-response — used to exercise writeCachedHTML's gzip
 // error-handling branch, which a well-behaved recorder never triggers.

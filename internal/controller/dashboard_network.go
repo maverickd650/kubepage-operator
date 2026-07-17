@@ -663,6 +663,17 @@ func (r *DashboardReconciler) reconcileNetworkPolicy(ctx context.Context, instan
 	if err != nil {
 		return fmt.Errorf("defining NetworkPolicy: %w", err)
 	}
+	// Plain reflect.DeepEqual here (unlike reconcileDeployment's field-by-
+	// field comparison, which exists precisely because of this pitfall)
+	// only works because every field networkPolicyForDashboard sets is
+	// itself defaulting-proof: PolicyTypes is always explicit, and every
+	// port's Protocol is hand-set rather than left to apiserver defaulting
+	// (TestNetworkPolicyForDashboardIngressPortsHaveExplicitProtocol pins
+	// that down — a port without an explicit Protocol would default to TCP
+	// on the stored object and look like permanent drift against a bare
+	// struct literal that left it zero). Any future field added to
+	// networkPolicyForDashboard must stay defaulting-proof the same way, or
+	// this comparison needs to become field-by-field like the Deployment's.
 	if !reflect.DeepEqual(found.Spec, desired.Spec) {
 		found.Spec = desired.Spec
 		if err := r.Update(ctx, found); err != nil {

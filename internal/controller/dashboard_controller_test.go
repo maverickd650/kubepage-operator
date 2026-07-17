@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -239,7 +238,7 @@ var _ = Describe("Dashboard controller", func() {
 				Spec: pagev1alpha1.DashboardSpec{
 					Replicas:      new(int32(1)),
 					ContainerPort: 8080,
-					HostUsers:     ptr.To(false),
+					HostUsers:     new(false),
 					Labels: map[string]string{
 						"team": "platform",
 					},
@@ -1069,6 +1068,36 @@ var _ = Describe("Dashboard controller", func() {
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Env).To(ConsistOf(corev1.EnvVar{Name: "FOO", Value: "bar"}))
 				g.Expect(dep.Spec.Template.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]).To(Equal(resource.MustParse("500m")))
 				g.Expect(dep.Spec.Template.Labels).To(HaveKeyWithValue("custom-label", "yes"))
+			}).Should(Succeed())
+		})
+
+		It("rolls the Deployment when its ServiceAccountName drifts from the per-Dashboard ServiceAccount", func() {
+			instance := &pagev1alpha1.Dashboard{
+				ObjectMeta: metav1.ObjectMeta{Name: DashboardName, Namespace: namespace.Name},
+				Spec:       pagev1alpha1.DashboardSpec{Replicas: new(int32(1)), ContainerPort: 8080},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			reconciler := &DashboardReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), DashboardImage: testDashboardImage}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			dep := &appsv1.Deployment{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+			}).Should(Succeed())
+			Expect(dep.Spec.Template.Spec.ServiceAccountName).To(Equal(DashboardName))
+
+			By("mutating the Deployment's ServiceAccountName out from under the reconciler")
+			dep.Spec.Template.Spec.ServiceAccountName = "some-other-sa"
+			Expect(k8sClient.Update(ctx, dep)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dep)).To(Succeed())
+				g.Expect(dep.Spec.Template.Spec.ServiceAccountName).To(Equal(DashboardName), "reconcile should correct a drifted ServiceAccountName back to the per-Dashboard ServiceAccount")
 			}).Should(Succeed())
 		})
 

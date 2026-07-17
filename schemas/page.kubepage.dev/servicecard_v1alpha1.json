@@ -56,8 +56,7 @@
                 "type": "string"
               },
               "errorDisplay": {
-                "default": true,
-                "description": "errorDisplay controls whether a widget's error text is shown on the\ncard (e.g. set false for a service that is expected to be\nintermittently unreachable). Defaults to true.",
+                "description": "errorDisplay controls whether a widget's error text is shown on the\ncard (e.g. set false for a service that is expected to be\nintermittently unreachable). When unset, falls back to the\nDashboardStyle's site-wide errorDisplay (defaults to true).",
                 "type": "boolean"
               },
               "group": {

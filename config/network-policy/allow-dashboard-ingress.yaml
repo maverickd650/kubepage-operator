@@ -1,5 +1,7 @@
-# Example NetworkPolicy for dashboard pods (see docs/security-review.md
-# P1.2/P1.3). This is a template to copy into your own Dashboard's namespace
+# Example NetworkPolicy for dashboard pods (see SECURITY.md's trust model,
+# point 3 — dashboard viewers are trusted by network reachability, since the
+# dashboard HTTP server has no authentication/authorization of its own).
+# This is a template to copy into your own Dashboard's namespace
 # and adjust — it is NOT applied by default and NOT referenced by
 # config/default/kustomization.yaml, the same as allow-metrics-traffic.yaml.
 #
