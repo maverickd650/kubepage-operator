@@ -12,12 +12,18 @@ spec:
   # (Grafana overrides it to "Observability").
   group: Media
   services:
+    # The split-URL shape: href is what the browser opens (through the
+    # ingress), internalUrl is what the dashboard pod itself polls and
+    # probes (in-cluster Service DNS). "monitor: self" probes that same
+    # base URL (internalUrl when set, else href), and the plex widget
+    # inherits it too — each distinct URL is written exactly once.
     - name: Plex
-      href: http://plex.example.com
+      href: https://plex.example.com
+      internalUrl: http://plex.media.svc:32400
       icon: plex
       description: Media server
-      siteMonitor: http://plex.example.com
-      # app pairs an HTTP siteMonitor with a Kubernetes pod monitor: pods are
+      monitor: self
+      # app pairs the HTTP monitor with a Kubernetes pod monitor: pods are
       # located by the app.kubernetes.io/name=plex label in this ServiceCard's
       # own namespace (homepage parity, see docs/design/combined-monitor.md),
       # and the card shows both statuses independently.
@@ -25,30 +31,31 @@ spec:
       statusStyle: dot
       widgets:
         - type: plex
-          url: http://plex.example.com
           secrets:
             token:
               secretKeyRef:
                 name: plex-credentials
                 key: token
+    # The one-URL shape: href doubles as the monitor probe target via
+    # "monitor: self" — no URL is ever repeated.
     - name: Stash
       href: http://stash.example.com
       icon: stash
       description: A type of media server.
-      siteMonitor: http://stash.example.com
+      monitor: self
       statusStyle: dot
     - name: Grafana
       group: Observability
       href: http://grafana.example.com
       icon: grafana
       description: Observability dashboard for Prometheus and other metrics
-      siteMonitor: http://grafana.example.com
+      monitor: self
       statusStyle: dot
       widgets:
         # admin/stats requires Grafana server-admin credentials; a scoped
-        # viewer/editor API key/token will not work here.
+        # viewer/editor API key/token will not work here. The widget inherits
+        # its base URL from href.
         - type: grafana
-          url: http://grafana.example.com
           secrets:
             username:
               secretKeyRef:
@@ -69,5 +76,7 @@ spec:
       href: http://radarr.example.com
       icon: radarr
       description: Movie collection manager
-      siteMonitor: http://radarr.example.com
+      # monitor also accepts an explicit URL when the probe target differs
+      # from the entry's own base URL.
+      monitor: http://radarr.example.com/ping
       statusStyle: dot

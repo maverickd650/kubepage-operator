@@ -2304,7 +2304,7 @@
               "type": "string"
             },
             "statusStyle": {
-              "description": "statusStyle is the site-wide default for how a ServiceCard's Ping/\nSiteMonitor/PodSelector status renders (\"dot\" a colored status dot,\n\"basic\" a colored status pill with status word plus latency/\nready-count detail), used when a ServiceCard doesn't set its own\nStatusStyle. Defaults to \"dot\" when unset here too. Kept as an enum\nrather than a bool: a third rendering style is plausible here, unlike\nthis file's other converted fields.",
+              "description": "statusStyle is the site-wide default for how a ServiceCard's Monitor/\nPodSelector status renders (\"dot\" a colored status dot,\n\"basic\" a colored status pill with status word plus latency/\nready-count detail), used when a ServiceCard doesn't set its own\nStatusStyle. Defaults to \"dot\" when unset here too. Kept as an enum\nrather than a bool: a third rendering style is plausible here, unlike\nthis file's other converted fields.",
               "enum": [
                 "dot",
                 "basic"

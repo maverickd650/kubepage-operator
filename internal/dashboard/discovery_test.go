@@ -458,3 +458,58 @@ func TestDiscoverHTTPRoutesListError(t *testing.T) {
 		t.Fatal("discoverHTTPRoutes() error = nil, want non-nil when listing HTTPRoutes fails")
 	}
 }
+
+// TestDiscoveryMonitorEnabled pins the monitor flag's two accepted names:
+// the native "monitor" annotation, and homepage's own "ping" name for the
+// same behavior — the latter must keep working (under either prefix) so
+// homepageCompat clusters and half-migrated annotations don't silently lose
+// their status lights.
+func TestDiscoveryMonitorEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		ann  map[string]string
+		want bool
+	}{
+		{name: "monitor true", ann: map[string]string{discoveryAnnMonitor: annotationValueTrue}, want: true},
+		{name: "homepage ping true", ann: map[string]string{discoveryAnnPing: annotationValueTrue}, want: true},
+		{name: "monitor false", ann: map[string]string{discoveryAnnMonitor: "false"}, want: false},
+		{name: "neither set", ann: map[string]string{}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := discoveryMonitorEnabled(tc.ann); got != tc.want {
+				t.Errorf("discoveryMonitorEnabled(%v) = %v, want %v", tc.ann, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDiscoverServicesHomepagePingAnnotation exercises the compat path end
+// to end: an Ingress carrying only homepage's own annotations — including
+// "gethomepage.dev/ping" — must be discovered with Monitor set.
+func TestDiscoverServicesHomepagePingAnnotation(t *testing.T) {
+	ing := networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "legacy-ping",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				homepageDiscoveryPrefix + discoveryAnnEnabled: annotationValueTrue,
+				homepageDiscoveryPrefix + discoveryAnnPing:    annotationValueTrue,
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(&ing).Build()
+
+	compat := true
+	spec := pagev1alpha1.DiscoverySpec{Enabled: true, HomepageCompat: &compat}
+	services, err := discoverServices(t.Context(), cl, "ns", cl, nil, spec)
+	if err != nil {
+		t.Fatalf("discoverServices() error: %v", err)
+	}
+	if len(services) != 1 {
+		t.Fatalf("discoverServices() = %d services, want 1", len(services))
+	}
+	if !services[0].Monitor {
+		t.Errorf("discovered service Monitor = false, want true (gethomepage.dev/ping honored)")
+	}
+}

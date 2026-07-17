@@ -101,7 +101,7 @@ func TestPreviewServesConfigSamples(t *testing.T) {
 	}
 	// Bookmarks render straight from LoadSite (a cached-reader read),
 	// independent of the Poller's own ticker — unlike a ServiceCard's
-	// widget/siteMonitor fields, which only appear once the Poller's first
+	// widget/monitor fields, which only appear once the Poller's first
 	// cycle actually completes its outbound probes. Asserting on the sample
 	// Bookmark keeps this test deterministic instead of racing a real
 	// network round-trip to config/samples' (nonexistent) plex.example.com.

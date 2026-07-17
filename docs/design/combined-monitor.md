@@ -1,5 +1,12 @@
 # Combined HTTP + pod monitor status (homepage parity)
 
+> **Historical note (2026-07):** `ping` and `siteMonitor` have since been
+> merged into a single `monitor` field (a URL, or `self` to probe the
+> entry's own `internalUrl`/`href`) — see issue #172. References below to
+> `ping`/`siteMonitor` and their mutual-exclusion CEL rule describe the API
+> as it was when this design was written; the combined-monitor behavior
+> itself (HTTP + pod status on one card) is unchanged.
+
 Status: shipped — implemented as described below.
 
 ## Goal

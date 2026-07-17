@@ -342,8 +342,8 @@ type StyleSpec struct {
 	// +optional
 	CustomJS *string `json:"customJS,omitempty"`
 
-	// statusStyle is the site-wide default for how a ServiceCard's Ping/
-	// SiteMonitor/PodSelector status renders ("dot" a colored status dot,
+	// statusStyle is the site-wide default for how a ServiceCard's Monitor/
+	// PodSelector status renders ("dot" a colored status dot,
 	// "basic" a colored status pill with status word plus latency/
 	// ready-count detail), used when a ServiceCard doesn't set its own
 	// StatusStyle. Defaults to "dot" when unset here too. Kept as an enum

@@ -102,8 +102,10 @@ the cause.
   fields, or `showStats: false` is set on the card. Also check `fields:` — if it
   lists labels that don't match what the widget produces, everything gets
   filtered out. Remove `fields:` temporarily to see the real labels.
-- If it's a **status light** you expect: make sure you set exactly one of
-  `ping` / `siteMonitor` / `podSelector`.
+- If it's a **status light** you expect: make sure you set `monitor` (a URL
+  or `self`) and/or `app`/`podSelector`. (`ping` and `siteMonitor` were
+  merged into `monitor` — replace either with `monitor: <same URL>`, or
+  `monitor: self` when the URL equals the entry's `href`/`internalUrl`.)
 
 ### "A config value I set is being ignored"
 
