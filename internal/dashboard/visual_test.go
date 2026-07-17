@@ -103,7 +103,7 @@ func startVisualServer(t *testing.T, theme, headerStyle string) (baseURL string,
 
 	store := NewStore()
 	// The "greet" InfoWidget below is a static "greeting" type — server.go's
-	// buildHeader reads its text straight from Options, never from a live
+	// buildHeader reads its text straight from Config, never from a live
 	// Card — so it needs no Store entry.
 	// header/<InfoWidget name>/<entry index> is the Key format poller.go's
 	// pollInfoWidget actually stores each header Card under (see
@@ -138,8 +138,8 @@ func startVisualServer(t *testing.T, theme, headerStyle string) (baseURL string,
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Widgets: []pagev1alpha1.InfoWidgetEntry{{
-					Type:    "greeting",
-					Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Good afternoon"}`)},
+					Type:   "greeting",
+					Config: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Good afternoon"}`)},
 				}},
 			},
 		},

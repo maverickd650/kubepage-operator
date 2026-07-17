@@ -19,8 +19,8 @@ func init() {
 // summed across every node's disk status. cfg.URL is the Longhorn Manager
 // base URL (e.g. http://longhorn-frontend.longhorn-system:80), reachable
 // from the dashboard pod like any other widget's URL — no cluster RBAC
-// needed, unlike kubemetrics. InfoWidget has no dedicated url field, so this
-// is required to be set via spec.options.url (see pollInfoWidget).
+// needed, unlike kubemetrics. Required to be set via spec.widgets[].url (see
+// pollInfoWidget).
 type longhornWidget struct{}
 
 type longhornNodesResponse struct {

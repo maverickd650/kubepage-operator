@@ -130,8 +130,8 @@ can be turned off with `--set admissionPolicies.enabled=false`. These are
 the floors implied by the API surface used; the CI-tested floor is higher —
 see [Development](#development).
 
-Widget `config`/`options` blocks (`ServiceWidget.Config`,
-`InfoWidgetEntry.Options`) are `PreserveUnknownFields` JSON, so a bad key
+Widget `config` blocks (`ServiceWidget.Config`,
+`InfoWidgetEntry.Config`) are `PreserveUnknownFields` JSON, so a bad key
 inside them can't be caught by the CRD schema the way the invariants above
 are. Instead, `ServiceCardReconciler`/`InfoWidgetReconciler` validate each
 widget's block against its type's known required/optional keys on every

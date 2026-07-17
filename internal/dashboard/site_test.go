@@ -328,9 +328,9 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    headerTypeGreeting,
-				Order:   &order2,
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
+				Type:   headerTypeGreeting,
+				Order:  &order2,
+				Config: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hello"}`)},
 			}},
 		},
 	}
@@ -365,8 +365,8 @@ func TestLoadSiteHeaderWidgetsOrdered(t *testing.T) {
 	if site.HeaderWidgets[0].Type != headerTypeDatetime || site.HeaderWidgets[1].Type != headerTypeGreeting {
 		t.Errorf("HeaderWidgets order = %+v, want datetime then greeting (by Order)", site.HeaderWidgets)
 	}
-	if site.HeaderWidgets[1].Options["text"] != "Hello" {
-		t.Errorf("greeting options = %+v, want text=Hello", site.HeaderWidgets[1].Options)
+	if site.HeaderWidgets[1].Config["text"] != "Hello" {
+		t.Errorf("greeting config = %+v, want text=Hello", site.HeaderWidgets[1].Config)
 	}
 }
 
@@ -427,7 +427,7 @@ func TestHeaderWidgetsFlattensMultiWidgetFormWithDistinctKeys(t *testing.T) {
 			Spec: pagev1alpha1.InfoWidgetSpec{
 				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 				Widgets: []pagev1alpha1.InfoWidgetEntry{
-					{Type: headerTypeGreeting, Options: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hi"}`)}},
+					{Type: headerTypeGreeting, Config: &apiextensionsv1.JSON{Raw: []byte(`{"text":"Hi"}`)}},
 					{Type: headerTypeDatetime},
 				},
 			},
@@ -828,7 +828,7 @@ func TestGroupBookmarksUnmatchedGroupUsesSiteDefaults(t *testing.T) {
 	}
 }
 
-func TestScalarOptions(t *testing.T) {
+func TestScalarConfig(t *testing.T) {
 	tests := map[string]struct {
 		raw  *apiextensionsv1.JSON
 		want map[string]string
@@ -850,13 +850,13 @@ func TestScalarOptions(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := scalarOptions(tc.raw)
+			got := scalarConfig(tc.raw)
 			if len(got) != len(tc.want) {
-				t.Fatalf("scalarOptions() = %+v, want %+v", got, tc.want)
+				t.Fatalf("scalarConfig() = %+v, want %+v", got, tc.want)
 			}
 			for k, v := range tc.want {
 				if got[k] != v {
-					t.Errorf("scalarOptions()[%q] = %q, want %q", k, got[k], v)
+					t.Errorf("scalarConfig()[%q] = %q, want %q", k, got[k], v)
 				}
 			}
 		})

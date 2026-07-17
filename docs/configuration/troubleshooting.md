@@ -39,7 +39,7 @@ Objects report their health as **conditions**. The ones you'll meet:
 |-----------|---------|
 | `Available: True` | All good. |
 | `Available: False` | Something's wrong — the `Reason`/`Message` say what. |
-| `ConfigValid: False` (reason `UnknownConfigKeys`) | A `config`/`options` key isn't recognised — likely a **typo**. The card still works; the unknown key is just ignored. |
+| `ConfigValid: False` (reason `UnknownConfigKeys`) | A `config` key isn't recognised — likely a **typo**. The card still works; the unknown key is just ignored. |
 
 A common `Available: False` reason is **`InvalidWidgetConfig`** — a widget is
 missing a *required* setting (for example `cloudflared` without a `tunnelId`, or

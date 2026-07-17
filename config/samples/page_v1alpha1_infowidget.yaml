@@ -14,21 +14,19 @@ spec:
   widgets:
     - type: greeting
       order: 1
-      options:
+      config:
         text: Welcome to the lab
     - type: datetime
       order: 2
     - type: openmeteo
       order: 3
-      options:
+      config:
         latitude: 51.5074
         longitude: -0.1278
         units: metric
         label: London
     - type: longhorn
       order: 4
-      # url is the typed field (takes precedence over options' "url" key,
-      # which remains supported for backwards compatibility).
       url: http://longhorn-frontend.longhorn-system:80
     - type: kubemetrics
       order: 5

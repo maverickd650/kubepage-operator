@@ -818,16 +818,16 @@ func TestPollerInfoWidgetHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// InfoWidget has no URL field; the openmeteo header widget reads its API
-	// base from an Options "url" key (handled by pollInfoWidget), which keeps
-	// this test hermetic against the httptest server.
+	// The openmeteo header widget reads its API base from the entry's typed
+	// URL field, which keeps this test hermetic against the httptest server.
 	iw := &pagev1alpha1.InfoWidget{
 		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    testOpenMeteoType,
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+				Type:   testOpenMeteoType,
+				URL:    &srv.URL,
+				Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12}`)},
 			}},
 		},
 	}
@@ -1232,7 +1232,8 @@ func TestPollerPollInfoWidgetHonorsPollIntervalSeconds(t *testing.T) {
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
 				Type:                testOpenMeteoType,
-				Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+				URL:                 &srv.URL,
+				Config:              &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12}`)},
 				PollIntervalSeconds: &overrideSeconds,
 			}},
 		},
@@ -1430,12 +1431,9 @@ func TestPollerInfoWidgetPollErrorSetsCardErr(t *testing.T) {
 	}
 }
 
-// TestPollerInfoWidgetURLFieldBeatsOptionsURL verifies InfoWidgetEntry.URL
-// takes precedence over options' "url" key when both are set: the entry's
-// typed URL points at a working server while options.url points at an
-// address nothing listens on, so a successful poll proves the typed field
-// won.
-func TestPollerInfoWidgetURLFieldBeatsOptionsURL(t *testing.T) {
+// TestPollerInfoWidgetUsesTypedURLField verifies InfoWidgetEntry.URL resolves
+// the widget's base URL.
+func TestPollerInfoWidgetUsesTypedURLField(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"current_weather":{"temperature":9,"weathercode":0}}`))
 	}))
@@ -1447,9 +1445,9 @@ func TestPollerInfoWidgetURLFieldBeatsOptionsURL(t *testing.T) {
 		Spec: pagev1alpha1.InfoWidgetSpec{
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    testOpenMeteoType,
-				URL:     &entryURL,
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"http://127.0.0.1:1"}`)},
+				Type:   testOpenMeteoType,
+				URL:    &entryURL,
+				Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12}`)},
 			}},
 		},
 	}
@@ -1463,41 +1461,7 @@ func TestPollerInfoWidgetURLFieldBeatsOptionsURL(t *testing.T) {
 		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
 	}
 	if cards[0].Err != "" {
-		t.Errorf("card.Err = %q, want empty (entry.URL should have been used instead of the unreachable options.url)", cards[0].Err)
-	}
-}
-
-// TestPollerInfoWidgetOptionsURLStillWorksAlone verifies options' "url" key
-// alone (entry.URL unset) still resolves the widget's base URL, preserving
-// backwards compatibility for InfoWidgets written before the typed URL field
-// existed.
-func TestPollerInfoWidgetOptionsURLStillWorksAlone(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"current_weather":{"temperature":9,"weathercode":0}}`))
-	}))
-	defer srv.Close()
-
-	iw := pagev1alpha1.InfoWidget{
-		ObjectMeta: metav1.ObjectMeta{Name: testHeaderWeather, Namespace: testNamespace},
-		Spec: pagev1alpha1.InfoWidgetSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
-			Widgets: []pagev1alpha1.InfoWidgetEntry{{
-				Type:    testOpenMeteoType,
-				Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
-			}},
-		},
-	}
-
-	store := NewStore()
-	p := &Poller{HTTPClient: srv.Client(), Store: store}
-	p.pollInfoWidget(t.Context(), "header/weather", iw, iw.Spec.Entries()[0], nil)
-
-	cards := store.Snapshot()
-	if len(cards) != 1 {
-		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
-	}
-	if cards[0].Err != "" {
-		t.Errorf("card.Err = %q, want empty (options.url alone must still resolve the widget's base URL)", cards[0].Err)
+		t.Errorf("card.Err = %q, want empty (entry.URL should have resolved the widget's base URL)", cards[0].Err)
 	}
 }
 
@@ -1520,12 +1484,14 @@ func TestPollerMultiWidgetFormProducesPerEntryCards(t *testing.T) {
 			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
 			Widgets: []pagev1alpha1.InfoWidgetEntry{
 				{
-					Type:    testOpenMeteoType,
-					Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+					Type:   testOpenMeteoType,
+					URL:    &srv.URL,
+					Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12}`)},
 				},
 				{
-					Type:    testOpenMeteoType,
-					Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":40.7,"longitude":-74.0,"url":"` + srv.URL + `"}`)},
+					Type:   testOpenMeteoType,
+					URL:    &srv.URL,
+					Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":40.7,"longitude":-74.0}`)},
 				},
 			},
 		},
@@ -1618,7 +1584,8 @@ func TestPollerMultiWidgetFormPerEntrySecretsAndPollInterval(t *testing.T) {
 					// Entry 1: no Secrets, but its own PollIntervalSeconds
 					// override.
 					Type:                testOpenMeteoType,
-					Options:             &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12,"url":"` + srv.URL + `"}`)},
+					URL:                 &srv.URL,
+					Config:              &apiextensionsv1.JSON{Raw: []byte(`{"latitude":51.5,"longitude":-0.12}`)},
 					PollIntervalSeconds: &overrideSeconds,
 				},
 			},

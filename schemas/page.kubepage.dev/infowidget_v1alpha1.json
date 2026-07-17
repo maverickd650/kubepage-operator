@@ -85,15 +85,15 @@
                   }
                 ]
               },
+              "config": {
+                "description": "config holds every widget-type-specific field; unrecognized keys are\nsilently ignored rather than rejected (see internal/dashboard's\nper-widget source for the authoritative shape). Known keys by type:\n  - greeting: text (the message shown)\n  - datetime: format (a JSON-encoded Intl.DateTimeFormat options\n    object, e.g. {\"dateStyle\":\"short\",\"timeStyle\":\"short\"}; defaults\n    to medium date/short time, i.e. no seconds)\n  - openmeteo, openweathermap: latitude, longitude (both required),\n    units (\"metric\"/\"imperial\"), label\n  - kubemetrics: cpuLabel, memoryLabel\n  - glances: apiVersion (\"3\" or \"4\"; defaults to \"4\")\n  - longhorn: no config keys; url above is required\nglances and longhorn also require the typed url field above (Glances/\nLonghorn Manager REST API base URL, e.g.\nhttp://longhorn-frontend.longhorn-system:80). logo takes no config.",
+                "x-kubernetes-preserve-unknown-fields": true
+              },
               "icon": {
                 "description": "icon shown to the left of this widget's value(s) in the header strip,\nmatching homepage's Resource component. Resolved the same way as\nServiceCard/Bookmark Icon: a full URL passes through unchanged,\n\"mdi-X\"/\"si-X\"/\"lucide-X\"/\"wi-X\"/\"fa6-solid-X\"/\"sh-X\" resolve via\nhomepage's icon prefix syntax (see ServiceEntry.Icon), and anything\nelse is treated as a dashboard-icons slug. Ignored by the\n\"greeting\" and \"datetime\" widget types, which homepage renders without\nan icon. Every other polled type (openmeteo/openweathermap,\nkubemetrics, glances, longhorn) already renders a sensible built-in\nicon when this is unset — openmeteo/openweathermap's tracks the\ncurrent weather condition each poll — so this field only needs\nsetting to override that default.",
                 "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
-              },
-              "options": {
-                "description": "options holds every widget-type-specific field; unrecognized keys are\nsilently ignored rather than rejected (see internal/dashboard's\nper-widget source for the authoritative shape). Known keys by type:\n  - greeting: text (the message shown)\n  - datetime: format (a JSON-encoded Intl.DateTimeFormat options\n    object, e.g. {\"dateStyle\":\"short\",\"timeStyle\":\"short\"}; defaults\n    to medium date/short time, i.e. no seconds)\n  - openmeteo, openweathermap: latitude, longitude (both required),\n    units (\"metric\"/\"imperial\"), label\n  - kubemetrics: cpuLabel, memoryLabel\n  - glances: url (required unless the typed URL field below is set;\n    Glances REST API base URL), apiVersion (\"3\" or \"4\"; defaults to \"4\")\n  - longhorn: url (required unless the typed URL field below is set;\n    Longhorn Manager REST API base URL, e.g.\n    http://longhorn-frontend.longhorn-system:80)\nFor a header widget type that polls an HTTP upstream, the typed URL\nfield above takes precedence over this options block's \"url\" key,\nwhich remains supported for backwards compatibility.\nlogo takes no options.",
-                "x-kubernetes-preserve-unknown-fields": true
               },
               "order": {
                 "description": "order controls rendering position: widgets are sorted by Order (nil\nsorts last), ties broken by the InfoWidget object's name then this\nentry's index, since CRDs have no inherent ordering of their own.",
@@ -148,7 +148,7 @@
                     }
                   ]
                 },
-                "description": "secrets are secret-bearing option fields, resolved in-process at poll\ntime (internal/dashboard/poller.go's pollInfoWidget) into the widget's\nWidgetConfig.Secrets map, keyed by the same field names used here —\ndistinct from Options/Config, which never carry secret values.\n\nRBAC note: the same caveat as ServiceCard's widgets.secrets applies\nhere — see ServiceWidget.Secrets' doc comment. Anyone who can create\nan InfoWidget in this namespace can read any Secret in it by\nreferencing it via secretKeyRef and pointing this widget's options at\na server they control.",
+                "description": "secrets are secret-bearing option fields, resolved in-process at poll\ntime (internal/dashboard/poller.go's pollInfoWidget) into the widget's\nWidgetConfig.Secrets map, keyed by the same field names used here —\ndistinct from Config, which never carries secret values.\n\nRBAC note: the same caveat as ServiceCard's widgets.secrets applies\nhere — see ServiceWidget.Secrets' doc comment. Anyone who can create\nan InfoWidget in this namespace can read any Secret in it by\nreferencing it via secretKeyRef and pointing this widget's config at\na server they control.",
                 "maxProperties": 32,
                 "minProperties": 1,
                 "type": "object"
@@ -168,7 +168,7 @@
                 "type": "string"
               },
               "url": {
-                "description": "url is the base URL this widget polls, for widget types with an HTTP\nupstream (glances, longhorn). Takes precedence over options' \"url\"\nkey, which remains supported for backwards compatibility.",
+                "description": "url is the base URL this widget polls, for widget types with an HTTP\nupstream (glances, longhorn); required for those types.",
                 "maxLength": 2048,
                 "minLength": 1,
                 "pattern": "^https?://",
@@ -178,7 +178,13 @@
             "required": [
               "type"
             ],
-            "type": "object"
+            "type": "object",
+            "x-kubernetes-validations": [
+              {
+                "message": "url is required when type is \"glances\" or \"longhorn\"",
+                "rule": "!(self.type in ['glances','longhorn']) || has(self.url)"
+              }
+            ]
           },
           "maxItems": 32,
           "minItems": 1,

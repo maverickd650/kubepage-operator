@@ -24,11 +24,11 @@ spec:
     name: home
   widgets:
     - type: greeting
-      options:
+      config:
         text: Welcome home
     - type: datetime
     - type: openmeteo
-      options:
+      config:
         latitude: 51.5074
         longitude: -0.1278
         units: metric
@@ -47,7 +47,7 @@ section. In brief:
 
 | Type | Shows | Needs |
 |------|-------|-------|
-| `greeting` | Static text | `options.text` |
+| `greeting` | Static text | `config.text` |
 | `datetime` | A live clock | nothing |
 | `logo` | A static logo image | `icon` (the image) |
 | `openmeteo` | Weather, **no API key** | latitude + longitude |
@@ -63,8 +63,8 @@ Each entry under `widgets:` accepts:
 | Field | What it does |
 |-------|--------------|
 | `type` | **Required.** Which header widget (see table above). |
-| `options` | The widget's settings (e.g. `text`, `latitude`). Same role as `config` on card widgets — just named `options` here. |
-| `url` | For widgets that poll an address (`glances`, `longhorn`). |
+| `config` | The widget's settings (e.g. `text`, `latitude`). Same role as `config` on card widgets. |
+| `url` | For widgets that poll an address (`glances`, `longhorn`); required for those types. |
 | `secrets` | A credential, exactly like card widgets — e.g. `apiKey` for `openweathermap`. |
 | `order` | A number to control left-to-right position. |
 | `align` | `Left` or `Right`. Defaults sensibly: greeting/clock left, live stats right. |
@@ -83,7 +83,7 @@ widgets:
   - type: greeting
     align: Left
     order: 1
-    options: { text: Good morning }
+    config: { text: Good morning }
   - type: kubemetrics
     align: Right
     order: 1
@@ -96,7 +96,7 @@ widgets:
 
 ```yaml
 - type: openmeteo
-  options:
+  config:
     latitude: 40.7128
     longitude: -74.0060
     units: imperial

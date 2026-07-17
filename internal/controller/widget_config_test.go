@@ -150,8 +150,8 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
-						Type:    testWidgetTypeOpenMeteo,
-						Options: &apiextensionsv1.JSON{Raw: []byte(`{"longitude":1.2}`)},
+						Type:   testWidgetTypeOpenMeteo,
+						Config: &apiextensionsv1.JSON{Raw: []byte(`{"longitude":1.2}`)},
 					}},
 				},
 			}
@@ -172,7 +172,7 @@ var _ = Describe("Widget config validation", func() {
 			Expect(available.Message).To(ContainSubstring(testOptionLatitude))
 		})
 
-		It("treats the typed URL field as satisfying glances' required url key", func() {
+		It("sets ConfigValid=True for glances with only the typed url field set", func() {
 			name := "iw-cfg-glances-typed-url"
 			iw := &pagev1alpha1.InfoWidget{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyTestNamespace},
@@ -210,8 +210,8 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
-						Type:    testWidgetTypeOpenMeteo,
-						Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0,"latitude2":3.0}`)},
+						Type:   testWidgetTypeOpenMeteo,
+						Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0,"latitude2":3.0}`)},
 					}},
 				},
 			}
@@ -243,8 +243,8 @@ var _ = Describe("Widget config validation", func() {
 				Spec: pagev1alpha1.InfoWidgetSpec{
 					DashboardRef: pagev1alpha1.DashboardRef{Name: widgetConfigDashboardName},
 					Widgets: []pagev1alpha1.InfoWidgetEntry{{
-						Type:    testWidgetTypeOpenMeteo,
-						Options: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0}`)},
+						Type:   testWidgetTypeOpenMeteo,
+						Config: &apiextensionsv1.JSON{Raw: []byte(`{"latitude":1.0,"longitude":2.0}`)},
 					}},
 				},
 			}

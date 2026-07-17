@@ -1,6 +1,6 @@
-// Package widgetschema declares the known config/options keys for every
+// Package widgetschema declares the known config keys for every
 // widget type, so that internal/controller's reconcilers can validate a
-// ServiceWidget.Config or InfoWidgetEntry.Options block without importing
+// ServiceWidget.Config or InfoWidgetEntry.Config block without importing
 // internal/dashboard's widget implementations (their polling behavior, HTTP
 // clients, etc.) — this package has no dependency beyond the standard
 // library, and is the only widget-schema knowledge internal/controller needs.
@@ -8,7 +8,7 @@ package widgetschema
 
 import "slices"
 
-// Config/options key names shared by more than one schema entry (and their
+// Config key names shared by more than one schema entry (and their
 // unit tests), pulled out as constants purely to satisfy goconst.
 const (
 	keyAccountID = "accountId"
@@ -17,7 +17,7 @@ const (
 	keyLabel     = "label"
 )
 
-// ConfigSchema declares one widget type's config/options contract: which
+// ConfigSchema declares one widget type's config contract: which
 // keys must be present, and which are recognized but not required. Any key
 // present that isn't in either list is "unknown" — not fatal (forward
 // compatibility with an older operator reading a newer config), but worth
@@ -28,10 +28,10 @@ type ConfigSchema struct {
 }
 
 // ConfigSchemas maps a widget type (ServiceWidget.Type or
-// InfoWidgetEntry.Type) to its config/options contract. Populated from each
+// InfoWidgetEntry.Type) to its config contract. Populated from each
 // widget implementation's own config struct in internal/dashboard/*.go (the
 // authoritative source — see each file's json tags) and from the doc
-// comments on ServiceWidget.Config/InfoWidgetEntry.Options
+// comments on ServiceWidget.Config/InfoWidgetEntry.Config
 // (api/v1alpha1/servicecard_types.go, api/v1alpha1/infowidget_types.go).
 //
 // Every widget type registered in internal/dashboard (dashboard.RegisteredTypes)
@@ -86,22 +86,19 @@ var ConfigSchemas = map[string]ConfigSchema{
 	"logo":     {},
 
 	// InfoWidget pollable types (internal/dashboard/*.go). glances/longhorn
-	// require "url" in Options unless the entry's typed URL field is set —
-	// callers must treat that field as satisfying the "url" key before
-	// calling ValidateConfig; see internal/controller's use of this package.
+	// require the typed InfoWidgetEntry.url field (enforced by CEL on the
+	// CRD, not by this config schema).
 	"openmeteo":      {Required: []string{"latitude", "longitude"}, Optional: []string{"units", keyLabel}},
 	"openweathermap": {Required: []string{"latitude", "longitude"}, Optional: []string{"units", keyLabel}},
 	"kubemetrics":    {Optional: []string{"cpuLabel", "memoryLabel"}},
-	"glances":        {Required: []string{"url"}, Optional: []string{"apiVersion"}},
-	"longhorn":       {Required: []string{"url"}},
+	"glances":        {Optional: []string{"apiVersion"}},
+	"longhorn":       {},
 }
 
 // ValidateConfig checks configKeys — the key set of a widget's parsed
-// config/options JSON object — against schema, returning the required keys
-// that are missing and the keys present that are neither required nor
-// optional. Both are returned sorted for deterministic messages. A caller
-// that wants a typed field (e.g. InfoWidgetEntry.URL) to satisfy a schema's
-// "url" key should add "url" to configKeys before calling this.
+// config JSON object — against schema, returning the required keys that are
+// missing and the keys present that are neither required nor optional. Both
+// are returned sorted for deterministic messages.
 func ValidateConfig(configKeys map[string]any, schema ConfigSchema) (missing, unknown []string) {
 	for _, key := range schema.Required {
 		if _, ok := configKeys[key]; !ok {
