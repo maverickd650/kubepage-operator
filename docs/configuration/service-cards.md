@@ -158,7 +158,7 @@ With several matching pods, the pod light's tooltip/text shows `2/3 ready`.
 
 The look is controlled by `statusStyle` (`dot` — up to two dots — or `basic`
 — a coloured status pill per light, e.g. `Up · 12ms` and `2/3 ready`), which
-you can also set site-wide in [DashboardStyle](appearance.md). It applies to
+you can also set site-wide via the Dashboard's [spec.style](appearance.md). It applies to
 both lights when both are configured.
 
 > A status light needs **no credentials** — it only checks reachability/pod

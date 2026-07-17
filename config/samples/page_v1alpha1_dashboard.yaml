@@ -31,4 +31,36 @@ metadata:
 #           secretKeyRef:
 #             name: openweathermap-credentials
 #             key: apiKey
-spec: {}
+spec:
+  style:
+    title: Home Lab
+    description: Self-hosted services
+    favicon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png
+    theme: dark
+    color: slate
+    headerStyle: boxed
+    cardBlur: md
+    target: _blank
+    background:
+      image: https://raw.githubusercontent.com/MaverickD650/home-operations/main/.docs/assets/background.png
+      # brightness/saturate render as a CSS filter on the fixed background
+      # layer (see internal/dashboard's backgroundStyle); percentages on the
+      # Tailwind backdrop-brightness/-saturate scales.
+      brightness: 55
+      saturate: 80
+    layout:
+      - name: Infrastructure
+        groups:
+          - name: Observability
+            columns: 3
+            icon: grafana
+      - name: Apps
+        groups:
+          - name: Media
+            style: row
+          # A "/"-separated path entry styles the "Movies" subgroup nested
+          # under "Media" above; it doesn't place anything on its own — Media
+          # (its path's root) must also be listed in this same tab, or the
+          # apiserver rejects the object (see LayoutTabSpec's CEL rule).
+          - name: Media/Movies
+            columns: 2

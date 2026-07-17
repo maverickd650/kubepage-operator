@@ -56,28 +56,25 @@ default title. We'll fix that next.
 
 ## Step 2 — give it a title and a theme
 
-Appearance lives in a **DashboardStyle**. There's one important rule: its
-`metadata.name` **must be identical to the Dashboard's name** (`home`). That's
-how the system guarantees a dashboard has exactly one look.
+Appearance lives directly on the Dashboard itself, under `spec.style`.
 
 ```yaml
-# style.yaml
+# dashboard.yaml
 apiVersion: page.kubepage.dev/v1alpha1
-kind: DashboardStyle
+kind: Dashboard
 metadata:
-  name: home            # <- MUST equal the Dashboard name
+  name: home
   namespace: dashboards
 spec:
-  dashboardRef:
-    name: home          # <- also the Dashboard name
-  title: Home Lab
-  description: My self-hosted services
-  theme: dark
-  color: blue
+  style:
+    title: Home Lab
+    description: My self-hosted services
+    theme: dark
+    color: blue
 ```
 
 ```sh
-kubectl apply -f style.yaml
+kubectl apply -f dashboard.yaml
 ```
 
 Refresh the page: it now says "Home Lab" with a dark blue theme. There's a lot

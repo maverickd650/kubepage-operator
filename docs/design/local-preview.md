@@ -11,8 +11,8 @@ started.
 Today the only way to see what a `Dashboard` actually looks like is to install
 the operator on a cluster (or spin up Kind via the e2e task), apply the CRDs,
 and port-forward to the dashboard pod. That's a long loop for what is often a
-purely visual question: "what does this `DashboardStyle` + set of
-`ServiceCard`s render as?" Contributors iterating on `.templ` files, palette
+purely visual question: "what does this `Dashboard` (with its `spec.style`)
++ set of `ServiceCard`s render as?" Contributors iterating on `.templ` files, palette
 changes, or widget field layout have no fast feedback path, and users writing
 their CRD YAML can't preview it before applying.
 
@@ -54,8 +54,8 @@ approach the image and chart already use.
   flag; directories walked non-recursively like `kubectl apply -f`, `-R` for
   recursive). Multi-document YAML is split and decoded through the existing
   `scheme` (already registers `pagev1alpha1` + core).
-- Recognized kinds: `Dashboard`, `DashboardStyle`, `ServiceCard`, `Bookmark`,
-  `InfoWidget`, and `Secret` (so `secretKeyRef`-backed widget config and
+- Recognized kinds: `Dashboard` (its `spec.style` carries the look),
+  `ServiceCard`, `Bookmark`, `InfoWidget`, and `Secret` (so `secretKeyRef`-backed widget config and
   `spec.auth.basicAuthSecretRef` resolve exactly as in-cluster). Unknown kinds
   are skipped with a logged warning, so `-f config/samples/` or a user's whole
   GitOps directory Just Works.

@@ -93,23 +93,22 @@ committed, like the CRD YAML).
 
 | Kind | Short name | Purpose |
 |------|-----------|---------|
-| `Dashboard` | `pdash` | Owns the dashboard Deployment, Service, optional Ingress/HTTPRoute, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. |
-| `DashboardStyle` | `pstyle` | Site-wide look (title, theme, color, background, header style, search box) and optional tab `layout`. Exactly one per Dashboard, enforced by naming the object after the Dashboard it styles (`metadata.name == spec.dashboardRef.name`). |
+| `Dashboard` | `pdash` | Owns the dashboard Deployment, Service, optional Ingress/HTTPRoute, and the per-Dashboard ServiceAccount/Role/RoleBinding the dashboard pod runs as. Its optional `spec.style` carries the site-wide look (title, theme, color, background, header style, search box, optional tab `layout`) — nil means every look field takes its documented default. |
 | `ServiceCard` | `pcard` | One or many service cards (`spec.services`, a group's or a whole dashboard's worth in one object), each optionally with widgets polling that service's API; supports ping/siteMonitor up-down status. |
 | `Bookmark` | `pbmk` | One or many static bookmark links (`spec.bookmarks`, a group's or a whole dashboard's worth in one object). |
 | `InfoWidget` | `piw` | One or many header-strip widgets (`spec.widgets`, a whole dashboard's header strip in one object): `datetime`, `greeting`, or `openmeteo`, among others. |
 
-Every config CRD (`DashboardStyle`/`ServiceCard`/`Bookmark`/`InfoWidget`)
-carries `spec.dashboardRef.name` pointing at the `Dashboard` it belongs to, and
-must live in the same namespace as that `Dashboard` (no cross-namespace refs).
+Every config CRD (`ServiceCard`/`Bookmark`/`InfoWidget`) carries
+`spec.dashboardRef.name` pointing at the `Dashboard` it belongs to, and must
+live in the same namespace as that `Dashboard` (no cross-namespace refs).
 
 `DashboardReconciler` (`internal/controller/dashboard_controller.go`) watches
 all of these (via `Watches(...)` + a `mapToDashboard` helper) purely to keep
-`Dashboard.status.bound{DashboardStyles,ServiceCards,Bookmarks,InfoWidgets}`
-counts current for `kubectl get`/`describe` — it does **not** trigger any
-re-render or rollout. The dashboard pod reads the config CRDs live through
-its own controller-runtime cache, so a CRD change takes effect on the next
-poll cycle with no Dashboard-mediated round-trip.
+`Dashboard.status.bound{ServiceCards,Bookmarks,InfoWidgets}` counts current
+for `kubectl get`/`describe` — it does **not** trigger any re-render or
+rollout. The dashboard pod reads the config CRDs live through its own
+controller-runtime cache, so a CRD change takes effect on the next poll cycle
+with no Dashboard-mediated round-trip.
 
 Cross-field schema invariants (e.g. `SecretValueSource` sets exactly one of
 `value`/`secretKeyRef`; a `ServiceCard` entry's `ping`/`siteMonitor` are
@@ -163,8 +162,8 @@ on the stored object would otherwise look like permanent drift.
 
 Wired together by `Run()` in `dashboard.go`:
 - A namespace-scoped, **cached** controller-runtime client (`cluster.New`)
-  reads the bound CRDs (`DashboardStyle`, `ServiceCard`, `Bookmark`,
-  `InfoWidget`).
+  reads the `Dashboard` (for `spec.style`) and the bound `ServiceCard`/
+  `Bookmark`/`InfoWidget` CRDs.
 - A separate **uncached** `client.New` reads `Secret`s directly — secret
   contents must never sit in an informer's long-lived cache.
 - Another uncached cluster-scoped client (`KubeReader`) serves `ClusterWidget`

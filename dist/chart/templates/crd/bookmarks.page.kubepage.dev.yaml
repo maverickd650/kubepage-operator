@@ -137,7 +137,7 @@ spec:
                       type: integer
                     target:
                       description: |-
-                        target overrides the DashboardStyle's default link target for this
+                        target overrides the Dashboard's style.target default link target for this
                         bookmark ("_blank" opens a new tab, "_self" the same tab).
                       enum:
                       - _blank

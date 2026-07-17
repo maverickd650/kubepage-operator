@@ -44,24 +44,24 @@ edit one giant file.
                     ┌────────────────────────────┐
                     │  Dashboard  (the web page)  │
                     │  name: home                 │
+                    │  spec.style: how it looks   │
                     └──────────────┬─────────────┘
                                    │  everything below points
                                    │  back at it by name
-        ┌────────────────┬─────────┴────────┬─────────────────┐
-        │                │                  │                 │
- ┌──────────────┐ ┌─────────────┐   ┌──────────────┐  ┌──────────────┐
- │ DashboardStyle│ │ ServiceCard │   │  InfoWidget  │  │   Bookmark   │
- │ how it looks  │ │ the tiles + │   │ header strip │  │ simple links │
- │ (theme, tabs) │ │ live widgets│   │ (clock, etc) │  │              │
- └──────────────┘ └─────────────┘   └──────────────┘  └──────────────┘
+                  ┌────────────────┼──────────────────┐
+                  │                │                  │
+           ┌─────────────┐   ┌──────────────┐  ┌──────────────┐
+           │ ServiceCard │   │  InfoWidget  │  │   Bookmark   │
+           │ the tiles + │   │ header strip │  │ simple links │
+           │ live widgets│   │ (clock, etc) │  │              │
+           └─────────────┘   └──────────────┘  └──────────────┘
 ```
 
-The five building blocks:
+The four building blocks:
 
 | Building block | What it is | You need… |
 |----------------|-----------|-----------|
-| **Dashboard** | The web page itself. Creates the actual running dashboard. | Exactly one. |
-| **DashboardStyle** | The look: title, theme, colour, background, tabs, search box. | At most one per Dashboard. |
+| **Dashboard** | The web page itself. Creates the actual running dashboard, and (via `spec.style`) its look: title, theme, colour, background, tabs, search box. | Exactly one. |
 | **ServiceCard** | One or more tiles linking to your services, with optional live **widgets** and up/down status. | As many as you like. |
 | **InfoWidget** | The header strip along the top (clock, greeting, weather, cluster CPU/RAM). | As many as you like. |
 | **Bookmark** | Plain link tiles, grouped like service cards but with no live data. | As many as you like. |
@@ -99,8 +99,7 @@ spec:
 - `apiVersion` / `kind` — tell Kubernetes what kind of thing this is. Copy them
   exactly.
 - `metadata.name` — a label **for the file itself**. Pick something memorable.
-  It is not shown on the dashboard (except for DashboardStyle, which has a
-  special rule — see [Appearance](appearance.md)).
+  It is not shown on the dashboard.
 - `spec` — the real configuration.
 
 ## Applying your changes
@@ -119,7 +118,7 @@ usually don't even need to refresh your browser.
 To see what you have and whether it's healthy:
 
 ```sh
-kubectl get pdash,pstyle,pcard,piw,pbmk    # list everything, with a Ready column
+kubectl get pdash,pcard,piw,pbmk           # list everything, with a Ready column
 kubectl describe pcard media-services      # full detail on one object, incl. errors
 ```
 

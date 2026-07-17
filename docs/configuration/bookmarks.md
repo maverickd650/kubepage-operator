@@ -57,8 +57,8 @@ heading, and any entry can override it with its own `group:`.
 - Set **`abbr`** for a short text badge when there's no good logo (`abbr: GH`).
 - Set neither and you'll get a hostname-derived description with a generic look.
 
-There's also a site-wide **icons-only** style — set `bookmarksStyle: icons` in
-[DashboardStyle](appearance.md) to render every bookmark as just its icon, no
+There's also a site-wide **icons-only** style — set `style.bookmarksStyle: icons` in
+the Dashboard's [spec.style](appearance.md) to render every bookmark as just its icon, no
 text.
 
 ## Allowed link types
