@@ -124,7 +124,7 @@ func TestCardTarget(t *testing.T) {
 }
 
 // TestBookmarkTarget covers bookmarkTarget's fallback chain: a bookmark's
-// own Target override wins over the DashboardStyle-derived site default,
+// own Target override wins over the spec.style-derived site default,
 // which itself defaults to "_blank" (see site.go's LoadSite).
 func TestBookmarkTarget(t *testing.T) {
 	tests := map[string]struct {

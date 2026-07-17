@@ -28,7 +28,7 @@ const (
 	defaultTarget      = "_blank"
 )
 
-// bookmarksStyleIcons is DashboardStyleSpec.BookmarksStyle's one valid value,
+// bookmarksStyleIcons is StyleSpec.BookmarksStyle's one valid value,
 // matching homepage's `bookmarksStyle: icons`.
 const bookmarksStyleIcons = "icons"
 
@@ -40,8 +40,8 @@ const (
 )
 
 // Site is everything the dashboard's look (6.1) needs beyond the polled
-// widget cards: the Dashboard's DashboardStyle (theme/color/background/...)
-// and its bound Bookmarks, rendered as static link cards.
+// widget cards: the Dashboard's spec.style (theme/color/background/...) and
+// its bound Bookmarks, rendered as static link cards.
 type Site struct {
 	Theme       string
 	Color       string
@@ -49,7 +49,7 @@ type Site struct {
 	Language    string
 	FullWidth   bool
 
-	// ThemeFixed/ColorFixed report whether DashboardStyle.Spec.Theme/Color
+	// ThemeFixed/ColorFixed report whether Dashboard.Spec.Style.Theme/Color
 	// was set, disabling the corresponding client-side switcher control —
 	// homepage's documented "fixed theme/palette" behavior.
 	ThemeFixed bool
@@ -59,7 +59,7 @@ type Site struct {
 	Description string
 	Favicon     string
 	// CardBlur is a CSS length (e.g. "12px") already resolved from the
-	// DashboardStyle's Tailwind keyword, or "" for no card blur.
+	// StyleSpec's Tailwind keyword, or "" for no card blur.
 	CardBlur string
 	// Target is the default link target for cards/bookmarks ("_blank"/"_self").
 	Target string
@@ -209,7 +209,7 @@ type BookmarkCard struct {
 	Description string
 }
 
-// LoadSite reads the Dashboard's bound DashboardStyle and Bookmarks directly
+// LoadSite reads the Dashboard's spec.style and bound Bookmarks directly
 // from reader (expected cache-backed) and returns render-ready data. Unlike
 // widget cards, this is read fresh on every request rather than polled on
 // an interval: it's a handful of cheap informer-cache List calls, not a
@@ -226,12 +226,12 @@ func LoadSite(ctx context.Context, reader client.Reader, namespace, dashboardNam
 		Search:      Search{Provider: "duckduckgo", Target: defaultTarget, FilterCards: true, SearchDescriptions: true},
 	}
 
-	spec, err := boundDashboardStyleSpec(ctx, reader, namespace, dashboardName)
+	spec, err := boundStyleSpec(ctx, reader, namespace, dashboardName)
 	if err != nil {
 		return site, err
 	}
 	if spec != nil {
-		applyDashboardStyle(&site, spec)
+		applyStyle(&site, spec)
 	}
 
 	var bookmarks pagev1alpha1.BookmarkList
@@ -343,34 +343,32 @@ func scalarOptions(raw *apiextensionsv1.JSON) map[string]string {
 	return opts
 }
 
-// boundDashboardStyleSpec returns the Spec of the DashboardStyle bound to
-// dashboardName, or nil if none is bound. The DashboardStyle CRD's schema CEL
-// rule requires metadata.name == spec.dashboardRef.name, so the object named
-// after the Dashboard (if it exists) is the only one that can be bound to it
-// — a direct Get, not a List+filter. Shared by LoadSite and
-// Poller.siteDefaults so both read the same lookup from a single place.
-func boundDashboardStyleSpec(ctx context.Context, reader client.Reader, namespace, dashboardName string) (*pagev1alpha1.DashboardStyleSpec, error) {
-	var style pagev1alpha1.DashboardStyle
-	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: dashboardName}, &style); err != nil {
+// boundStyleSpec returns the Dashboard named dashboardName's spec.style, or
+// nil if the Dashboard doesn't exist or leaves style unset — a direct Get,
+// not a List+filter. Shared by LoadSite and Poller.siteDefaults so both read
+// the same lookup from a single place.
+func boundStyleSpec(ctx context.Context, reader client.Reader, namespace, dashboardName string) (*pagev1alpha1.StyleSpec, error) {
+	var dash pagev1alpha1.Dashboard
+	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: dashboardName}, &dash); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("getting DashboardStyle: %w", err)
+		return nil, fmt.Errorf("getting Dashboard: %w", err)
 	}
-	return &style.Spec, nil
+	return dash.Spec.Style, nil
 }
 
-func applyDashboardStyle(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
+func applyStyle(site *Site, spec *pagev1alpha1.StyleSpec) {
 	applyLookFields(site, spec)
 	applySearch(site, spec.Search)
 	applyLayout(site, spec.Layout)
 	applyBehaviorFields(site, spec)
 }
 
-// applyLookFields applies the DashboardStyle fields governing the page's
-// visual identity: title/description/favicon/card look, theme/color/header
-// style, language, layout width, and background image.
-func applyLookFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
+// applyLookFields applies the StyleSpec fields governing the page's visual
+// identity: title/description/favicon/card look, theme/color/header style,
+// language, layout width, and background image.
+func applyLookFields(site *Site, spec *pagev1alpha1.StyleSpec) {
 	if spec.Title != nil {
 		site.Title = *spec.Title
 	}
@@ -415,7 +413,7 @@ func applyLookFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
 	}
 }
 
-// applySearch applies the DashboardStyle's header search box settings, if set.
+// applySearch applies the StyleSpec's header search box settings, if set.
 func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 	if s == nil {
 		return
@@ -448,7 +446,7 @@ func applySearch(site *Site, s *pagev1alpha1.SearchSpec) {
 	}
 }
 
-// applyLayout resolves the DashboardStyle's Layout tabs/groups, if set.
+// applyLayout resolves the StyleSpec's Layout tabs/groups, if set.
 func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
 	if layout == nil {
 		return
@@ -472,10 +470,10 @@ func applyLayout(site *Site, layout []pagev1alpha1.LayoutTabSpec) {
 	site.Layout = tabs
 }
 
-// applyBehaviorFields applies the DashboardStyle fields governing dashboard
+// applyBehaviorFields applies the StyleSpec fields governing dashboard
 // behavior rather than look: collapsibility, bookmark/indexing/PWA
 // settings, injected CSS/JS, and the site-wide status/error/version defaults.
-func applyBehaviorFields(site *Site, spec *pagev1alpha1.DashboardStyleSpec) {
+func applyBehaviorFields(site *Site, spec *pagev1alpha1.StyleSpec) {
 	if spec.Collapse != nil {
 		site.DisableCollapse = !*spec.Collapse
 	}

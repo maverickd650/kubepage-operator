@@ -31,9 +31,11 @@ func TestNoopClusterReaderAlwaysErrors(t *testing.T) {
 // client test instead, exercising the same serve() wiring Run uses.
 func TestRunPreviewServesAndShutsDown(t *testing.T) {
 	scheme := testScheme(t)
-	style := &pagev1alpha1.DashboardStyle{
+	style := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-		Spec:       pagev1alpha1.DashboardStyleSpec{DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName}},
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{},
+		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(style).Build()
 

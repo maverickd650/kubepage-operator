@@ -46,7 +46,7 @@ type Options struct {
 
 	// Version/Commit are stamped at build time (cmd/main.go's ldflags-set
 	// package vars), shown in the page shell's footer unless the bound
-	// DashboardStyle sets HideVersion.
+	// spec.style sets HideVersion.
 	Version string
 	Commit  string
 

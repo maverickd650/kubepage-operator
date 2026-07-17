@@ -1,8 +1,8 @@
-// Package preview loads Dashboard/DashboardStyle/ServiceCard/Bookmark/
-// InfoWidget/Secret manifests from local YAML files into an in-memory
-// client.Client, so internal/dashboard's Server/Poller can render a
-// Dashboard without a real cluster. See cmd/main.go's "preview" subcommand
-// and docs/design/local-preview.md for the full design.
+// Package preview loads Dashboard/ServiceCard/Bookmark/InfoWidget/Secret
+// manifests from local YAML files into an in-memory client.Client, so
+// internal/dashboard's Server/Poller can render a Dashboard without a real
+// cluster. See cmd/main.go's "preview" subcommand and
+// docs/design/local-preview.md for the full design.
 package preview
 
 import (

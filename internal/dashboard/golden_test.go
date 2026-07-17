@@ -111,10 +111,10 @@ func TestGoldenFragment(t *testing.T) {
 		Err: testUnreachableErr,
 	})
 
-	style := &pagev1alpha1.DashboardStyle{
+	style := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-		Spec: pagev1alpha1.DashboardStyleSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{},
 		},
 	}
 
@@ -127,10 +127,10 @@ func TestGoldenFragment(t *testing.T) {
 
 func TestGoldenFragmentEmpty(t *testing.T) {
 	store := NewStore()
-	style := &pagev1alpha1.DashboardStyle{
+	style := &pagev1alpha1.Dashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-		Spec: pagev1alpha1.DashboardStyleSpec{
-			DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{},
 		},
 	}
 
@@ -171,10 +171,10 @@ func TestGoldenHeader(t *testing.T) {
 				}},
 			},
 		},
-		&pagev1alpha1.DashboardStyle{
+		&pagev1alpha1.Dashboard{
 			ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
-			Spec: pagev1alpha1.DashboardStyleSpec{
-				DashboardRef: pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Spec: pagev1alpha1.DashboardSpec{
+				Style: &pagev1alpha1.StyleSpec{},
 			},
 		},
 	}
