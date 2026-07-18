@@ -38,7 +38,7 @@ the dashboard pod's memory for the duration of the poll. See
 
 | Type | Shows | Notable config |
 |------|-------|-----------------|
-| `plex` | Current Plex stream count | `Secrets["token"]` (Plex `X-Plex-Token`) |
+| `plex` | Plex stream count and library totals (Streams/Albums/Movies/TV, matching gethomepage/homepage) | `Secrets["token"]` (Plex `X-Plex-Token`) |
 | `stash` | Stash library stats (GraphQL) | `Secrets["token"]` (Stash API key) |
 | `paperlessngx` | Paperless-ngx document statistics | `Secrets["token"]` (Paperless API token) |
 | `grafana` | Grafana dashboard/datasource/alert counts (matches gethomepage/homepage's `admin/stats`) | `Secrets["username"]`+`Secrets["password"]` (Basic auth) or `Secrets["token"]` (Bearer); needs Grafana server-admin credentials |

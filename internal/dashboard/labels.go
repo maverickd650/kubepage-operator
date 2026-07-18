@@ -9,6 +9,8 @@ import "cmp"
 const (
 	labelVersion     = "Version"
 	labelStreams     = "Streams"
+	labelAlbums      = "Albums"
+	labelTV          = "TV"
 	labelRecipes     = "Recipes"
 	labelUsers       = "Users"
 	labelCategories  = "Categories"
