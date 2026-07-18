@@ -188,6 +188,30 @@ func TestPlexWidgetPollSessionsError(t *testing.T) {
 	}
 }
 
+// TestPlexWidgetPollLibrariesError covers the /library/sections listing
+// itself failing (after sessions succeeds): Poll surfaces it as the Status
+// field without attempting any per-section count.
+func TestPlexWidgetPollLibrariesError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case plexSessionsPath:
+			_, _ = w.Write([]byte(`{"MediaContainer":{"size":0}}`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	got, err := (plexWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: testHTTP500}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
 // TestPlexWidgetPollSectionsError covers a request mid-sequence (a library
 // count) failing: Poll surfaces it as the Status field rather than an
 // undercount.
