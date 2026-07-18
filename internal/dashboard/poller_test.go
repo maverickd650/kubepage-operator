@@ -803,6 +803,44 @@ func TestPollerPodSelector(t *testing.T) {
 	}
 }
 
+func TestPollerPodMonitorDisallowedNamespaceSurfacesCardErr(t *testing.T) {
+	// A pod monitor pointing at a foreign namespace the Dashboard's
+	// spec.monitorNamespaces doesn't allow: probePodMonitor's cardErr must
+	// flow through monitor() onto the card, alongside the Down status.
+	foreign := "other-namespace"
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: testPodSvcName, Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        "G",
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        "PodService",
+				Namespace:   &foreign,
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testAppLabelKey: testAppLabelValue}},
+			}},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(entry).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, KubeReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, HTTPClient: http.DefaultClient, Store: store,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+	}
+	if cards[0].PodStatus != statusDown {
+		t.Errorf("card.PodStatus = %q, want %q", cards[0].PodStatus, statusDown)
+	}
+	if !strings.Contains(cards[0].Err, "is not allowed") {
+		t.Errorf("card.Err = %q, want it to name the disallowed namespace", cards[0].Err)
+	}
+}
+
 func TestPollerShowStatsAndHideErrors(t *testing.T) {
 	// Upstream that errors (non-JSON) so the widget would normally set Err,
 	// and would set Fields on success — neither should appear given the flags.
