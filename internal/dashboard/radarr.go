@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -22,32 +20,15 @@ type radarrQueueResponse struct {
 }
 
 func (radarrWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("radarr widget: url is required")
-	}
-	apiKey := cfg.Secrets[secretAPIKey]
-
-	base := strings.TrimRight(cfg.URL, "/")
-
-	movieReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v3/movie", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building movie request: %w", err)
-	}
-	movieReq.Header.Set(headerXAPIKey, apiKey)
+	headers := map[string]string{headerXAPIKey: cfg.Secrets[secretAPIKey]}
 
 	var movies []struct{}
-	if fields, err := doJSONRequest(httpClient, movieReq, &movies); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "radarr", "/api/v3/movie", headers, &movies); fields != nil || err != nil {
 		return fields, err
 	}
 
-	queueReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v3/queue", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building queue request: %w", err)
-	}
-	queueReq.Header.Set(headerXAPIKey, apiKey)
-
 	var queue radarrQueueResponse
-	if fields, err := doJSONRequest(httpClient, queueReq, &queue); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "radarr", "/api/v3/queue", headers, &queue); fields != nil || err != nil {
 		return fields, err
 	}
 

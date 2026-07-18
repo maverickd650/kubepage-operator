@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -30,18 +28,8 @@ type netdataInfoResponse struct {
 }
 
 func (netdataWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("netdata widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/v1/info"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-
 	var parsed netdataInfoResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "netdata", "/api/v1/info", nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -24,22 +22,13 @@ type plexSessionsResponse struct {
 }
 
 func (plexWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("plex widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/status/sessions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
+	headers := map[string]string{"Accept": "application/json"}
 	if token := cfg.Secrets["token"]; token != "" {
-		req.Header.Set("X-Plex-Token", token)
+		headers["X-Plex-Token"] = token
 	}
 
 	var parsed plexSessionsResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "plex", "/status/sessions", headers, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

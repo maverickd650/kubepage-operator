@@ -3,11 +3,9 @@ package dashboard
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 )
 
 func init() {
@@ -33,22 +31,14 @@ type tautulliActivityResponse struct {
 }
 
 func (tautulliWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("tautulli widget: url is required")
-	}
-
 	query := url.Values{
 		"apikey": {cfg.Secrets["apiKey"]},
 		"cmd":    {"get_activity"},
 	}
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/v2?" + query.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
+	path := "/api/v2?" + query.Encode()
 
 	var parsed tautulliActivityResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "tautulli", path, nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

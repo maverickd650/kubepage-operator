@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -28,32 +26,15 @@ type jellyseerrRequestCountResponse struct {
 }
 
 func (jellyseerrWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("jellyseerr widget: url is required")
-	}
-	apiKey := cfg.Secrets[secretAPIKey]
-
-	base := strings.TrimRight(cfg.URL, "/")
-
-	statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/status", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building status request: %w", err)
-	}
-	statusReq.Header.Set(headerXAPIKey, apiKey)
+	headers := map[string]string{headerXAPIKey: cfg.Secrets[secretAPIKey]}
 
 	var status jellyseerrStatusResponse
-	if fields, err := doJSONRequest(httpClient, statusReq, &status); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "jellyseerr", "/api/v1/status", headers, &status); fields != nil || err != nil {
 		return fields, err
 	}
 
-	countReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/request/count", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request-count request: %w", err)
-	}
-	countReq.Header.Set(headerXAPIKey, apiKey)
-
 	var count jellyseerrRequestCountResponse
-	if fields, err := doJSONRequest(httpClient, countReq, &count); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "jellyseerr", "/api/v1/request/count", headers, &count); fields != nil || err != nil {
 		return fields, err
 	}
 

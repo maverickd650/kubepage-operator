@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -29,32 +27,15 @@ type jellyfinSession struct {
 }
 
 func (jellyfinWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("jellyfin widget: url is required")
-	}
-	token := cfg.Secrets["token"]
-
-	base := strings.TrimRight(cfg.URL, "/")
-
-	infoReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/System/Info", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building system info request: %w", err)
-	}
-	infoReq.Header.Set(headerXEmbyToken, token)
+	headers := map[string]string{headerXEmbyToken: cfg.Secrets["token"]}
 
 	var info jellyfinSystemInfoResponse
-	if fields, err := doJSONRequest(httpClient, infoReq, &info); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "jellyfin", "/System/Info", headers, &info); fields != nil || err != nil {
 		return fields, err
 	}
 
-	sessionsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/Sessions", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building sessions request: %w", err)
-	}
-	sessionsReq.Header.Set(headerXEmbyToken, token)
-
 	var sessions []jellyfinSession
-	if fields, err := doJSONRequest(httpClient, sessionsReq, &sessions); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "jellyfin", "/Sessions", headers, &sessions); fields != nil || err != nil {
 		return fields, err
 	}
 
