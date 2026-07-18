@@ -35,21 +35,18 @@ templ Index(data indexData) {
 				   near-white one, so light gets darker 600/700 shades instead. */
 				[data-theme="dark"] { color-scheme: dark; --bg: var(--c900); --panel: var(--c800); --text: var(--c50); --muted: var(--c400); --border: var(--c700); --good: #4ade80; --warn: #fbbf24; --danger: #f87171; }
 				[data-theme="light"] { color-scheme: light; --bg: var(--c50); --panel: #ffffff; --text: var(--c900); --muted: var(--c500); --border: var(--c200); --good: #16a34a; --warn: #b45309; --danger: #dc2626; }
+				/* Fluid body gutter (clamp between the old 640px-and-below 1rem and
+				   the old desktop 2rem, scaling with viewport width in between)
+				   replaces the old @media (max-width: 640px) step — see below,
+				   where every other rule that block touched picks up its own
+				   clamp so the breakpoint can go away entirely. */
 				body {
-					margin: 0; padding: 2rem; background: var(--bg); color: var(--text);
+					margin: 0; padding: clamp(1rem, 3vw, 2rem); background: var(--bg); color: var(--text);
 					font-family: Manrope, system-ui, sans-serif;
 					letter-spacing: 0.1px; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 				}
 				.wrap { max-width: 1200px; margin: 0 auto; position: relative; }
 				[data-full-width] .wrap { max-width: none; }
-				/* Phone-width layout: the desktop 2rem gutter eats a third of a small
-				   screen, so tighten spacing and the title scale below 640px. */
-				@media (max-width: 640px) {
-					body { padding: 1rem; }
-					.page-title { font-size: 1.25rem; }
-					.header-strip { gap: 0.6rem; margin-bottom: 1rem; }
-					.search-bar { margin-bottom: 1rem; }
-				}
 				.sample-data-banner {
 					background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn);
 					border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 0.4rem;
@@ -57,7 +54,7 @@ templ Index(data indexData) {
 					display: flex; align-items: center; gap: 0.4rem;
 				}
 				.sample-data-banner::before { content: "⚠"; }
-				.page-title { margin: 0; font-size: 1.5rem; }
+				.page-title { margin: 0; font-size: clamp(1.25rem, 1rem + 1.2vw, 1.5rem); }
 				.page-desc { margin: 0.25rem 0 1rem; color: var(--muted); }
 				/* Same translucent-chip treatment as h2 above: the footer sits
 				   directly over any configured background image, so give it its
@@ -67,7 +64,7 @@ templ Index(data indexData) {
 					padding: 0.25rem 0.6rem; border-radius: 0.4rem;
 					background: color-mix(in srgb, var(--panel) 85%, transparent);
 				}
-				.header-strip { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+				.header-strip { display: flex; flex-wrap: wrap; gap: clamp(0.6rem, 2vw, 1rem); margin-bottom: clamp(1rem, 2.5vw, 1.5rem); }
 				/* Homepage keeps information widgets unboxed unless boxedWidgets is selected. */
 				.header-widget { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
 				.header-widget-push-right { margin-left: auto; }
@@ -85,7 +82,7 @@ templ Index(data indexData) {
 				.header-field.hl-danger .value { color: var(--danger); }
 				.greeting { font-size: 1.25rem; }
 				.clock { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
-				.search-bar { margin-bottom: 1.5rem; }
+				.search-bar { margin-bottom: clamp(1rem, 2.5vw, 1.5rem); }
 				.search-bar input {
 					width: 100%; box-sizing: border-box; padding: 0.6rem 1rem; font-size: 1rem;
 					border: 1px solid var(--border); border-radius: 0.5rem; background: var(--panel); color: var(--text);
@@ -104,6 +101,7 @@ templ Index(data indexData) {
 					padding: 0.3rem 0.7rem; border-radius: 0.4rem;
 					background: color-mix(in srgb, var(--panel) 85%, transparent);
 					border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+					text-wrap: balance;
 				}
 				/* Homepage's headerStyle boxes/underlines the header info-widget strip
 				   as a whole, not the service/bookmark group headers below it. */
@@ -123,6 +121,7 @@ templ Index(data indexData) {
 					padding: 0.3rem 0.7rem; border-radius: 0.4rem;
 					background: color-mix(in srgb, var(--panel) 85%, transparent);
 					border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+					text-wrap: balance;
 				}
 				details.group summary::-webkit-details-marker { display: none; }
 				details.group summary::before { content: "▸"; display: inline-block; transition: transform .12s ease; font-size: 0.7em; }
@@ -254,7 +253,7 @@ templ Index(data indexData) {
 				.card.bookmark h3 { margin: 0; font-size: 0.9rem; }
 				.card.bookmark-icons-only { justify-content: center; padding: 0.6rem; }
 				.abbr { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; flex: none; border-radius: 0.4rem; background: var(--accent); color: #fff; font-size: 0.7rem; font-weight: 700; }
-				.desc { font-size: clamp(0.7rem, 4cqw, 0.8rem); color: var(--muted); }
+				.desc { font-size: clamp(0.7rem, 4cqw, 0.8rem); color: var(--muted); text-wrap: pretty; }
 				.err { color: var(--danger); font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; }
 				.err::before { content: "⚠"; }
 				.ql-overlay { position: fixed; inset: 0; display: none; align-items: flex-start; justify-content: center; background: rgba(0, 0, 0, 0.5); z-index: 50; padding-top: 12vh; }
