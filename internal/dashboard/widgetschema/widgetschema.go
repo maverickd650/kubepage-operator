@@ -52,7 +52,6 @@ var ConfigSchemas = map[string]ConfigSchema{
 	"truenas":       {},
 	"linkwarden":    {},
 	"homeassistant": {},
-	"mealie":        {},
 	"sonarr":        {},
 	"radarr":        {},
 	"jellyfin":      {},
@@ -78,6 +77,7 @@ var ConfigSchemas = map[string]ConfigSchema{
 	"proxmox":          {Optional: []string{"node", "insecureTLS"}},
 	"opnsense":         {Optional: []string{"wan"}},
 	"speedtest":        {Optional: []string{"version"}},
+	"mealie":           {Optional: []string{"version"}},
 
 	// InfoWidget static types (rendered by internal/dashboard/server.go,
 	// never polled).

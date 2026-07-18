@@ -11,12 +11,14 @@ func init() {
 }
 
 const (
-	labelStatus    = "Status"
-	labelTargetsUp = "Targets Up"
-	statusHealthy  = "Healthy"
-	statusDegraded = "Degraded"
-	statusUnknown  = "Unknown"
-	statusUnreach  = "Unreachable"
+	labelStatus       = "Status"
+	labelTargetsUp    = "Targets Up"
+	labelTargetsDown  = "Targets Down"
+	labelTargetsTotal = "Targets Total"
+	statusHealthy     = "Healthy"
+	statusDegraded    = "Degraded"
+	statusUnknown     = "Unknown"
+	statusUnreach     = "Unreachable"
 	// statusInactive is cloudflared.go's own tunnel-status mapping (alongside
 	// monitor.go's statusDown, reused here) — distinct from statusUnreach so
 	// that a legitimately down/inactive tunnel (a fact reported by a
@@ -47,10 +49,13 @@ func (prometheusWidget) Poll(ctx context.Context, httpClient *http.Client, cfg W
 	}
 
 	total := len(parsed.Data.ActiveTargets)
-	up := 0
+	up, down := 0, 0
 	for _, t := range parsed.Data.ActiveTargets {
-		if t.Health == "up" {
+		switch t.Health {
+		case "up":
 			up++
+		case apiHealthDown:
+			down++
 		}
 	}
 
@@ -64,13 +69,17 @@ func (prometheusWidget) Poll(ctx context.Context, httpClient *http.Client, cfg W
 
 	return []Field{
 		{Label: labelStatus, Value: status},
-		{Label: labelTargetsUp, Value: fmt.Sprintf("%d / %d", up, total)},
+		{Label: labelTargetsUp, Value: fmt.Sprintf("%d", up)},
+		{Label: labelTargetsDown, Value: fmt.Sprintf("%d", down)},
+		{Label: labelTargetsTotal, Value: fmt.Sprintf("%d", total)},
 	}, nil
 }
 
 func (prometheusWidget) Sample(WidgetConfig) []Field {
 	return []Field{
 		{Label: labelStatus, Value: statusHealthy},
-		{Label: labelTargetsUp, Value: "8 / 8"},
+		{Label: labelTargetsUp, Value: "8"},
+		{Label: labelTargetsDown, Value: "0"},
+		{Label: labelTargetsTotal, Value: "8"},
 	}
 }

@@ -35,7 +35,7 @@ The two lists don't overlap: a header widget can't go on a card, and vice versa.
 
 | Type | Shows |
 |------|-------|
-| `prometheus` | Prometheus target-health summary |
+| `prometheus` | Prometheus target-health summary (Targets Up/Down/Total) |
 | `netdata` | Netdata active-alarm counts (warnings/criticals) |
 | `gatus` | Gatus endpoint up/down counts from the latest check |
 
@@ -53,9 +53,8 @@ Give the credential under `secrets:` using the field name shown.
 | `plex` | Active Plex stream count | `token` (Plex `X-Plex-Token`) |
 | `stash` | Stash library stats | `token` (API key) |
 | `paperlessngx` | Paperless-ngx document stats | `token` |
-| `linkwarden` | Linkwarden saved-link/collection counts | `token` |
-| `homeassistant` | Home Assistant version/reachability | `token` (long-lived access token) |
-| `mealie` | Mealie recipe count | `token` |
+| `linkwarden` | Linkwarden saved-link/collection/tag counts | `token` |
+| `homeassistant` | Home Assistant people-home/lights-on/switches-on counts | `token` (long-lived access token) |
 | `argocd` | Argo CD app counts by sync/health | `token` (Bearer token) |
 | `gitea` | Gitea version + repo count | `token` |
 | `sonarr` | Sonarr library/queue size | `apiKey` |
@@ -93,14 +92,15 @@ Give the credential under `secrets:` using the field name shown.
 
 | Type | Shows | Credential | Config keys |
 |------|-------|-----------|-------------|
-| `unifi` | UniFi Network site health | `apiKey` (Network Integration API key) | `site` (default `default`), `insecureTLS` |
-| `truenas` | TrueNAS version/uptime | `token` (API key) | — |
+| `unifi` | UniFi Network site health (Status, LAN/WLAN Users) | `apiKey` (Network Integration API key) | `site` (default `default`), `insecureTLS` |
+| `truenas` | TrueNAS load/uptime/undismissed-alert counts | `token` (API key) | — |
 | `cloudflared` | Cloudflare Tunnel status | `token` | **`accountId`, `tunnelId`** (both required) |
 | `pihole` | Pi-hole v6 DNS stats | `password` (regular or app password) | — |
 | `portainer` | Portainer container counts | `apiKey` (`X-API-Key`) | **`endpointId`** (required) |
 | `tautulli` | Tautulli stream count + bandwidth | `apiKey` (sent as query param) | — |
 | `proxmox` | Proxmox VM/LXC counts + CPU/RAM | `username` (`user!tokenid`) + `password` (token secret) | `node`, `insecureTLS` |
 | `speedtest` | Speedtest Tracker latest result | `apiKey` (Bearer, v2 only) | `version` (1 or 2, default 1) |
+| `mealie` | Mealie recipe/user/category/tag counts | `token` | `version` (1 or 2, default 2) |
 
 ```yaml
 - type: cloudflared

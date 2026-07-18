@@ -10,6 +10,8 @@ const (
 	labelVersion     = "Version"
 	labelStreams     = "Streams"
 	labelRecipes     = "Recipes"
+	labelUsers       = "Users"
+	labelCategories  = "Categories"
 	labelLinks       = "Links"
 	labelCollections = "Collections"
 	labelScenes      = "Scenes"
@@ -18,7 +20,6 @@ const (
 	labelUptime      = "Uptime"
 	labelValue       = "Value"
 	labelTunnel      = "Tunnel"
-	labelClients     = "Clients"
 	labelWeather     = "Weather"
 	labelConditions  = "Conditions"
 	labelCPU         = "CPU"
@@ -61,6 +62,12 @@ const (
 	// status, pulled out so goconst doesn't flag the repeated literal
 	// across those files.
 	apiStatusRunning = "running"
+
+	// apiHealthDown is the upstream "down" health/status literal shared by
+	// cloudflared.go's tunnel status and prometheus.go's target health,
+	// pulled out so goconst doesn't flag the repeated literal across those
+	// files.
+	apiHealthDown = "down"
 
 	// unitsImperial is the "units" config value openmeteo.go and
 	// openweathermap.go both switch on for Fahrenheit output (their default

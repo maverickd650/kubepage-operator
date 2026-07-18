@@ -21,10 +21,13 @@ func unifiTestSecrets() map[string]string {
 
 // unifiMockHandler builds an http.HandlerFunc serving the three Integration
 // API calls Poll makes in order (sites, devices, clients), recording every
-// X-API-KEY header it sees into gotAPIKeys.
-func unifiMockHandler(devicesBody, clientsBody string, gotAPIKeys *[]string) http.HandlerFunc {
+// X-API-KEY header and request path it sees into gotAPIKeys/gotPaths.
+func unifiMockHandler(devicesBody, clientsBody string, gotAPIKeys *[]string, gotPaths *[]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		*gotAPIKeys = append(*gotAPIKeys, r.Header.Get("X-API-KEY"))
+		if gotPaths != nil {
+			*gotPaths = append(*gotPaths, r.URL.RequestURI())
+		}
 		switch r.URL.Path {
 		case unifiSitesPath:
 			w.WriteHeader(http.StatusOK)
@@ -42,11 +45,11 @@ func unifiMockHandler(devicesBody, clientsBody string, gotAPIKeys *[]string) htt
 }
 
 func TestUnifiWidgetPoll(t *testing.T) {
-	var gotAPIKeys []string
+	var gotAPIKeys, gotPaths []string
 	srv := httptest.NewServer(unifiMockHandler(
 		`{"data":[{"state":"ONLINE"},{"state":"ONLINE"}],"totalCount":2}`,
-		`{"data":[{},{},{},{},{},{},{}],"totalCount":7}`,
-		&gotAPIKeys,
+		`{"data":[{"type":"WIRED"},{"type":"WIRED"},{"type":"WIRELESS"},{"type":"WIRELESS"},{"type":"WIRELESS"}],"totalCount":5}`,
+		&gotAPIKeys, &gotPaths,
 	))
 	defer srv.Close()
 
@@ -59,7 +62,8 @@ func TestUnifiWidgetPoll(t *testing.T) {
 	}
 	want := []Field{
 		{Label: labelStatus, Value: statusHealthy},
-		{Label: labelClients, Value: "7"},
+		{Label: labelLANUsers, Value: "2"},
+		{Label: labelWLANUsers, Value: "3"},
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
@@ -72,14 +76,17 @@ func TestUnifiWidgetPoll(t *testing.T) {
 	if len(gotAPIKeys) != 3 {
 		t.Errorf("request count = %d, want 3 (sites, devices, clients)", len(gotAPIKeys))
 	}
+	if len(gotPaths) != 3 || gotPaths[2] != unifiClientsPath+"?limit=200" {
+		t.Errorf("request paths = %v, want the clients request to carry ?limit=200", gotPaths)
+	}
 }
 
 func TestUnifiWidgetPollDegradedDevice(t *testing.T) {
-	var gotAPIKeys []string
+	var gotAPIKeys, gotPaths []string
 	srv := httptest.NewServer(unifiMockHandler(
 		`{"data":[{"state":"ONLINE"},{"state":"OFFLINE"}],"totalCount":2}`,
 		`{"data":[],"totalCount":0}`,
-		&gotAPIKeys,
+		&gotAPIKeys, &gotPaths,
 	))
 	defer srv.Close()
 
@@ -92,7 +99,8 @@ func TestUnifiWidgetPollDegradedDevice(t *testing.T) {
 	}
 	want := []Field{
 		{Label: labelStatus, Value: statusDegraded},
-		{Label: labelClients, Value: "0"},
+		{Label: labelLANUsers, Value: "0"},
+		{Label: labelWLANUsers, Value: "0"},
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
@@ -100,11 +108,11 @@ func TestUnifiWidgetPollDegradedDevice(t *testing.T) {
 }
 
 func TestUnifiWidgetPollNoDevices(t *testing.T) {
-	var gotAPIKeys []string
+	var gotAPIKeys, gotPaths []string
 	srv := httptest.NewServer(unifiMockHandler(
 		`{"data":[],"totalCount":0}`,
 		`{"data":[],"totalCount":0}`,
-		&gotAPIKeys,
+		&gotAPIKeys, &gotPaths,
 	))
 	defer srv.Close()
 
@@ -117,7 +125,8 @@ func TestUnifiWidgetPollNoDevices(t *testing.T) {
 	}
 	want := []Field{
 		{Label: labelStatus, Value: statusUnknown},
-		{Label: labelClients, Value: "0"},
+		{Label: labelLANUsers, Value: "0"},
+		{Label: labelWLANUsers, Value: "0"},
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
@@ -169,11 +178,11 @@ func TestUnifiWidgetPollNon200(t *testing.T) {
 }
 
 func TestUnifiWidgetPollInsecureTLS(t *testing.T) {
-	var gotAPIKeys []string
+	var gotAPIKeys, gotPaths []string
 	srv := httptest.NewTLSServer(unifiMockHandler(
 		`{"data":[{"state":"ONLINE"}],"totalCount":1}`,
-		`{"data":[{},{}],"totalCount":2}`,
-		&gotAPIKeys,
+		`{"data":[{"type":"WIRED"},{"type":"WIRELESS"}],"totalCount":2}`,
+		&gotAPIKeys, &gotPaths,
 	))
 	defer srv.Close()
 
@@ -192,7 +201,8 @@ func TestUnifiWidgetPollInsecureTLS(t *testing.T) {
 	}
 	want := []Field{
 		{Label: labelStatus, Value: statusHealthy},
-		{Label: labelClients, Value: "2"},
+		{Label: labelLANUsers, Value: "1"},
+		{Label: labelWLANUsers, Value: "1"},
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
@@ -289,8 +299,8 @@ func TestUnifiWidgetPollUnreachable(t *testing.T) {
 
 func TestUnifiWidgetSample(t *testing.T) {
 	got := (unifiWidget{}).Sample(WidgetConfig{})
-	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelClients {
-		t.Errorf("Sample() = %+v, want Status/Clients fields", got)
+	if len(got) != 3 || got[0].Label != labelStatus || got[1].Label != labelLANUsers || got[2].Label != labelWLANUsers {
+		t.Errorf("Sample() = %+v, want Status/LAN Users/WLAN Users fields", got)
 	}
 	assertSampleDeterministic(t, unifiWidget{})
 }

@@ -42,14 +42,14 @@ the dashboard pod's memory for the duration of the poll. See
 | `stash` | Stash library stats (GraphQL) | `Secrets["token"]` (Stash API key) |
 | `paperlessngx` | Paperless-ngx document statistics | `Secrets["token"]` (Paperless API token) |
 | `grafana` | Grafana dashboard/datasource/alert counts (matches gethomepage/homepage's `admin/stats`) | `Secrets["username"]`+`Secrets["password"]` (Basic auth) or `Secrets["token"]` (Bearer); needs Grafana server-admin credentials |
-| `prometheus` | Prometheus target health summary | none (open API) |
+| `prometheus` | Prometheus target health summary (Targets Up/Down/Total) | none (open API) |
 | `prometheusmetric` | Result of one config-driven PromQL query | `config: {query, label}` |
-| `unifi` | UniFi Network controller site health | `Secrets["apiKey"]` (Network Integration API key), `config: {site, insecureTLS}` |
-| `truenas` | TrueNAS version/uptime | `Secrets["token"]` (TrueNAS API key); uses the WebSocket JSON-RPC API (`/api/current`) |
+| `unifi` | UniFi Network controller site health (Status, LAN/WLAN Users) | `Secrets["apiKey"]` (Network Integration API key), `config: {site, insecureTLS}` |
+| `truenas` | TrueNAS load/uptime/undismissed-alert counts | `Secrets["token"]` (TrueNAS API key); uses the WebSocket JSON-RPC API (`/api/current`) |
 | `cloudflared` | Cloudflare Tunnel status | `Secrets["token"]`, `config: {accountId, tunnelId}` |
-| `linkwarden` | Linkwarden saved-link and collection counts | `Secrets["token"]` (Linkwarden API token) |
-| `homeassistant` | Home Assistant version/reachability | `Secrets["token"]` (long-lived access token) |
-| `mealie` | Mealie recipe count | `Secrets["token"]` (Mealie API token) |
+| `linkwarden` | Linkwarden saved-link, collection, and tag counts | `Secrets["token"]` (Linkwarden API token) |
+| `homeassistant` | Home Assistant people-home/lights-on/switches-on counts | `Secrets["token"]` (long-lived access token) |
+| `mealie` | Mealie recipe/user/category/tag counts | `Secrets["token"]` (Mealie API token), `config: {version}` (1 or 2, default 2) |
 | `customapi` | Arbitrary JSON endpoint, JSONPath-mapped fields | `Secrets["token"]` optional, `config: {mappings: [...]}` |
 | `iframe` | An embedded `<iframe>` on the card instead of stat chips | widget `url` is the embed source, `config: {height}` |
 | `sonarr` | Sonarr library/queue size | `Secrets["apiKey"]` (`X-Api-Key` header) |
