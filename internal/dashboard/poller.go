@@ -134,6 +134,13 @@ type Poller struct {
 	widgetLastPolledMu sync.Mutex
 	widgetLastPolled   map[string]time.Time
 
+	// clampWarned is the set of widget keys duePoll has already logged a
+	// "your PollIntervalSeconds override is shorter than the poller interval
+	// and has no effect" warning for, so the message is emitted once per
+	// widget rather than every cycle. Guarded by widgetLastPolledMu (same
+	// concurrency shape as widgetLastPolled) and pruned alongside it.
+	clampWarned map[string]bool
+
 	// caKeysUsed is the set of caClientCache keys (see caClient) resolved
 	// during the poll cycle currently running, reset at the start of each
 	// pollOnce and consulted by pruneCAClientCache after wg.Wait() to evict
@@ -344,16 +351,28 @@ func (p *Poller) pollOnce(ctx context.Context) {
 // given its optional PollIntervalSeconds override: nil or <=0 means every
 // cycle (the common case, tracked nowhere). A set override is floor-clamped
 // to the poller's own Interval, since a shorter override would have no
-// effect — pollOnce only runs once per Interval regardless. When it returns
-// true, it also records now as key's last-polled time.
+// effect — pollOnce only runs once per Interval regardless. When that clamp
+// actually shortens the user's override, it's logged once per widget key
+// (not every cycle) so a user setting e.g. 5s against a 15s poller interval
+// gets a signal that the value is a no-op, instead of silent floor-clamping.
+// When it returns true, it also records now as key's last-polled time.
 func (p *Poller) duePoll(key string, overrideSeconds *int32) bool {
 	if overrideSeconds == nil || *overrideSeconds <= 0 {
 		return true
 	}
-	interval := max(time.Duration(*overrideSeconds)*time.Second, p.Interval)
+	requested := time.Duration(*overrideSeconds) * time.Second
+	interval := max(requested, p.Interval)
 
 	p.widgetLastPolledMu.Lock()
 	defer p.widgetLastPolledMu.Unlock()
+	if requested < p.Interval && !p.clampWarned[key] {
+		pollerLog.Info("Widget pollIntervalSeconds is shorter than the poller interval and has no effect",
+			"key", key, "overrideSeconds", *overrideSeconds, "pollerInterval", p.Interval)
+		if p.clampWarned == nil {
+			p.clampWarned = map[string]bool{}
+		}
+		p.clampWarned[key] = true
+	}
 	if last, ok := p.widgetLastPolled[key]; ok && time.Since(last) < interval {
 		return false
 	}
@@ -364,15 +383,20 @@ func (p *Poller) duePoll(key string, overrideSeconds *int32) bool {
 	return true
 }
 
-// pruneWidgetLastPolled deletes any widgetLastPolled entry not in this
-// cycle's keep set, mirroring Store.Prune, so a deleted (or edited-away-
-// from-an-override) widget's bookkeeping doesn't accumulate forever.
+// pruneWidgetLastPolled deletes any widgetLastPolled/clampWarned entry not in
+// this cycle's keep set, mirroring Store.Prune, so a deleted (or edited-
+// away-from-an-override) widget's bookkeeping doesn't accumulate forever.
 func (p *Poller) pruneWidgetLastPolled(keep map[string]bool) {
 	p.widgetLastPolledMu.Lock()
 	defer p.widgetLastPolledMu.Unlock()
 	for key := range p.widgetLastPolled {
 		if !keep[key] {
 			delete(p.widgetLastPolled, key)
+		}
+	}
+	for key := range p.clampWarned {
+		if !keep[key] {
+			delete(p.clampWarned, key)
 		}
 	}
 }
