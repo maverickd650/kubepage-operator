@@ -185,13 +185,16 @@ templ Index(data indexData) {
 				   .status-pill below: a narrow card (small Columns count, or a
 				   narrow viewport) shrinks its heading smoothly instead of
 				   wrapping/truncating immediately. Each clamp's cap equals this
-				   stylesheet's previous fixed size, so a full-width 220px+ card
-				   renders identically to before. */
-				.card h3 { margin: 0 0 0.5rem; font-size: clamp(0.85rem, 5cqw, 1rem); display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; }
+				   stylesheet's previous fixed size, and each cqw slope is
+				   calibrated to reach that cap at exactly the grid's 220px
+				   track floor (cap-in-px / 220 per cqw) — so any card at or
+				   above the floor renders identically to before, and shrinking
+				   only starts below it. */
+				.card h3 { margin: 0 0 0.5rem; font-size: clamp(0.85rem, 7.3cqw, 1rem); display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; }
 				.card h3 a { color: inherit; text-decoration: none; }
 				.card h3 a:hover { color: var(--accent); }
 				img.icon { width: 1.2rem; height: 1.2rem; object-fit: contain; }
-				.card h3 img.icon { width: clamp(1.4rem, 11cqw, 2rem); height: clamp(1.4rem, 11cqw, 2rem); }
+				.card h3 img.icon { width: clamp(1.4rem, 14.6cqw, 2rem); height: clamp(1.4rem, 14.6cqw, 2rem); }
 				.status-indicators { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem; margin-left: auto; min-width: 0; }
 				.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); }
 				.status-dot.status-Up { background: var(--good); }
@@ -218,8 +221,8 @@ templ Index(data indexData) {
 					display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
 					line-height: 1.2; min-width: 0;
 				}
-				.stat .value { font-size: clamp(0.7rem, 4.5cqw, 0.85rem); font-weight: 300; max-width: 100%; overflow-wrap: anywhere; }
-				.stat .label { font-size: clamp(0.55rem, 3.2cqw, 0.62rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; max-width: 100%; overflow-wrap: anywhere; }
+				.stat .value { font-size: clamp(0.7rem, 6.2cqw, 0.85rem); font-weight: 300; max-width: 100%; overflow-wrap: anywhere; }
+				.stat .label { font-size: clamp(0.55rem, 4.5cqw, 0.62rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; max-width: 100%; overflow-wrap: anywhere; }
 				/* Below 180px a widget with 3+ stats in a single flex row crushes
 				   each one down to a sliver even with the clamp()s above — switch
 				   to a wrapping 2-up layout instead so each stat keeps a usable
@@ -240,7 +243,7 @@ templ Index(data indexData) {
 				.stat-good .usage-bar-fill { background: var(--good); }
 				.stat-warn .usage-bar-fill { background: var(--warn); }
 				.stat-danger .usage-bar-fill { background: var(--danger); }
-				.field { display: flex; justify-content: space-between; font-size: clamp(0.72rem, 4.2cqw, 0.85rem); padding: 0.15rem 0; }
+				.field { display: flex; justify-content: space-between; font-size: clamp(0.72rem, 6.2cqw, 0.85rem); padding: 0.15rem 0; }
 				.field .label { color: var(--muted); }
 				/* Bookmark groups (homepage parity: bookmarks.yaml groups render as
 				   side-by-side columns, not stacked full-width blocks) — one grid
@@ -253,7 +256,7 @@ templ Index(data indexData) {
 				.card.bookmark h3 { margin: 0; font-size: 0.9rem; }
 				.card.bookmark-icons-only { justify-content: center; padding: 0.6rem; }
 				.abbr { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; flex: none; border-radius: 0.4rem; background: var(--accent); color: #fff; font-size: 0.7rem; font-weight: 700; }
-				.desc { font-size: clamp(0.7rem, 4cqw, 0.8rem); color: var(--muted); text-wrap: pretty; }
+				.desc { font-size: clamp(0.7rem, 5.9cqw, 0.8rem); color: var(--muted); text-wrap: pretty; }
 				.err { color: var(--danger); font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; }
 				.err::before { content: "⚠"; }
 				.ql-overlay { position: fixed; inset: 0; display: none; align-items: flex-start; justify-content: center; background: rgba(0, 0, 0, 0.5); z-index: 50; padding-top: 12vh; }
