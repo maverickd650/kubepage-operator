@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 const widgetTypeLonghorn = "longhorn"
@@ -33,18 +31,8 @@ type longhornNodesResponse struct {
 }
 
 func (longhornWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("longhorn widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/v1/nodes"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-
 	var parsed longhornNodesResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, widgetTypeLonghorn, "/v1/nodes", nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

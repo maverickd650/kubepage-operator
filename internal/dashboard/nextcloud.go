@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -68,14 +67,9 @@ func (f *nextcloudFlexFloat) UnmarshalJSON(data []byte) error {
 }
 
 func (nextcloudWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("nextcloud widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/ocs/v2.php/apps/serverinfo/api/v1/info?format=json"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := buildJSONRequest(ctx, cfg, "nextcloud", "/ocs/v2.php/apps/serverinfo/api/v1/info?format=json")
 	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
+		return nil, err
 	}
 	if key := cfg.Secrets[secretKeyNCToken]; key != "" {
 		req.Header.Set(headerNCToken, key)

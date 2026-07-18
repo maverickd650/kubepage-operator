@@ -9,6 +9,31 @@ import (
 	"testing"
 )
 
+func TestBuildJSONRequestMissingURL(t *testing.T) {
+	_, err := buildJSONRequest(t.Context(), WidgetConfig{}, "widgettype", "/path")
+	if err == nil {
+		t.Fatal("buildJSONRequest() expected error for missing url, got nil")
+	}
+	if got, want := err.Error(), "widgettype widget: url is required"; got != want {
+		t.Errorf("buildJSONRequest() error = %q, want %q", got, want)
+	}
+}
+
+// TestBuildJSONRequestBuildError covers the http.NewRequestWithContext
+// error path directly: every fetchJSON/fetchJSONBasicAuth/grafanaRequest
+// call site forwards this error unchanged, but none of the per-widget
+// table tests can trigger it (a widget's cfg.URL is CRD-validated), so it's
+// otherwise unreachable from any widget's own tests.
+func TestBuildJSONRequestBuildError(t *testing.T) {
+	_, err := buildJSONRequest(t.Context(), WidgetConfig{URL: testExampleURL}, "widgettype", "/\x7f")
+	if err == nil {
+		t.Fatal("buildJSONRequest() expected error for an invalid request URL, got nil")
+	}
+	if !strings.Contains(err.Error(), "building request") {
+		t.Errorf("buildJSONRequest() error = %q, want it to mention %q", err.Error(), "building request")
+	}
+}
+
 // TestDoJSONRequestMalformedBody exercises doJSONRequest's decode-error path
 // directly: a 200 response whose body isn't valid JSON. Every widget's Poll
 // calls through this shared helper, but none of the per-widget table tests

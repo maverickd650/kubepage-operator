@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -28,21 +26,13 @@ type paperlessngxStatisticsResponse struct {
 }
 
 func (paperlessngxWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("paperlessngx widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/statistics/"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
+	headers := map[string]string{}
 	if token := cfg.Secrets["token"]; token != "" {
-		req.Header.Set("Authorization", "Token "+token)
+		headers["Authorization"] = "Token " + token
 	}
 
 	var parsed paperlessngxStatisticsResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "paperlessngx", "/api/statistics/", headers, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

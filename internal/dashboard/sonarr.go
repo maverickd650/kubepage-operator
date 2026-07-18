@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -23,32 +21,15 @@ type sonarrQueueResponse struct {
 }
 
 func (sonarrWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("sonarr widget: url is required")
-	}
-	apiKey := cfg.Secrets[secretAPIKey]
-
-	base := strings.TrimRight(cfg.URL, "/")
-
-	seriesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v3/series", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building series request: %w", err)
-	}
-	seriesReq.Header.Set(headerXAPIKey, apiKey)
+	headers := map[string]string{headerXAPIKey: cfg.Secrets[secretAPIKey]}
 
 	var series []struct{}
-	if fields, err := doJSONRequest(httpClient, seriesReq, &series); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "sonarr", "/api/v3/series", headers, &series); fields != nil || err != nil {
 		return fields, err
 	}
 
-	queueReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v3/queue", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building queue request: %w", err)
-	}
-	queueReq.Header.Set(headerXAPIKey, apiKey)
-
 	var queue sonarrQueueResponse
-	if fields, err := doJSONRequest(httpClient, queueReq, &queue); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "sonarr", "/api/v3/queue", headers, &queue); fields != nil || err != nil {
 		return fields, err
 	}
 

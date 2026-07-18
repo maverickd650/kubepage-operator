@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -43,18 +41,8 @@ type prometheusTargetsResponse struct {
 }
 
 func (prometheusWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("prometheus widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/v1/targets?state=active"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-
 	var parsed prometheusTargetsResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "prometheus", "/api/v1/targets?state=active", nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

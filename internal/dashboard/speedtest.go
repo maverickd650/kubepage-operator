@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -58,22 +57,18 @@ func (speedtestWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 		}
 	}
 
-	base := strings.TrimRight(cfg.URL, "/")
-	endpoint := base + "/api/speedtest/latest"
+	path := "/api/speedtest/latest"
 	if stCfg.Version == 2 {
-		endpoint = base + "/api/v1/results/latest"
+		path = "/api/v1/results/latest"
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
+	headers := map[string]string{}
 	if key := cfg.Secrets[secretAPIKey]; key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+		headers["Authorization"] = "Bearer " + key
 	}
 
 	var parsed speedtestLatestResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "speedtest", path, headers, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

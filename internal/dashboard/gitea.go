@@ -2,8 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -33,22 +31,16 @@ type giteaVersionResponse struct {
 }
 
 func (giteaWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("gitea widget: url is required")
-	}
 	token := cfg.Secrets["token"]
 	base := strings.TrimRight(cfg.URL, "/")
 
-	versionReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/version", nil)
-	if err != nil {
-		return nil, fmt.Errorf("building version request: %w", err)
-	}
+	headers := map[string]string{}
 	if token != "" {
-		versionReq.Header.Set("Authorization", "token "+token)
+		headers["Authorization"] = "token " + token
 	}
 
 	var version giteaVersionResponse
-	if fields, err := doJSONRequest(httpClient, versionReq, &version); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "gitea", "/api/v1/version", headers, &version); fields != nil || err != nil {
 		return fields, err
 	}
 

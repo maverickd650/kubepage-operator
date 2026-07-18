@@ -52,6 +52,10 @@ func (customAPIWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 		return nil, errors.New("customapi widget: config.mappings must not be empty")
 	}
 
+	// cfg.URL is the full endpoint here (customapi has no fixed API path to
+	// append), so this doesn't go through fetchJSON/buildJSONRequest: those
+	// TrimRight a trailing slash off cfg.URL before joining a path, which
+	// would silently rewrite a caller's URL that intentionally ends in "/".
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)

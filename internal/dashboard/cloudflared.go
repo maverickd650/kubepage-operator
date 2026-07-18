@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -53,22 +52,18 @@ func (cloudflaredWidget) Poll(ctx context.Context, httpClient *http.Client, cfg 
 		return nil, errors.New("cloudflared widget: config.accountId and config.tunnelId are required")
 	}
 
-	base := cloudflaredAPIBase
-	if cfg.URL != "" {
-		base = cfg.URL
+	if cfg.URL == "" {
+		cfg.URL = cloudflaredAPIBase
 	}
+	path := fmt.Sprintf("/accounts/%s/cfd_tunnel/%s", tunnelCfg.AccountID, tunnelCfg.TunnelID)
 
-	endpoint := fmt.Sprintf("%s/accounts/%s/cfd_tunnel/%s", strings.TrimRight(base, "/"), tunnelCfg.AccountID, tunnelCfg.TunnelID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
+	headers := map[string]string{}
 	if token := cfg.Secrets["token"]; token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		headers["Authorization"] = "Bearer " + token
 	}
 
 	var parsed cloudflaredTunnelResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "cloudflared", path, headers, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

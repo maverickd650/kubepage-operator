@@ -42,6 +42,15 @@ func TestUptimeKumaWidgetPoll(t *testing.T) {
 	}
 }
 
+func TestUptimeKumaWidgetPollMalformedConfig(t *testing.T) {
+	if _, err := (uptimeKumaWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
+		URL:    testExampleURL,
+		Config: []byte(`{not valid json`),
+	}); err == nil {
+		t.Fatal("Poll() expected error for malformed config, got nil")
+	}
+}
+
 func TestUptimeKumaWidgetPollMissingSlug(t *testing.T) {
 	if _, err := (uptimeKumaWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr}); err == nil {
 		t.Fatal("Poll() expected error for missing config.slug, got nil")

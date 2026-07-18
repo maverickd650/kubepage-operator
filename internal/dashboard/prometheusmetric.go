@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 )
 
 func init() {
@@ -54,14 +53,10 @@ func (prometheusMetricWidget) Poll(ctx context.Context, httpClient *http.Client,
 	}
 	label := cmp.Or(metricCfg.Label, labelValue)
 
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/v1/query?query=" + url.QueryEscape(metricCfg.Query)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
+	path := "/api/v1/query?query=" + url.QueryEscape(metricCfg.Query)
 
 	var parsed prometheusQueryResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "prometheusmetric", path, nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

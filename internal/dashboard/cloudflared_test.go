@@ -101,6 +101,14 @@ func TestCloudflaredWidgetPollMissingConfig(t *testing.T) {
 	}
 }
 
+func TestCloudflaredWidgetPollMalformedConfig(t *testing.T) {
+	if _, err := (cloudflaredWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
+		Config: []byte(`{not valid json`),
+	}); err == nil {
+		t.Fatal("Poll() expected error for malformed config, got nil")
+	}
+}
+
 func TestCloudflaredWidgetPollUnreachable(t *testing.T) {
 	got, err := (cloudflaredWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
 		URL:    testUnreachableAddr,
