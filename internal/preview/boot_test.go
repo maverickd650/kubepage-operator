@@ -160,7 +160,7 @@ func TestPreviewSampleDataServesConfigSamples(t *testing.T) {
 			b, _ := io.ReadAll(fragResp.Body)
 			_ = fragResp.Body.Close()
 			fragmentBody = string(b)
-			if strings.Contains(fragmentBody, statusHealthyText) {
+			if strings.Contains(fragmentBody, plexSampleFieldLabel) {
 				break
 			}
 		}
@@ -173,12 +173,12 @@ func TestPreviewSampleDataServesConfigSamples(t *testing.T) {
 	shutdown()
 }
 
-// statusHealthyText is the literal "Status: Healthy" rendering config/
-// samples' plex ServiceCard's widget shows under --sample-data (see
-// internal/dashboard's plexWidget.Sample) — plain text, not a Go constant
-// import, since internal/preview intentionally has no dependency on
-// internal/dashboard's unexported widget internals.
-const statusHealthyText = "Healthy"
+// plexSampleFieldLabel is the "Streams" field label config/samples' plex
+// ServiceCard's widget renders under --sample-data (see internal/dashboard's
+// plexWidget.Sample) — plain text, not a Go constant import, since
+// internal/preview intentionally has no dependency on internal/dashboard's
+// unexported widget internals.
+const plexSampleFieldLabel = "Streams"
 
 // testVersion is the placeholder dashboard.PreviewOptions.Version/Commit
 // this file's boot tests pass; the value itself is never asserted on.

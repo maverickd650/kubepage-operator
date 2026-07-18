@@ -10,7 +10,7 @@ A [service card](service-cards.md) tile, on its own, is just a **link** with an
 optional up/down light. A **widget** turns that tile *live*: it reaches into the
 service, pulls out a number or two, and shows them right on the card.
 
-- A **Plex** widget shows the number of active streams.
+- A **Plex** widget shows active streams and library totals (albums, movies, TV).
 - A **Sonarr** widget shows how many episodes are queued and wanted.
 - A **TrueNAS** widget shows version and uptime.
 - A **custom** widget shows whatever you point it at.

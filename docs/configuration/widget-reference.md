@@ -50,7 +50,7 @@ Give the credential under `secrets:` using the field name shown.
 
 | Type | Shows | Credential (field name) |
 |------|-------|-------------------------|
-| `plex` | Active Plex stream count | `token` (Plex `X-Plex-Token`) |
+| `plex` | Plex stream count + Albums/Movies/TV library totals | `token` (Plex `X-Plex-Token`) |
 | `stash` | Stash library stats | `token` (API key) |
 | `paperlessngx` | Paperless-ngx document stats | `token` |
 | `linkwarden` | Linkwarden saved-link/collection/tag counts | `token` |
