@@ -1771,7 +1771,7 @@ func TestServerFragmentNestedSubgroupsUseParentLayout(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	want := `class="subgroups grid" style="grid-template-columns: repeat(2, 1fr);"`
+	want := `class="subgroups grid" style="grid-template-columns: repeat(auto-fit, minmax(max(min(220px, 100%), calc((100% - 1 * 1rem) / 2)), 1fr));"`
 	if !strings.Contains(body, want) {
 		t.Errorf("fragment body missing %q:\n%s", want, body)
 	}
@@ -2062,8 +2062,9 @@ func TestServerFragmentBookmarkGroupStyledByMatchingLayoutGroup(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "grid-template-columns: repeat(3, 1fr)") {
-		t.Errorf("fragment body missing repeat(3, 1fr), want it applied from the matching LayoutGroupSpec:\n%s", body)
+	want := "grid-template-columns: repeat(auto-fit, minmax(max(min(220px, 100%), calc((100% - 2 * 1rem) / 3)), 1fr));"
+	if !strings.Contains(body, want) {
+		t.Errorf("fragment body missing %q, want it applied from the matching LayoutGroupSpec:\n%s", want, body)
 	}
 	if strings.Contains(body, "grid-row") {
 		t.Errorf("fragment body has grid-row despite explicit columns — style:row + columns must render a wrapping grid, not the single-row scroller:\n%s", body)

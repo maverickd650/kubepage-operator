@@ -153,12 +153,21 @@ templ Index(data indexData) {
 				   on light), and the added font-weight gives a non-color cue too. */
 				.tab-btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }
 				.tab-panel.hidden { display: none; }
-				.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+				/* auto-fit (not auto-fill): auto-fill would reserve empty ghost
+				   tracks for cards that don't exist yet, leaving an ugly gap
+				   after the last card on a wide viewport with few cards;
+				   auto-fit collapses those tracks and lets the existing cards
+				   grow to fill the row instead. min(220px, 100%) as the floor
+				   (rather than a bare 220px) keeps a single card from
+				   overflowing a viewport narrower than 220px. */
+				.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 1rem; }
 				/* Row groups (style: row WITHOUT explicit columns — see
 				   gridClasses in render_helpers.go) scroll within their own box
 				   rather than widening the page past the viewport once more cards
-				   are bound than fit. */
-				.grid.grid-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(220px, 1fr); overflow-x: auto; padding-bottom: 0.25rem; }
+				   are bound than fit. scroll-snap settles the horizontal scroll on
+				   a card boundary instead of leaving it stopped mid-card. */
+				.grid.grid-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(min(220px, 100%), 1fr); overflow-x: auto; padding-bottom: 0.25rem; scroll-snap-type: x proximity; }
+				.grid.grid-row > .card { scroll-snap-align: start; }
 				.card {
 					background: color-mix(in srgb, var(--panel) var(--card-opacity, 72%), transparent);
 					border: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
@@ -225,7 +234,7 @@ templ Index(data indexData) {
 				   the service-card grid's own minmax floor. A group's own
 				   columns/style layout entry still governs the grid INSIDE that
 				   group's cell (bookmarkCardGrid), unaffected by this wrapper. */
-				.bookmark-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; align-items: start; }
+				.bookmark-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 1rem; align-items: start; }
 				.card.bookmark { display: flex; align-items: center; gap: 0.65rem; padding: 0.6rem 0.8rem; }
 				.card.bookmark h3 { margin: 0; font-size: 0.9rem; }
 				.card.bookmark-icons-only { justify-content: center; padding: 0.6rem; }
