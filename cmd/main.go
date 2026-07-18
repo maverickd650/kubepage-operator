@@ -262,6 +262,11 @@ func runManager() {
 	}
 	setupLog.Info("Gateway API support", "enabled", gatewayAPIEnabled)
 
+	if err := controller.SetupDashboardRefIndexers(context.Background(), mgr); err != nil {
+		setupLog.Error(err, "Failed to set up dashboardRef field indexers")
+		os.Exit(1)
+	}
+
 	if err := (&controller.DashboardReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),

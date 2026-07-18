@@ -5,26 +5,22 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
 // ServiceCardReconciler reconciles a ServiceCard object.
 //
-// Thin, like ServiceCardReconciler: it only validates that dashboardRef
-// resolves to an existing Dashboard and reflects that in status. The
-// dashboard pod (internal/dashboard) reads and polls ServiceCards directly
-// through its own cache; this controller never renders or resolves secrets.
+// Thin: it only validates that dashboardRef resolves to an existing
+// Dashboard and reflects that in status. The dashboard pod
+// (internal/dashboard) reads and polls ServiceCards directly through its own
+// cache; this controller never renders or resolves secrets. The actual
+// reconcile/watch logic is shared with BookmarkReconciler/
+// InfoWidgetReconciler via boundConfigReconciler.
 type ServiceCardReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -35,78 +31,36 @@ type ServiceCardReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=servicecards/finalizers,verbs=update
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards,verbs=get;list;watch
 
+func (r *ServiceCardReconciler) adapter() *boundConfigReconciler[*pagev1alpha1.ServiceCard] {
+	return &boundConfigReconciler[*pagev1alpha1.ServiceCard]{
+		Client:         r.Client,
+		Scheme:         r.Scheme,
+		displayName:    "ServiceCard",
+		controllerName: "servicecard",
+		newObj:         func() *pagev1alpha1.ServiceCard { return &pagev1alpha1.ServiceCard{} },
+		newList:        func() client.ObjectList { return &pagev1alpha1.ServiceCardList{} },
+		listItems: func(l client.ObjectList) []*pagev1alpha1.ServiceCard {
+			return toPointerSlice(l.(*pagev1alpha1.ServiceCardList).Items)
+		},
+		refName:      func(s *pagev1alpha1.ServiceCard) string { return pagev1alpha1.RefName(s.Spec.DashboardRef) },
+		conditions:   func(s *pagev1alpha1.ServiceCard) *[]metav1.Condition { return &s.Status.Conditions },
+		applyEntries: func(s *pagev1alpha1.ServiceCard) { s.Status.Entries = int32(len(s.Spec.Entries())) },
+		widgetConfigs: func(s *pagev1alpha1.ServiceCard) []widgetConfigInstance {
+			return serviceCardWidgetConfigInstances(s.Spec.Entries())
+		},
+	}
+}
+
 // Reconcile validates that the ServiceCard's dashboardRef resolves to an
 // existing Dashboard in the same namespace and sets the Available status
 // condition accordingly.
 func (r *ServiceCardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	entry := &pagev1alpha1.ServiceCard{}
-	if err := r.Get(ctx, req.NamespacedName, entry); err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to get ServiceCard")
-		return ctrl.Result{}, err
-	}
-
-	cond, err := boundDashboardCondition(ctx, r.Client, entry.Namespace, pagev1alpha1.RefName(entry.Spec.DashboardRef), entry.Generation)
-	if err != nil {
-		log.Error(err, "Failed to get referenced Dashboard")
-		return ctrl.Result{}, err
-	}
-
-	entries := entry.Spec.Entries()
-	availableOverride, configValid := validateWidgetConfigs(serviceCardWidgetConfigInstances(entries), entry.Generation)
-	if cond.Status == metav1.ConditionTrue && availableOverride != nil {
-		cond = *availableOverride
-	}
-	meta.SetStatusCondition(&entry.Status.Conditions, cond)
-	meta.SetStatusCondition(&entry.Status.Conditions, configValid)
-	entry.Status.Entries = int32(len(entries))
-
-	if err := r.Status().Update(ctx, entry); err != nil {
-		log.Error(err, "Failed to update ServiceCard status")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	return r.adapter().Reconcile(ctx, req)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ServiceCardReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&pagev1alpha1.ServiceCard{}).
-		Named("servicecard").
-		// Watch Dashboard objects too: see ServiceCardReconciler.SetupWithManager
-		// for why (out-of-order apply self-heals without waiting for the
-		// ServiceCard itself to be touched again).
-		Watches(
-			&pagev1alpha1.Dashboard{},
-			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				instance, ok := obj.(*pagev1alpha1.Dashboard)
-				if !ok {
-					return nil
-				}
-
-				var entries pagev1alpha1.ServiceCardList
-				if err := mgr.GetClient().List(ctx, &entries, client.InNamespace(instance.Namespace)); err != nil {
-					return nil
-				}
-
-				var reqs []reconcile.Request
-				for _, e := range entries.Items {
-					if dashboardWatchMayAffect(pagev1alpha1.RefName(e.Spec.DashboardRef), instance.Name) {
-						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
-							Name:      e.Name,
-							Namespace: e.Namespace,
-						}})
-					}
-				}
-				return reqs
-			}),
-		).
-		Complete(r)
+	return r.adapter().SetupWithManager(mgr, &pagev1alpha1.ServiceCard{})
 }
 
 // serviceCardWidgetConfigInstances flattens entries' widgets into the

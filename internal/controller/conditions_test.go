@@ -109,29 +109,3 @@ func TestBoundDashboardCondition(t *testing.T) {
 		}
 	})
 }
-
-// TestDashboardWatchMayAffect covers the predicate each config CRD
-// controller's own Watches(&Dashboard{}) uses to decide which of its
-// objects to re-reconcile on a Dashboard event: an explicit ref only cares
-// about the Dashboard it names, but an unset ref always needs a fresh look,
-// since the Dashboard event itself (create/delete) is what can flip whether
-// that unset ref resolves to a sole Dashboard.
-func TestDashboardWatchMayAffect(t *testing.T) {
-	tests := []struct {
-		name         string
-		refName      string
-		instanceName string
-		want         bool
-	}{
-		{"explicit ref naming the event's Dashboard", testRefDashboardName, testRefDashboardName, true},
-		{"explicit ref naming a different Dashboard", testOtherDashboardName, testRefDashboardName, false},
-		{"unset ref", "", testRefDashboardName, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := dashboardWatchMayAffect(tt.refName, tt.instanceName); got != tt.want {
-				t.Errorf("dashboardWatchMayAffect(%q, %q) = %v, want %v", tt.refName, tt.instanceName, got, tt.want)
-			}
-		})
-	}
-}
