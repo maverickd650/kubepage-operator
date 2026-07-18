@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.0](https://github.com/maverickd650/kubepage-operator/compare/v0.4.0...v0.5.0) (2026-07-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** rename InfoWidget options to config and drop the options.url compat path ([#182](https://github.com/maverickd650/kubepage-operator/issues/182))
+* **api:** one URL per service — widget url inherits href, merge ping/siteMonitor into monitor ([#181](https://github.com/maverickd650/kubepage-operator/issues/181))
+* **api:** fold DashboardStyle into Dashboard.spec.style ([#180](https://github.com/maverickd650/kubepage-operator/issues/180))
+
+### Features
+
+* **api:** fold DashboardStyle into Dashboard.spec.style ([#180](https://github.com/maverickd650/kubepage-operator/issues/180)) ([d87059c](https://github.com/maverickd650/kubepage-operator/commit/d87059ce98ae4ec8f680a44e7ff43e6858ab97dd))
+* **api:** internalUrl: auto — derive the in-cluster widget URL from app ([#187](https://github.com/maverickd650/kubepage-operator/issues/187)) ([a5f462d](https://github.com/maverickd650/kubepage-operator/commit/a5f462d6bd162cdf37a7b077e0859d8769bf792a))
+* **api:** make dashboardRef optional when the namespace has exactly one Dashboard ([#186](https://github.com/maverickd650/kubepage-operator/issues/186)) ([1a33c45](https://github.com/maverickd650/kubepage-operator/commit/1a33c45cf9a5c9ecd57a96263c4e4eb7ea371de1))
+* **api:** one URL per service — widget url inherits href, merge ping/siteMonitor into monitor ([#181](https://github.com/maverickd650/kubepage-operator/issues/181)) ([0ca2edd](https://github.com/maverickd650/kubepage-operator/commit/0ca2eddfff0610e0d9d755b04e980765f57abab6))
+* **api:** rename InfoWidget options to config and drop the options.url compat path ([#182](https://github.com/maverickd650/kubepage-operator/issues/182)) ([adee5ea](https://github.com/maverickd650/kubepage-operator/commit/adee5ea58b6747b07a30e13ed6590d77471dfbda))
+* **api:** widget-level secretRef shorthand for a whole Secret's keys ([#185](https://github.com/maverickd650/kubepage-operator/issues/185)) ([fb852a8](https://github.com/maverickd650/kubepage-operator/commit/fb852a85fbdecf8c77c74a46fcb4ba8e2140bd49))
+* **dashboard:** homepage-parity visual refactor with field/highlight vocabulary, card blur, and layout ordering ([#167](https://github.com/maverickd650/kubepage-operator/issues/167)) ([6f2d2fe](https://github.com/maverickd650/kubepage-operator/commit/6f2d2feec2058786e258f6f7ea531e2710fcdc3e))
+* **dashboard:** render basic statusStyle as colored status pills ([#169](https://github.com/maverickd650/kubepage-operator/issues/169)) ([0ea45ac](https://github.com/maverickd650/kubepage-operator/commit/0ea45ac67f0e4a6d3a121e53189efe3031f4b3b7))
+* **servicecard:** combined HTTP + pod monitor status with namespace/app pod lookup ([#166](https://github.com/maverickd650/kubepage-operator/issues/166)) ([533421a](https://github.com/maverickd650/kubepage-operator/commit/533421ae4cb80c25c8c7e6dd0a7d5b964952bdcc))
+
+
+### Bug Fixes
+
+* address full-repo review findings (errorDisplay default, monitor staleness, Secret label watch) ([#170](https://github.com/maverickd650/kubepage-operator/issues/170)) ([616bcb1](https://github.com/maverickd650/kubepage-operator/commit/616bcb1b45041bcc15dbb938a3b52af36b9c951a))
+* **dashboard:** catch up fragment/header on tab refocus ([#162](https://github.com/maverickd650/kubepage-operator/issues/162)) ([11ba5f4](https://github.com/maverickd650/kubepage-operator/commit/11ba5f4677253da126a70e72b39cd5f2b9d718b0))
+* **dashboard:** keep SSE-triggered refreshes morphing instead of replacing the DOM ([#164](https://github.com/maverickd650/kubepage-operator/issues/164)) ([6d491c2](https://github.com/maverickd650/kubepage-operator/commit/6d491c29335c13b3cfdbafc347e2e5ff326d9056))
+* **dashboard:** rewrite incoming fragment to client tab/group state before morph swap ([#168](https://github.com/maverickd650/kubepage-operator/issues/168)) ([09f9d46](https://github.com/maverickd650/kubepage-operator/commit/09f9d46f7e28ecc9ac6d88255c71bd0f6ae7fa2c))
+* **mise:** per-checkout golangci-lint issue cache ([#190](https://github.com/maverickd650/kubepage-operator/issues/190)) ([04fe09f](https://github.com/maverickd650/kubepage-operator/commit/04fe09f672ef1a1a51f145080226f15907e2611d))
+* per-Dashboard pod selectors, CustomCSS escaping, and monitor/poller fixes from codebase review ([#191](https://github.com/maverickd650/kubepage-operator/issues/191)) ([659677f](https://github.com/maverickd650/kubepage-operator/commit/659677f047ae57f18bd336f04e0360cfcb3d2bd4))
+
 ## [0.4.0](https://github.com/maverickd650/kubepage-operator/compare/v0.3.1...v0.4.0) (2026-07-13)
 
 
