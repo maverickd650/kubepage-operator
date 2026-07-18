@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -28,18 +26,8 @@ type gatusEndpointStatus struct {
 }
 
 func (gatusWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("gatus widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/v1/endpoints/statuses"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-
 	var parsed map[string]gatusEndpointStatus
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "gatus", "/api/v1/endpoints/statuses", nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

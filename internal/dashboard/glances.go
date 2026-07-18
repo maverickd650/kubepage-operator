@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -48,14 +47,10 @@ func (glancesWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 		}
 	}
 
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/" + apiVersion + "/quicklook"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
+	path := "/api/" + apiVersion + "/quicklook"
 
 	var parsed glancesQuicklookResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "glances", path, nil, &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -47,15 +46,11 @@ func (portainerWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wi
 		return nil, errors.New("portainer widget: config.endpointId is required")
 	}
 
-	endpoint := fmt.Sprintf("%s/api/endpoints/%d/docker/containers/json?all=1", strings.TrimRight(cfg.URL, "/"), portainerCfg.EndpointID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-	req.Header.Set(headerXAPIKey, cfg.Secrets[secretAPIKey])
+	path := fmt.Sprintf("/api/endpoints/%d/docker/containers/json?all=1", portainerCfg.EndpointID)
+	headers := map[string]string{headerXAPIKey: cfg.Secrets[secretAPIKey]}
 
 	var containers []portainerContainer
-	if fields, err := doJSONRequest(httpClient, req, &containers); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "portainer", path, headers, &containers); fields != nil || err != nil {
 		return fields, err
 	}
 

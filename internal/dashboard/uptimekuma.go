@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 func init() {
@@ -66,25 +65,13 @@ func (uptimeKumaWidget) Poll(ctx context.Context, httpClient *http.Client, cfg W
 		return nil, errors.New("uptime-kuma widget: config.slug is required")
 	}
 
-	base := strings.TrimRight(cfg.URL, "/")
-
-	pageReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/status-page/"+kumaCfg.Slug, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building status page request: %w", err)
-	}
-
 	var page uptimeKumaStatusPageResponse
-	if fields, err := doJSONRequest(httpClient, pageReq, &page); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "uptime-kuma", "/api/status-page/"+kumaCfg.Slug, nil, &page); fields != nil || err != nil {
 		return fields, err
 	}
 
-	heartbeatReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/status-page/heartbeat/"+kumaCfg.Slug, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building heartbeat request: %w", err)
-	}
-
 	var heartbeats uptimeKumaHeartbeatResponse
-	if fields, err := doJSONRequest(httpClient, heartbeatReq, &heartbeats); fields != nil || err != nil {
+	if fields, err := fetchJSON(ctx, httpClient, cfg, "uptime-kuma", "/api/status-page/heartbeat/"+kumaCfg.Slug, nil, &heartbeats); fields != nil || err != nil {
 		return fields, err
 	}
 
