@@ -43,6 +43,26 @@ func TestPrometheusMetricWidgetPoll(t *testing.T) {
 			config:  `{}`,
 			wantErr: true,
 		},
+		"empty config": {
+			config:  "",
+			wantErr: true,
+		},
+		"malformed config json": {
+			config:  `{"query":"up"`,
+			wantErr: true,
+		},
+		"non-string value falls back to unknown": {
+			config:     `{"query":"up"}`,
+			response:   `{"status":"success","data":{"result":[{"value":[1700000000,4]}]}}`,
+			statusCode: http.StatusOK,
+			want:       []Field{{Label: labelValue, Value: statusUnknown}},
+		},
+		"non-numeric string value passed through as-is": {
+			config:     `{"query":"up_state"}`,
+			response:   `{"status":"success","data":{"result":[{"value":[1700000000,"NaN"]}]}}`,
+			statusCode: http.StatusOK,
+			want:       []Field{{Label: labelValue, Value: "NaN"}},
+		},
 	}
 
 	for name, tc := range tests {

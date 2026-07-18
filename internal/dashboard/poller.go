@@ -113,6 +113,23 @@ type Poller struct {
 	// metrics as if a real poll succeeded.
 	SampleData bool
 
+	// Preview, when set, means this Poller is running under
+	// dashboard.RunPreview rather than in-cluster: always true for preview
+	// mode, independent of SampleData (SampleData is opt-in via
+	// --sample-data; Preview is not). A laptop can never dial a
+	// cluster-internal URL, so Preview mode ignores InternalURL entirely
+	// (both explicit values and the InternalURLAuto sentinel — see
+	// resolveBaseURL) and falls back to sample data for exactly the gap that
+	// leaves: an HTTP monitor or widget whose only URL was the ignored
+	// InternalURL gets a fabricated result instead of a doomed real probe;
+	// the pod monitor (App/PodSelector) always gets one too, since preview
+	// has no cluster to list pods from at all. Anything with an explicit
+	// URL, or a usable Href, still polls for real — see monitor,
+	// resolveBaseURL, and pollWidget. When SampleData is also set, SampleData
+	// already covers every poll/probe, so Preview's own fabrication paths
+	// are never reached.
+	Preview bool
+
 	// monitorLabels is the set of monitorUp (service, source) label pairs
 	// reported on the previous poll cycle, keyed by
 	// "namespace/name/entryName\x1f<source>" (see monitor's doc comment and
@@ -507,15 +524,36 @@ func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev
 	// anything other than the InternalURLAuto sentinel.
 	result.baseURL, result.err = p.resolveBaseURL(ctx, namespace, se, allowedMonitorNamespaces, clusterDomain)
 
+	var httpFabricated, podFabricated bool
 	if url := se.MonitorURLWithBase(result.baseURL); url != "" {
 		result.status, result.latency = p.probeURL(ctx, url)
+	} else if p.Preview && !p.SampleData && se.Monitor != nil && *se.Monitor != "" {
+		// A monitor is configured (necessarily "monitor: self" — an explicit
+		// URL always makes MonitorURLWithBase return non-empty above) but its
+		// base URL resolved to "" because Preview mode ignored InternalURL
+		// and there's no Href to fall back to either: there's nothing
+		// reachable to probe, so report the same fabricated "Up" result
+		// SampleData mode would, rather than skipping the monitor (silently
+		// dropping the card's status) or probing an empty URL (a guaranteed
+		// failure that would misrepresent the real service as Down).
+		result.status, result.latency = "Up", sampleMonitorLatency
+		httpFabricated = true
 	}
 
 	if selector := podMonitorSelector(se); selector != nil {
-		var podErr string
-		result.podStatus, result.podReadyText, podErr = p.probePodMonitor(ctx, namespace, se, selector, allowedMonitorNamespaces)
-		if podErr != "" {
-			result.err = podErr
+		if p.Preview && !p.SampleData {
+			// Preview mode has no cluster to list pods from at all — unlike
+			// the HTTP monitor, this isn't conditional on InternalURL being
+			// the pod monitor's only URL; it's simply not resolvable from a
+			// laptop under any configuration.
+			result.podStatus, result.podReadyText = "Up", sampleMonitorReadyText
+			podFabricated = true
+		} else {
+			var podErr string
+			result.podStatus, result.podReadyText, podErr = p.probePodMonitor(ctx, namespace, se, selector, allowedMonitorNamespaces)
+			if podErr != "" {
+				result.err = podErr
+			}
 		}
 	}
 
@@ -537,7 +575,7 @@ func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev
 	}
 
 	label := namespace + "/" + crName + "/" + se.Name
-	if result.status != "" {
+	if result.status != "" && !httpFabricated {
 		up := 0.0
 		if result.status == "Up" {
 			up = 1
@@ -545,7 +583,7 @@ func (p *Poller) monitor(ctx context.Context, namespace, crName string, se pagev
 		monitorUp.WithLabelValues(label, monitorSourceHTTP).Set(up)
 		record(label, monitorSourceHTTP)
 	}
-	if result.podStatus != "" {
+	if result.podStatus != "" && !podFabricated {
 		// Partial counts as up in the gauge: the ready fraction is visible
 		// on the card (PodReadyText), not in the metric.
 		up := 0.0
@@ -654,8 +692,15 @@ const autoInternalURLPortName = "http"
 // (resolveAutoInternalURL) instead of being returned unresolved. cardErr is
 // set only when auto resolution itself fails; it is never set for the
 // non-auto cases, which can't fail.
+//
+// In Preview mode, InternalURL is ignored entirely — both an explicit value
+// and the auto sentinel — falling straight through to Href: a laptop can
+// never dial a cluster-internal URL, and there's no Service to look up
+// "auto" against anyway, so treating auto as unset (rather than attempting,
+// and failing, the lookup) avoids a spurious card error on every preview of
+// a Dashboard that uses it.
 func (p *Poller) resolveBaseURL(ctx context.Context, namespace string, se pagev1alpha1.ServiceEntry, allowedMonitorNamespaces []string, clusterDomain string) (url, cardErr string) {
-	if se.InternalURL != nil && *se.InternalURL != "" {
+	if se.InternalURL != nil && *se.InternalURL != "" && !p.Preview {
 		if *se.InternalURL == pagev1alpha1.InternalURLAuto {
 			return p.resolveAutoInternalURL(ctx, namespace, se, allowedMonitorNamespaces, clusterDomain)
 		}
@@ -899,7 +944,13 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 		cfg.Config = widget.Config.Raw
 	}
 
-	if p.SampleData {
+	// In Preview mode, a widget with no explicit url whose entry base URL
+	// resolved to "" (its only URL was an InternalURL that Preview mode
+	// ignores, and it has no Href to fall back to either) has nothing
+	// reachable to poll — fall back to sample data for just that widget
+	// instead of a doomed real request. A widget with an explicit url, or
+	// whose entry has a usable Href, still polls for real.
+	if p.SampleData || (p.Preview && widget.URL == nil && cfg.URL == "") {
 		p.pollWidgetSample(card, impl, cfg, widget)
 		return
 	}

@@ -37,7 +37,9 @@ type PreviewOptions struct {
 	// replaced by canned placeholder data (see Poller.SampleData), so a
 	// preview renders fully populated cards without a reachable upstream or
 	// local copies of any secret material the loaded YAML's secretKeyRefs
-	// point at.
+	// point at. Independent of internalUrl handling: RunPreview always
+	// ignores internalUrl (see Poller.Preview), whether or not SampleData is
+	// set.
 	SampleData bool
 }
 
@@ -70,7 +72,11 @@ func (noopClusterReader) List(context.Context, client.ObjectList, ...client.List
 // network call or reads a Secret at all (see Poller.SampleData); a
 // kubemetrics InfoWidget then shows its Sample output instead of erroring
 // through noopClusterReader below. GatewayAPIEnabled is always false:
-// HTTPRoute discovery has no meaning without a cluster.
+// HTTPRoute discovery has no meaning without a cluster. Options.Preview is
+// always set true here (never user-configurable, unlike SampleData): a
+// laptop can never reach a cluster-internal URL, so internalUrl is always
+// ignored regardless of --sample-data — see Poller.Preview's doc comment for
+// what that gap is covered by.
 func RunPreview(ctx context.Context, opts PreviewOptions) error {
 	return serve(ctx, Options{
 		Namespace:         opts.Namespace,
@@ -83,5 +89,6 @@ func RunPreview(ctx context.Context, opts PreviewOptions) error {
 		GatewayAPIEnabled: false,
 		Ready:             opts.Ready,
 		SampleData:        opts.SampleData,
+		Preview:           true,
 	}, opts.Reader, opts.Reader, noopClusterReader{})
 }

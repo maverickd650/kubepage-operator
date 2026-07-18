@@ -74,6 +74,10 @@ type Options struct {
 	// RunPreview's PreviewOptions.SampleData ever sets it. See
 	// Poller.SampleData's doc comment.
 	SampleData bool
+
+	// Preview is always false for in-cluster dashboard mode; RunPreview
+	// always sets it true. See Poller.Preview's doc comment.
+	Preview bool
 }
 
 // Run wires the CRD cache, secret-resolving client, background poller, and
@@ -133,6 +137,7 @@ func serve(ctx context.Context, opts Options, reader, secretReader, kubeReader c
 		Store:             store,
 		GatewayAPIEnabled: opts.GatewayAPIEnabled,
 		SampleData:        opts.SampleData,
+		Preview:           opts.Preview,
 		Broadcast:         broadcast,
 	}
 	go poller.Run(ctx)

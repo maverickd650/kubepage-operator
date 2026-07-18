@@ -87,11 +87,21 @@ approach the image and chart already use.
   errors; the `kubemetrics` InfoWidget then shows its normal per-widget error
   state (accurately previewing "upstream unreachable" rendering).
   `GatewayAPIEnabled=false` (HTTPRoute discovery is meaningless locally).
-- Widget polling runs for real against whatever URLs the ServiceCards name —
-  on a homelab LAN the actual Grafana/Plex/etc. are often reachable, which
-  makes preview a genuinely live dashboard; unreachable upstreams render their
-  error state, which is itself worth previewing. `podSelector` status degrades
-  to its error path like `kubemetrics`.
+- `Poller.Preview` is always set true by `RunPreview` (unlike `SampleData`,
+  it's not user-configurable): `internalUrl` is always cluster-internal and a
+  laptop can never dial it, so preview mode ignores `internalUrl` entirely —
+  both an explicit value and the `auto` sentinel — falling back to `href`
+  instead. Widget polling still runs for real against whatever URL results
+  from that (an `href`, or a widget's own explicit `url`) — on a homelab LAN
+  the actual Grafana/Plex/etc. are often reachable via `href`, which makes
+  preview a genuinely live dashboard; unreachable upstreams still render their
+  error state, which is itself worth previewing. The gap `internalUrl`
+  leaves — an HTTP monitor (`monitor: self`) or widget whose *only* URL was
+  the ignored `internalUrl`, and the pod monitor (`app`/`podSelector`, which
+  has no cluster to list pods from under any configuration) — is covered by
+  the same fabricated sample data `--sample-data` uses, scoped to just that
+  monitor/widget rather than the whole card; `--sample-data` mode already
+  covers everything, so this only matters when it's off.
 - Bind `--addr` to `127.0.0.1:8080` by default (not `:8080`): manifests may
   contain plaintext Secrets, and a dev tool shouldn't listen on all
   interfaces. Metrics listener reuses `--metrics-addr` defaulting to
