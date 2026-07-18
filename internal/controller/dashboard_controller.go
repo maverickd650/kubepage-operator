@@ -378,8 +378,16 @@ func (r *DashboardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.failAvailable(ctx, instance, "bound config CRDs", reasonBoundCountsFailed, err)
 	}
 
-	// If replicas is not defined in the Custom Resource then we will set the desired replicas to 0
-	var desiredReplicas int32 = 0
+	// If replicas is not defined in the Custom Resource, default the desired
+	// count to 1 to match deploymentForDashboard's own nil-replicas
+	// normalization (see its comment above): both sides must agree on the
+	// same default, or deploymentReady's ReadyReplicas >= desiredReplicas
+	// check compares against the wrong number for a legacy object stored
+	// before the CRD's +default=1 took effect (defaulting only applies on
+	// write, not to already-stored objects) — a stale desiredReplicas of 0
+	// would make the check trivially true (ReadyReplicas >= 0 always holds)
+	// and report Available=True while the actual pod crash-loops.
+	var desiredReplicas int32 = 1
 	if instance.Spec.Replicas != nil {
 		desiredReplicas = *instance.Spec.Replicas
 	}
