@@ -259,7 +259,7 @@ func TestServerIndexEmitsCardPixelTuningCSS(t *testing.T) {
 	srv.Routes().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{".card h3 img.icon { width: 2rem; height: 2rem; }", ".grid.grid-equal .card .stats { margin-top: auto; }"} {
+	for _, want := range []string{".card h3 img.icon { width: clamp(1.4rem, 11cqw, 2rem); height: clamp(1.4rem, 11cqw, 2rem); }", ".grid.grid-equal .card .stats { margin-top: auto; }"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index body missing %q", want)
 		}
