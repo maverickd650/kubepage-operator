@@ -339,11 +339,40 @@ func backgroundInsetCSS(bg *Background) string {
 // reasoning: emitted via @templ.Raw, so templ's automatic nonce handling
 // doesn't reach it). Returns "" when css is empty, so the caller's
 // @templ.Raw call renders nothing.
+//
+// Unlike backgroundStyle's single Image value (a CSS string literal nested
+// inside url("...")), CustomCSS is emitted as the raw text content of the
+// <style> element itself — the user's whole stylesheet, selectors and all.
+// Running that through cssStringEscape would rewrite '>' to '&gt;' and '<' to
+// '&lt;', which are never decoded inside <style> text content (unlike normal
+// HTML text nodes), silently breaking any child combinator (`.a > .b`) and
+// any quoted string value (`content: "x"`, `font-family: "Inter"`). So
+// customStyle instead uses cssBlockEscape, mirroring customScript/
+// jsStringEscape below: the only sequence that actually needs neutralizing
+// in raw <style> text is a case-insensitive "</style" tag terminator.
 func customStyle(nonce, css string) string {
 	if css == "" {
 		return ""
 	}
-	return fmt.Sprintf(`<style nonce="%s">%s</style>`, nonce, cssStringEscape(css))
+	return fmt.Sprintf(`<style nonce="%s">%s</style>`, nonce, cssBlockEscape(css))
+}
+
+// styleCloseTag matches a case-insensitive "</style" anywhere in a string,
+// the one sequence cssBlockEscape must neutralize: CustomCSS is emitted
+// verbatim inside a literal <style> element via @templ.Raw (see index.templ),
+// so a value containing it would otherwise close that tag early and let
+// whatever follows execute/render as ordinary page markup instead of style
+// text, regardless of the CSS itself being otherwise well-formed.
+var styleCloseTag = regexp.MustCompile(`(?i)</style`)
+
+// cssBlockEscape escapes CustomCSS for safe embedding as the raw text content
+// of a literal <style> block (see CustomJS's jsStringEscape for the same
+// concern applied to <script>). In CSS, "\/" is simply an escaped "/" — it
+// has no special meaning and is preserved verbatim by any CSS parser — so
+// replacing "</style" with "<\/style" breaks the HTML tag terminator while
+// leaving the character data (and thus any actual CSS) untouched.
+func cssBlockEscape(s string) string {
+	return styleCloseTag.ReplaceAllString(s, "<\\/style")
 }
 
 // customScript returns a complete "<script>...</script>" element wrapping

@@ -373,4 +373,18 @@ func TestCustomStyleAndCustomScript(t *testing.T) {
 			t.Errorf("customScript() = %q, want exactly one </script> (the legitimate one)", js)
 		}
 	})
+
+	// Regression test: customStyle used to run CustomCSS through
+	// cssStringEscape, which rewrites '>' to '&gt;' and '"' to '\"' —
+	// character references that are never decoded inside <style> text
+	// content, so a child combinator or a quoted string value came out
+	// broken. customStyle must now pass ordinary CSS through byte-for-byte.
+	t.Run("child combinator and quoted string pass through unchanged", func(t *testing.T) {
+		css := `.a > .b { content: "→"; font-family: "Inter"; }`
+		got := customStyle("abc123", css)
+		want := `<style nonce="abc123">` + css + `</style>`
+		if got != want {
+			t.Errorf("customStyle() = %q, want %q (CSS passed through unchanged)", got, want)
+		}
+	})
 }
