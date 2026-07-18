@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -120,9 +119,9 @@ func (grafanaWidget) triggeredAlerts(ctx context.Context, httpClient *http.Clien
 // username/password secrets become HTTP Basic auth, else a token secret
 // becomes a Bearer token.
 func grafanaRequest(ctx context.Context, cfg WidgetConfig, path string) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(cfg.URL, "/")+path, nil)
+	req, err := buildJSONRequest(ctx, cfg, "grafana", path)
 	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
+		return nil, err
 	}
 	if username := cfg.Secrets[secretUsername]; username != "" {
 		req.SetBasicAuth(username, cfg.Secrets[secretPassword])

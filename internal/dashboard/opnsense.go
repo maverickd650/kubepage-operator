@@ -81,23 +81,13 @@ func (opnsenseWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wid
 		wan = "wan"
 	}
 
-	base := strings.TrimRight(cfg.URL, "/")
-
-	activityReq, err := opnsenseRequest(ctx, base+"/api/diagnostics/activity/getActivity", username, password)
-	if err != nil {
-		return nil, err
-	}
 	var activity opnsenseActivityResponse
-	if fields, err := doJSONRequest(httpClient, activityReq, &activity); fields != nil || err != nil {
+	if fields, err := fetchJSONBasicAuth(ctx, httpClient, cfg, "opnsense", "/api/diagnostics/activity/getActivity", username, password, &activity); fields != nil || err != nil {
 		return fields, err
 	}
 
-	interfaceReq, err := opnsenseRequest(ctx, base+"/api/diagnostics/traffic/interface", username, password)
-	if err != nil {
-		return nil, err
-	}
 	var iface opnsenseInterfaceResponse
-	if fields, err := doJSONRequest(httpClient, interfaceReq, &iface); fields != nil || err != nil {
+	if fields, err := fetchJSONBasicAuth(ctx, httpClient, cfg, "opnsense", "/api/diagnostics/traffic/interface", username, password, &iface); fields != nil || err != nil {
 		return fields, err
 	}
 
@@ -134,22 +124,6 @@ func (opnsenseWidget) Sample(WidgetConfig) []Field {
 		{Label: labelWANUpload, Value: opnsenseSampleWANUpload},
 		{Label: labelWANDownload, Value: "84.7 GB"},
 	}
-}
-
-// opnsenseRequest builds a GET request against the diagnostics API with
-// Basic auth set when username is non-empty — OPNsense's own API key/secret
-// scheme is presented as a Basic-auth pair, matching homepage's
-// genericProxyHandler behavior for widgets that set both username and
-// password.
-func opnsenseRequest(ctx context.Context, endpoint, username, password string) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-	if username != "" {
-		req.SetBasicAuth(username, password)
-	}
-	return req, nil
 }
 
 // formatBytesHumanized renders a byte count as a human-readable string

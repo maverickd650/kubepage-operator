@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func init() {
@@ -27,21 +25,8 @@ type adguardStatsResponse struct {
 }
 
 func (adguardWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
-	if cfg.URL == "" {
-		return nil, errors.New("adguard widget: url is required")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/") + "/control/stats"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
-	}
-	if username := cfg.Secrets[secretUsername]; username != "" {
-		req.SetBasicAuth(username, cfg.Secrets[secretPassword])
-	}
-
 	var parsed adguardStatsResponse
-	if fields, err := doJSONRequest(httpClient, req, &parsed); fields != nil || err != nil {
+	if fields, err := fetchJSONBasicAuth(ctx, httpClient, cfg, "adguard", "/control/stats", cfg.Secrets[secretUsername], cfg.Secrets[secretPassword], &parsed); fields != nil || err != nil {
 		return fields, err
 	}
 
