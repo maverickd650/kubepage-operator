@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -48,6 +49,7 @@ func TestGuardedDialControlRejectsBlockedAddresses(t *testing.T) {
 		"AWS IPv6 metadata address is rejected":                            {address: "[fd00:ec2::254]:443", wantErr: true},
 		"ordinary address is allowed":                                      {address: "10.0.0.1:443", wantErr: false},
 		"unparseable host is allowed through (DNS name, not yet resolved)": {address: "example.com:443", wantErr: false},
+		"address with no port at all is allowed through":                   {address: "no-port-here", wantErr: false},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -56,6 +58,25 @@ func TestGuardedDialControlRejectsBlockedAddresses(t *testing.T) {
 				t.Errorf("guardedDialControl(%q) error = %v, wantErr %v", tc.address, err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// TestNewGuardedTransportClonesSuppliedBase covers newGuardedTransport's
+// non-nil base branch — every current caller passes nil (see its doc
+// comment), but base remains a real parameter for a future per-target
+// transport builder, so this proves cloning-and-guarding a supplied base
+// actually works rather than only ever being exercised via the nil path.
+func TestNewGuardedTransportClonesSuppliedBase(t *testing.T) {
+	base := &http.Transport{MaxIdleConns: 7}
+	got := newGuardedTransport(base)
+	if got == base {
+		t.Error("newGuardedTransport(base) returned base itself, want a clone")
+	}
+	if got.MaxIdleConns != 7 {
+		t.Errorf("newGuardedTransport(base).MaxIdleConns = %d, want 7 (cloned from base)", got.MaxIdleConns)
+	}
+	if got.DialContext == nil {
+		t.Error("newGuardedTransport(base) did not wire the link-local dial guard")
 	}
 }
 

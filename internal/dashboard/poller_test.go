@@ -75,6 +75,9 @@ const (
 	testCustomSelectorLabelKey = "custom-selector"
 	testCustomSelectorValue    = "custom-value"
 	testPodReadyOneOfOne       = "1/1 ready"
+
+	// Preview-mode internalUrl-ignoring test fixtures.
+	testInternalURLInvalid = "http://internal.invalid/"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -3227,4 +3230,319 @@ func TestPollerResolveAutoInternalURLCrossNamespace(t *testing.T) {
 			t.Errorf("resolveBaseURL(disallowed foreign namespace) cardErr = %q, want it to name the namespace and spec.monitorNamespaces", cardErr)
 		}
 	})
+}
+
+// TestPollerPreviewResolveBaseURLIgnoresInternalURL covers Preview mode's
+// core behavior change: internalUrl (explicit or the auto sentinel) is
+// unreachable from a laptop, so resolveBaseURL ignores it entirely and falls
+// back to href — without even attempting the "auto" Service lookup (proven
+// here by a nil Reader/KubeReader that would panic if touched).
+func TestPollerPreviewResolveBaseURLIgnoresInternalURL(t *testing.T) {
+	href := "http://href.invalid/"
+	internal := testInternalURLInvalid
+	auto := pagev1alpha1.InternalURLAuto
+	app := testAppLabelValue
+
+	t.Run("explicit internalUrl ignored, falls back to href", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, Href: &href, InternalURL: &internal}
+		p := &Poller{Preview: true}
+		url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, nil, defaultClusterDomain)
+		if cardErr != "" {
+			t.Errorf("resolveBaseURL(Preview, explicit internalUrl) cardErr = %q, want empty", cardErr)
+		}
+		if url != href {
+			t.Errorf("resolveBaseURL(Preview, explicit internalUrl) = %q, want href %q", url, href)
+		}
+	})
+
+	t.Run("auto sentinel ignored, no Service lookup attempted, falls back to href", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, Href: &href, InternalURL: &auto, App: &app}
+		p := &Poller{Preview: true} // nil Reader/KubeReader: would panic if resolveAutoInternalURL ran
+		url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, nil, defaultClusterDomain)
+		if cardErr != "" {
+			t.Errorf("resolveBaseURL(Preview, auto internalUrl) cardErr = %q, want empty (no card error from ignored auto resolution)", cardErr)
+		}
+		if url != href {
+			t.Errorf("resolveBaseURL(Preview, auto internalUrl) = %q, want href %q", url, href)
+		}
+	})
+
+	t.Run("internalUrl ignored and no href resolves empty", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, InternalURL: &internal}
+		p := &Poller{Preview: true}
+		url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, nil, defaultClusterDomain)
+		if cardErr != "" || url != "" {
+			t.Errorf("resolveBaseURL(Preview, internalUrl only) = (%q, %q), want (\"\", \"\")", url, cardErr)
+		}
+	})
+
+	t.Run("non-Preview still resolves internalUrl normally", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, Href: &href, InternalURL: &internal}
+		p := &Poller{}
+		url, cardErr := p.resolveBaseURL(t.Context(), testNamespace, se, nil, defaultClusterDomain)
+		if cardErr != "" || url != internal {
+			t.Errorf("resolveBaseURL(non-Preview) = (%q, %q), want (%q, \"\")", url, cardErr, internal)
+		}
+	})
+}
+
+// TestPollerPreviewMonitorSelfFabricatesWhenInternalURLOnly covers the HTTP
+// monitor gap Preview mode's internalUrl-ignoring leaves: "monitor: self"
+// with only an internalUrl (no href) resolves its base URL to "" in Preview
+// mode, so there's nothing reachable to probe — monitor fabricates the same
+// "Up" result SampleData mode would, rather than skipping the card's status
+// or probing an empty URL. An explicit monitor URL, or "self" with a usable
+// href, still gets a real probe.
+func TestPollerPreviewMonitorSelfFabricatesWhenInternalURLOnly(t *testing.T) {
+	probed := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case probed <- struct{}{}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	monitorSelf := pagev1alpha1.MonitorSelf
+	internal := testInternalURLInvalid
+
+	t.Run("self with internalUrl only fabricates sample result", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, InternalURL: &internal, Monitor: &monitorSelf}
+		p := &Poller{Preview: true} // no HTTPClient: would panic if a real probe were attempted
+		m := p.monitor(t.Context(), testNamespace, "self-internal-only", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
+		if m.status != "Up" || m.latency != sampleMonitorLatency {
+			t.Errorf("monitor(Preview, self w/ internalUrl only) = (%q, %q), want (Up, %q)", m.status, m.latency, sampleMonitorLatency)
+		}
+	})
+
+	t.Run("self with href still probes for real", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, Href: &srv.URL, Monitor: &monitorSelf}
+		p := &Poller{Preview: true, HTTPClient: srv.Client()}
+		m := p.monitor(t.Context(), testNamespace, "self-href", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
+		if m.status != "Up" {
+			t.Errorf("monitor(Preview, self w/ href) status = %q, want Up", m.status)
+		}
+		select {
+		case <-probed:
+		default:
+			t.Error("monitor(Preview, self w/ href) never made a real probe")
+		}
+	})
+
+	t.Run("explicit monitor URL still probes for real even with internalUrl-only base", func(t *testing.T) {
+		se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, InternalURL: &internal, Monitor: &srv.URL}
+		p := &Poller{Preview: true, HTTPClient: srv.Client()}
+		m := p.monitor(t.Context(), testNamespace, "explicit-monitor", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
+		if m.status != "Up" {
+			t.Errorf("monitor(Preview, explicit monitor URL) status = %q, want Up", m.status)
+		}
+		select {
+		case <-probed:
+		default:
+			t.Error("monitor(Preview, explicit monitor URL) never made a real probe")
+		}
+	})
+}
+
+// TestPollerPreviewPodMonitorFabricatesSample covers Preview mode's pod
+// monitor handling: unconditionally fabricated (unlike the HTTP monitor,
+// this doesn't depend on internalUrl at all — preview simply has no cluster
+// to list pods from), proven by a nil Reader that would panic if
+// probePodMonitor's real pod-listing path ran.
+func TestPollerPreviewPodMonitorFabricatesSample(t *testing.T) {
+	app := testAppLabelValue
+	se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, App: &app}
+	p := &Poller{Preview: true} // nil Reader: would panic if podStatus() ran
+	m := p.monitor(t.Context(), testNamespace, "pod-preview", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
+	if m.podStatus != "Up" || m.podReadyText != sampleMonitorReadyText {
+		t.Errorf("monitor(Preview, pod monitor) = (%q, %q), want (Up, %q)", m.podStatus, m.podReadyText, sampleMonitorReadyText)
+	}
+}
+
+// TestPollerPreviewMonitorDoesNotRecordFabricatedMetrics verifies fabricated
+// Preview-mode monitor results (both the HTTP self-with-no-base-URL case and
+// the always-fabricated pod monitor) don't get recorded into monitorLabels/
+// the monitorUp gauge — mirroring SampleData's identical exclusion, since
+// neither reflects an observed result.
+func TestPollerPreviewMonitorDoesNotRecordFabricatedMetrics(t *testing.T) {
+	monitorSelf := pagev1alpha1.MonitorSelf
+	internal := testInternalURLInvalid
+	app := testAppLabelValue
+	entry := &pagev1alpha1.ServiceCard{
+		ObjectMeta: metav1.ObjectMeta{Name: "preview-metrics", Namespace: testNamespace},
+		Spec: pagev1alpha1.ServiceCardSpec{
+			DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
+			Group:        testGroup,
+			Services: []pagev1alpha1.ServiceEntry{{
+				Name:        testCombinedServiceName,
+				InternalURL: &internal,
+				Monitor:     &monitorSelf,
+				App:         &app,
+			}},
+		},
+	}
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+	store := NewStore()
+	p := &Poller{
+		Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+		Interval: time.Hour, Store: store, Preview: true,
+	}
+	p.pollOnce(t.Context())
+
+	cards := store.Snapshot()
+	if len(cards) != 1 {
+		t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+	}
+	if cards[0].Status != "Up" || cards[0].PodStatus != "Up" {
+		t.Fatalf("card = %+v, want fabricated Up status for both monitor sources", cards[0])
+	}
+
+	label := testNamespace + "/preview-metrics/" + testCombinedServiceName
+	for _, source := range []string{monitorSourceHTTP, monitorSourcePods} {
+		if p.monitorLabels[monitorLabelKey(label, source)] {
+			t.Errorf("monitorLabels[%q/%s] = true, want false (fabricated result shouldn't be recorded)", label, source)
+		}
+	}
+}
+
+// TestPollerPreviewWidgetFallsBackToSampleWhenNoURL covers the widget-poll
+// gap Preview mode's internalUrl-ignoring leaves: a widget with no explicit
+// url, on an entry whose only URL was the ignored internalUrl, has nothing
+// reachable to poll — pollWidget falls back to the widget's Sample output
+// instead of a doomed real request. A widget with an explicit url, or an
+// entry with a usable href, still polls for real.
+func TestPollerPreviewWidgetFallsBackToSampleWhenNoURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"activeTargets":[{"health":"up"}]}}`))
+	}))
+	defer srv.Close()
+
+	internal := testInternalURLInvalid
+
+	t.Run("internalUrl-only entry falls back to sample data", func(t *testing.T) {
+		entry := &pagev1alpha1.ServiceCard{
+			ObjectMeta: metav1.ObjectMeta{Name: "preview-widget-sample", Namespace: testNamespace},
+			Spec: pagev1alpha1.ServiceCardSpec{
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testGroup,
+				Services: []pagev1alpha1.ServiceEntry{{
+					Name:        testSvcDisplayName,
+					InternalURL: &internal,
+					Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType}},
+				}},
+			},
+		}
+		scheme := testScheme(t)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+		store := NewStore()
+		p := &Poller{
+			Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+			Interval:   time.Hour,
+			HTTPClient: &http.Client{Transport: failingRoundTripper{t: t}},
+			Store:      store,
+			Preview:    true,
+		}
+		p.pollOnce(t.Context())
+
+		cards := store.Snapshot()
+		if len(cards) != 1 {
+			t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+		}
+		if cards[0].Err != "" {
+			t.Errorf("card.Err = %q, want empty (sample fallback, no real poll attempted)", cards[0].Err)
+		}
+		if len(cards[0].Fields) == 0 {
+			t.Error("card.Fields = empty, want the widget's Sample output")
+		}
+	})
+
+	t.Run("widget with explicit url still polls for real", func(t *testing.T) {
+		entry := &pagev1alpha1.ServiceCard{
+			ObjectMeta: metav1.ObjectMeta{Name: "preview-widget-real", Namespace: testNamespace},
+			Spec: pagev1alpha1.ServiceCardSpec{
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testGroup,
+				Services: []pagev1alpha1.ServiceEntry{{
+					Name:        testSvcDisplayName,
+					InternalURL: &internal,
+					Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType, URL: &srv.URL}},
+				}},
+			},
+		}
+		scheme := testScheme(t)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+		store := NewStore()
+		p := &Poller{
+			Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+			Interval: time.Hour, HTTPClient: srv.Client(), Store: store, Preview: true,
+		}
+		p.pollOnce(t.Context())
+
+		cards := store.Snapshot()
+		if len(cards) != 1 {
+			t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+		}
+		if cards[0].Err != "" {
+			t.Errorf("card.Err = %q, want empty (real poll of the explicit url should succeed)", cards[0].Err)
+		}
+		if len(cards[0].Fields) == 0 {
+			t.Error("card.Fields = empty, want fields from the real poll")
+		}
+	})
+
+	t.Run("href-derived base still polls for real", func(t *testing.T) {
+		entry := &pagev1alpha1.ServiceCard{
+			ObjectMeta: metav1.ObjectMeta{Name: "preview-widget-href", Namespace: testNamespace},
+			Spec: pagev1alpha1.ServiceCardSpec{
+				DashboardRef: &pagev1alpha1.DashboardRef{Name: testDashboardName},
+				Group:        testGroup,
+				Services: []pagev1alpha1.ServiceEntry{{
+					Name:        testSvcDisplayName,
+					InternalURL: &internal,
+					Href:        &srv.URL,
+					Widgets:     []pagev1alpha1.ServiceWidget{{Type: testWidgetType}},
+				}},
+			},
+		}
+		scheme := testScheme(t)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(entry).Build()
+		store := NewStore()
+		p := &Poller{
+			Reader: cl, SecretReader: cl, Namespace: testNamespace, DashboardName: testDashboardName,
+			Interval: time.Hour, HTTPClient: srv.Client(), Store: store, Preview: true,
+		}
+		p.pollOnce(t.Context())
+
+		cards := store.Snapshot()
+		if len(cards) != 1 {
+			t.Fatalf("Snapshot() = %d cards, want 1", len(cards))
+		}
+		if cards[0].Err != "" {
+			t.Errorf("card.Err = %q, want empty (href-derived base should poll for real)", cards[0].Err)
+		}
+		if len(cards[0].Fields) == 0 {
+			t.Error("card.Fields = empty, want fields from the real poll")
+		}
+	})
+}
+
+// TestPollerNonPreviewUnaffectedByPreviewLogic is a control: with Preview
+// unset (the in-cluster dashboard's zero value), internalUrl still resolves
+// and drives real polls exactly as before this feature — proving Preview's
+// new branches are gated correctly and don't leak into the default path.
+func TestPollerNonPreviewUnaffectedByPreviewLogic(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	monitorSelf := pagev1alpha1.MonitorSelf
+	se := pagev1alpha1.ServiceEntry{Name: testSvcDisplayName, InternalURL: &srv.URL, Monitor: &monitorSelf}
+	p := &Poller{HTTPClient: srv.Client()} // Preview: false (zero value)
+	m := p.monitor(t.Context(), testNamespace, "non-preview", se, statusStyleDot, nil, defaultClusterDomain, func(string, string) {})
+	if m.status != "Up" {
+		t.Errorf("monitor(non-Preview, self w/ internalUrl) status = %q, want Up (internalUrl should resolve and be probed for real)", m.status)
+	}
 }
