@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/maverickd650/kubepage-operator/compare/v0.5.1...v0.5.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **dashboard:** align plex widget fields with upstream ([#196](https://github.com/maverickd650/kubepage-operator/issues/196)) ([082eb87](https://github.com/maverickd650/kubepage-operator/commit/082eb877a7a489244a4fef2d90d174f270d5fa38))
+
 ## [0.5.1](https://github.com/maverickd650/kubepage-operator/compare/v0.5.0...v0.5.1) (2026-07-18)
 
 
