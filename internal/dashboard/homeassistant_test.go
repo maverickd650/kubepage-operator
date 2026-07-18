@@ -132,6 +132,34 @@ func TestHomeassistantWidgetPollSecondCallFails(t *testing.T) {
 	}
 }
 
+// TestHomeassistantWidgetPollInvalidURL exercises the request-build error
+// path: a base URL that survives the empty check but can't be parsed into a
+// request (space in host) must surface as a Go error, not a status Field.
+func TestHomeassistantWidgetPollInvalidURL(t *testing.T) {
+	if _, err := (homeassistantWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: "http://exa mple.com"}); err == nil {
+		t.Fatal("Poll() expected error for unparsable URL, got nil")
+	}
+}
+
+// TestHomeassistantWidgetPollTruncatedBody exercises the response-read error
+// path: a 200 whose body is cut short of its declared Content-Length fails
+// mid-read (unexpected EOF), which is a Go error rather than a status Field.
+func TestHomeassistantWidgetPollTruncatedBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "50")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "2 / 4")
+	}))
+	defer srv.Close()
+
+	if _, err := (homeassistantWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{testSecretField: testHomeassistantToken},
+	}); err == nil {
+		t.Fatal("Poll() expected error for truncated response body, got nil")
+	}
+}
+
 func TestHomeassistantWidgetPollMissingURL(t *testing.T) {
 	if _, err := (homeassistantWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
