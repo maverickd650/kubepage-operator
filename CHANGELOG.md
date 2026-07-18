@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/maverickd650/kubepage-operator/compare/v0.5.0...v0.5.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* **dashboard:** align mealie, homeassistant, linkwarden, prometheus, unifi, and truenas widget fields with upstream ([#195](https://github.com/maverickd650/kubepage-operator/issues/195)) ([36b81ab](https://github.com/maverickd650/kubepage-operator/commit/36b81abc96778b9f43b47ce39bb7290f811d54f8))
+* **dashboard:** ignore internalUrl in preview mode, cover the gap with sample data ([#192](https://github.com/maverickd650/kubepage-operator/issues/192)) ([2dabe07](https://github.com/maverickd650/kubepage-operator/commit/2dabe07946f4fb0384ec161f1bdb0a6f39b30454))
+
 ## [0.5.0](https://github.com/maverickd650/kubepage-operator/compare/v0.4.0...v0.5.0) (2026-07-18)
 
 
