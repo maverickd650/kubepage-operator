@@ -31,6 +31,16 @@ func init() {
 // already looked up under the old session-based login flow); insecureTLS is
 // an explicit opt-in for self-hosted controllers using a self-signed
 // certificate (common for Cloud Key / on-prem installs).
+//
+// Fields emitted are Status, LAN Users, WLAN Users — a deliberately smaller
+// set than gethomepage/homepage's default unifi widget (which also shows
+// WAN status and gateway uptime): homepage's WAN/Uptime fields come from the
+// classic session-cookie API's stat/sites health subsystem query, which the
+// Integration API this widget uses doesn't expose an equivalent for (no
+// per-subsystem health, and no unambiguous "this device is the gateway"
+// marker on a /devices entry to key a WAN-only Uptime lookup off of).
+// Guessing at either would risk silently wrong output, so both are skipped
+// here rather than approximated.
 type unifiWidget struct{}
 
 type unifiConfig struct {
@@ -39,6 +49,11 @@ type unifiConfig struct {
 }
 
 const unifiIntegrationBasePath = "/proxy/network/integration/v1"
+
+const (
+	labelLANUsers  = "LAN Users"
+	labelWLANUsers = "WLAN Users"
+)
 
 type unifiIntegrationSite struct {
 	ID   string `json:"id"`
@@ -62,9 +77,32 @@ type unifiDevicesResponse struct {
 	TotalCount int                      `json:"totalCount"`
 }
 
+// unifiIntegrationClient is the subset of the Integration API's /clients
+// response fields this widget needs: "type" distinguishes a wired client
+// ("WIRED") from a wireless one ("WIRELESS"), matching
+// gethomepage/homepage's default unifi widget's LAN Users/WLAN Users split.
+type unifiIntegrationClient struct {
+	Type string `json:"type"`
+}
+
+const (
+	unifiClientTypeWired    = "WIRED"
+	unifiClientTypeWireless = "WIRELESS"
+)
+
+// unifiClientsPageLimit is the page size requested from the (paginated)
+// /clients endpoint. The Integration API's default page size is much
+// smaller; 200 is comfortably within its documented maximum and enough for
+// most home/self-hosted sites, but a site with more concurrently connected
+// clients than this will under-count LAN/WLAN Users since this widget
+// doesn't walk further pages — polling every few seconds for the sake of a
+// summary count isn't worth the extra request(s) that full pagination would
+// add per cycle.
+const unifiClientsPageLimit = 200
+
 type unifiClientsResponse struct {
-	Data       []json.RawMessage `json:"data"`
-	TotalCount int               `json:"totalCount"`
+	Data       []unifiIntegrationClient `json:"data"`
+	TotalCount int                      `json:"totalCount"`
 }
 
 func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
@@ -120,7 +158,7 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		return fields, err
 	}
 
-	clientsReq, err := unifiIntegrationRequest(ctx, fmt.Sprintf("%s%s/sites/%s/clients", baseURL, unifiIntegrationBasePath, siteID), apiKey)
+	clientsReq, err := unifiIntegrationRequest(ctx, fmt.Sprintf("%s%s/sites/%s/clients?limit=%d", baseURL, unifiIntegrationBasePath, siteID, unifiClientsPageLimit), apiKey)
 	if err != nil {
 		return nil, err
 	}
@@ -140,21 +178,28 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		}
 	}
 
-	clientCount := clients.TotalCount
-	if clientCount == 0 {
-		clientCount = len(clients.Data)
+	var lanUsers, wlanUsers int
+	for _, c := range clients.Data {
+		switch c.Type {
+		case unifiClientTypeWired:
+			lanUsers++
+		case unifiClientTypeWireless:
+			wlanUsers++
+		}
 	}
 
 	return []Field{
 		{Label: labelStatus, Value: status},
-		{Label: labelClients, Value: fmt.Sprintf("%d", clientCount)},
+		{Label: labelLANUsers, Value: fmt.Sprintf("%d", lanUsers)},
+		{Label: labelWLANUsers, Value: fmt.Sprintf("%d", wlanUsers)},
 	}, nil
 }
 
 func (unifiWidget) Sample(WidgetConfig) []Field {
 	return []Field{
 		{Label: labelStatus, Value: statusHealthy},
-		{Label: labelClients, Value: "24"},
+		{Label: labelLANUsers, Value: "18"},
+		{Label: labelWLANUsers, Value: "6"},
 	}
 }
 

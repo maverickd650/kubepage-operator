@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -175,8 +176,13 @@ func TestPollerPollOnce(t *testing.T) {
 	if card.Href != href {
 		t.Errorf("card.Href = %q, want %q", card.Href, href)
 	}
-	wantFields := []Field{{Label: labelStatus, Value: statusHealthy}, {Label: labelTargetsUp, Value: "1 / 1"}}
-	if len(card.Fields) != len(wantFields) || card.Fields[0] != wantFields[0] || card.Fields[1] != wantFields[1] {
+	wantFields := []Field{
+		{Label: labelStatus, Value: statusHealthy},
+		{Label: labelTargetsUp, Value: "1"},
+		{Label: labelTargetsDown, Value: "0"},
+		{Label: labelTargetsTotal, Value: "1"},
+	}
+	if !reflect.DeepEqual(wantFields, card.Fields) {
 		t.Errorf("card.Fields = %+v, want %+v", card.Fields, wantFields)
 	}
 }

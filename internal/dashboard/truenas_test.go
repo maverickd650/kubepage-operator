@@ -14,12 +14,13 @@ import (
 const truenasTestToken = "nastok"
 
 // truenasMockServer stands up a JSON-RPC 2.0 WebSocket server answering
-// auth.login_with_api_key and system.info exactly like truenas.go's Poll
-// expects: one request per method, in order. loginResult controls whether
-// the mock reports a successful login; systemInfoResult is written verbatim
-// as system.info's JSON-RPC result (skipped if loginResult is false, since a
-// real TrueNAS wouldn't accept further calls on a failed login either).
-func truenasMockServer(t *testing.T, loginResult bool, systemInfoResult string) (*httptest.Server, *string) {
+// auth.login_with_api_key, system.info, and alert.list exactly like
+// truenas.go's Poll expects: one request per method, in order. loginResult
+// controls whether the mock reports a successful login; systemInfoResult and
+// alertListResult are written verbatim as each call's JSON-RPC result
+// (skipped if loginResult is false, since a real TrueNAS wouldn't accept
+// further calls on a failed login either).
+func truenasMockServer(t *testing.T, loginResult bool, systemInfoResult, alertListResult string) (*httptest.Server, *string) {
 	t.Helper()
 	gotToken := new(string)
 
@@ -52,7 +53,15 @@ func truenasMockServer(t *testing.T, loginResult bool, systemInfoResult string) 
 		if err := wsjson.Read(ctx, conn, &infoReq); err != nil {
 			return
 		}
-		_ = wsjson.Write(ctx, conn, jsonrpcResponse{ID: infoReq.ID, Result: json.RawMessage(systemInfoResult)})
+		if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: infoReq.ID, Result: json.RawMessage(systemInfoResult)}); err != nil {
+			return
+		}
+
+		var alertReq jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &alertReq); err != nil {
+			return
+		}
+		_ = wsjson.Write(ctx, conn, jsonrpcResponse{ID: alertReq.ID, Result: json.RawMessage(alertListResult)})
 
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}))
@@ -62,24 +71,37 @@ func truenasMockServer(t *testing.T, loginResult bool, systemInfoResult string) 
 func TestTruenasWidgetPoll(t *testing.T) {
 	tests := map[string]struct {
 		systemInfoResult string
-		wantVersion      string
+		alertListResult  string
+		wantLoad         string
 		wantUptime       string
+		wantAlerts       string
 	}{
-		"multi-day uptime": {
-			systemInfoResult: `{"version":"TrueNAS-SCALE-23.10.1","uptime_seconds":266461}`,
-			wantVersion:      "TrueNAS-SCALE-23.10.1",
+		"multi-day uptime, no alerts": {
+			systemInfoResult: `{"uptime_seconds":266461,"loadavg":[1.23,0.98,0.75]}`,
+			alertListResult:  `[]`,
+			wantLoad:         "1.23",
 			wantUptime:       "3d 2h",
+			wantAlerts:       "0",
 		},
-		"sub-day uptime": {
-			systemInfoResult: `{"version":"TrueNAS-SCALE-23.10.1","uptime_seconds":5400}`,
-			wantVersion:      "TrueNAS-SCALE-23.10.1",
+		"sub-day uptime, mixed alerts": {
+			systemInfoResult: `{"uptime_seconds":5400,"loadavg":[0.5,0.4,0.3]}`,
+			alertListResult:  `[{"dismissed":false},{"dismissed":true},{"dismissed":false}]`,
+			wantLoad:         "0.50",
 			wantUptime:       "1h 30m",
+			wantAlerts:       "2",
+		},
+		"missing loadavg": {
+			systemInfoResult: `{"uptime_seconds":100,"loadavg":[]}`,
+			alertListResult:  `[]`,
+			wantLoad:         "0.00",
+			wantUptime:       "0h 1m",
+			wantAlerts:       "0",
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			srv, gotToken := truenasMockServer(t, true, tc.systemInfoResult)
+			srv, gotToken := truenasMockServer(t, true, tc.systemInfoResult, tc.alertListResult)
 			defer srv.Close()
 
 			got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
@@ -90,8 +112,9 @@ func TestTruenasWidgetPoll(t *testing.T) {
 				t.Fatalf("Poll() unexpected error: %v", err)
 			}
 			want := []Field{
-				{Label: labelVersion, Value: tc.wantVersion},
+				{Label: labelLoad, Value: tc.wantLoad},
 				{Label: labelUptime, Value: tc.wantUptime},
+				{Label: labelAlerts, Value: tc.wantAlerts},
 			}
 			if !reflect.DeepEqual(want, got) {
 				t.Errorf("Poll() = %+v, want %+v", got, want)
@@ -104,7 +127,7 @@ func TestTruenasWidgetPoll(t *testing.T) {
 }
 
 func TestTruenasWidgetPollAuthFailure(t *testing.T) {
-	srv, _ := truenasMockServer(t, false, "")
+	srv, _ := truenasMockServer(t, false, "", "")
 	defer srv.Close()
 
 	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
@@ -169,10 +192,65 @@ func TestTruenasWidgetPollSystemInfoError(t *testing.T) {
 	}
 }
 
+// truenasMockServerAlertListError logs in and answers system.info
+// successfully, but answers alert.list with a JSON-RPC error object.
+func truenasMockServerAlertListError(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		ctx := r.Context()
+
+		var loginReq jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &loginReq); err != nil {
+			return
+		}
+		loginOK, _ := json.Marshal(true)
+		if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: loginReq.ID, Result: loginOK}); err != nil {
+			return
+		}
+		var infoReq jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &infoReq); err != nil {
+			return
+		}
+		if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: infoReq.ID, Result: json.RawMessage(`{"uptime_seconds":100,"loadavg":[1,1,1]}`)}); err != nil {
+			return
+		}
+		var alertReq jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &alertReq); err != nil {
+			return
+		}
+		_ = wsjson.Write(ctx, conn, jsonrpcResponse{
+			ID:    alertReq.ID,
+			Error: &jsonrpcError{Code: -32000, Message: "boom"},
+		})
+	}))
+}
+
+func TestTruenasWidgetPollAlertListError(t *testing.T) {
+	srv := truenasMockServerAlertListError(t)
+	defer srv.Close()
+
+	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{testSecretField: truenasTestToken},
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: statusUnreach}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
 func TestTruenasWidgetPollMalformedResult(t *testing.T) {
 	// system.info returns a JSON string where Poll expects an object, so
 	// truenasCall's json.Unmarshal into the result struct fails.
-	srv, _ := truenasMockServer(t, true, `"not-an-object"`)
+	srv, _ := truenasMockServer(t, true, `"not-an-object"`, `[]`)
 	defer srv.Close()
 
 	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
@@ -251,8 +329,8 @@ func TestTruenasWebSocketURLInvalid(t *testing.T) {
 
 func TestTruenasWidgetSample(t *testing.T) {
 	got := (truenasWidget{}).Sample(WidgetConfig{})
-	if len(got) != 2 || got[0].Label != labelVersion || got[1].Label != labelUptime {
-		t.Errorf("Sample() = %+v, want Version/Uptime fields", got)
+	if len(got) != 3 || got[0].Label != labelLoad || got[1].Label != labelUptime || got[2].Label != labelAlerts {
+		t.Errorf("Sample() = %+v, want Load/Uptime/Alerts fields", got)
 	}
 	assertSampleDeterministic(t, truenasWidget{})
 }

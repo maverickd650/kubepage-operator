@@ -26,7 +26,9 @@ func init() {
 // all. Secrets["token"] is a TrueNAS API key, sent as the sole argument to
 // the "auth.login_with_api_key" JSON-RPC method — there is no header-based
 // auth over this transport, unlike every REST-based widget in this package.
-// "system.info" then supplies Version/Uptime.
+// "system.info" supplies Load/Uptime, matching gethomepage/homepage's
+// default truenas fields; "alert.list" then supplies the count of
+// undismissed alerts.
 type truenasWidget struct{}
 
 // truenasMaxFrameBytes caps a single WebSocket message the same way
@@ -34,6 +36,11 @@ type truenasWidget struct{}
 // result is small, but an upstream (or a compromised/misbehaving one)
 // shouldn't be able to push unbounded data into memory per poll.
 const truenasMaxFrameBytes = maxWidgetResponseBytes
+
+const (
+	labelLoad   = "Load"
+	labelAlerts = "Alerts"
+)
 
 // truenasDefaultTimeout is used for the WebSocket dial+call round trip when
 // the shared httpClient carries no timeout of its own (Timeout == 0, e.g. an
@@ -60,8 +67,14 @@ type jsonrpcError struct {
 }
 
 type truenasSystemInfoResult struct {
-	Version       string `json:"version"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
+	UptimeSeconds int64     `json:"uptime_seconds"`
+	LoadAvg       []float64 `json:"loadavg"`
+}
+
+// truenasAlert is the subset of alert.list's per-alert response fields this
+// widget needs: whether the alert has been dismissed.
+type truenasAlert struct {
+	Dismissed bool `json:"dismissed"`
 }
 
 func (truenasWidget) Poll(ctx context.Context, httpClient *http.Client, cfg WidgetConfig) ([]Field, error) {
@@ -98,18 +111,37 @@ func (truenasWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
 
+	var alerts []truenasAlert
+	if err := truenasCall(callCtx, conn, "alert.list", []any{}, 3, &alerts); err != nil {
+		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
+	}
+
 	_ = conn.Close(websocket.StatusNormalClosure, "")
 
+	load := "0.00"
+	if len(info.LoadAvg) > 0 {
+		load = fmt.Sprintf("%.2f", info.LoadAvg[0])
+	}
+
+	active := 0
+	for _, a := range alerts {
+		if !a.Dismissed {
+			active++
+		}
+	}
+
 	return []Field{
-		{Label: labelVersion, Value: info.Version},
+		{Label: labelLoad, Value: load},
 		{Label: labelUptime, Value: formatUptime(info.UptimeSeconds)},
+		{Label: labelAlerts, Value: fmt.Sprintf("%d", active)},
 	}, nil
 }
 
 func (truenasWidget) Sample(WidgetConfig) []Field {
 	return []Field{
-		{Label: labelVersion, Value: "TrueNAS-24.04.0"},
+		{Label: labelLoad, Value: "0.42"},
 		{Label: labelUptime, Value: formatUptime(370000)},
+		{Label: labelAlerts, Value: "0"},
 	}
 }
 

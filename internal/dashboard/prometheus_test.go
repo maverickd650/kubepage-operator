@@ -22,7 +22,9 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelStatus, Value: statusHealthy},
-				{Label: labelTargetsUp, Value: "2 / 2"},
+				{Label: labelTargetsUp, Value: "2"},
+				{Label: labelTargetsDown, Value: "0"},
+				{Label: labelTargetsTotal, Value: "2"},
 			},
 		},
 		"some targets down": {
@@ -32,7 +34,9 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelStatus, Value: statusDegraded},
-				{Label: labelTargetsUp, Value: "1 / 2"},
+				{Label: labelTargetsUp, Value: "1"},
+				{Label: labelTargetsDown, Value: "1"},
+				{Label: labelTargetsTotal, Value: "2"},
 			},
 		},
 		"no targets": {
@@ -40,7 +44,9 @@ func TestPrometheusWidgetPoll(t *testing.T) {
 			statusCode: http.StatusOK,
 			want: []Field{
 				{Label: labelStatus, Value: statusUnknown},
-				{Label: labelTargetsUp, Value: "0 / 0"},
+				{Label: labelTargetsUp, Value: "0"},
+				{Label: labelTargetsDown, Value: "0"},
+				{Label: labelTargetsTotal, Value: "0"},
 			},
 		},
 		testCaseNon200: {
@@ -89,8 +95,9 @@ func TestPrometheusWidgetPollMissingURL(t *testing.T) {
 
 func TestPrometheusWidgetSample(t *testing.T) {
 	got := (prometheusWidget{}).Sample(WidgetConfig{})
-	if len(got) != 2 || got[0].Label != labelStatus || got[1].Label != labelTargetsUp {
-		t.Errorf("Sample() = %+v, want Status/Targets Up fields", got)
+	if len(got) != 4 || got[0].Label != labelStatus || got[1].Label != labelTargetsUp ||
+		got[2].Label != labelTargetsDown || got[3].Label != labelTargetsTotal {
+		t.Errorf("Sample() = %+v, want Status/Targets Up/Targets Down/Targets Total fields", got)
 	}
 	assertSampleDeterministic(t, prometheusWidget{})
 }

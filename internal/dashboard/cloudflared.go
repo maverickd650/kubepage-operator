@@ -73,7 +73,7 @@ func (cloudflaredWidget) Poll(ctx context.Context, httpClient *http.Client, cfg 
 		status = statusHealthy
 	case "degraded":
 		status = statusDegraded
-	case "down":
+	case apiHealthDown:
 		status = statusDown
 	case "inactive":
 		status = statusInactive
