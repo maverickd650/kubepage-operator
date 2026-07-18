@@ -3,25 +3,22 @@ package controller
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
 // BookmarkReconciler reconciles a Bookmark object.
 //
-// Thin, like ServiceCardReconciler: it only
-// validates that dashboardRef resolves to an existing Dashboard and reflects
-// that in status. Rendering bookmarks.yaml and watching Bookmark changes is
-// the DashboardReconciler's job (see instance_controller.go).
+// Thin, like ServiceCardReconciler: it only validates that dashboardRef
+// resolves to an existing Dashboard and reflects that in status. Rendering
+// bookmarks.yaml happens in the dashboard pod (internal/dashboard), which
+// reads Bookmarks directly through its own cache. The actual reconcile/watch
+// logic is shared with ServiceCardReconciler/InfoWidgetReconciler via
+// boundConfigReconciler.
 type BookmarkReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -32,69 +29,31 @@ type BookmarkReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=bookmarks/finalizers,verbs=update
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards,verbs=get;list;watch
 
+func (r *BookmarkReconciler) adapter() *boundConfigReconciler[*pagev1alpha1.Bookmark] {
+	return &boundConfigReconciler[*pagev1alpha1.Bookmark]{
+		Client:         r.Client,
+		Scheme:         r.Scheme,
+		displayName:    "Bookmark",
+		controllerName: "bookmark",
+		newObj:         func() *pagev1alpha1.Bookmark { return &pagev1alpha1.Bookmark{} },
+		newList:        func() client.ObjectList { return &pagev1alpha1.BookmarkList{} },
+		listItems: func(l client.ObjectList) []*pagev1alpha1.Bookmark {
+			return toPointerSlice(l.(*pagev1alpha1.BookmarkList).Items)
+		},
+		refName:      func(b *pagev1alpha1.Bookmark) string { return pagev1alpha1.RefName(b.Spec.DashboardRef) },
+		conditions:   func(b *pagev1alpha1.Bookmark) *[]metav1.Condition { return &b.Status.Conditions },
+		applyEntries: func(b *pagev1alpha1.Bookmark) { b.Status.Entries = int32(len(b.Spec.Entries())) },
+	}
+}
+
 // Reconcile validates that the Bookmark's dashboardRef resolves to an existing
 // Dashboard in the same namespace and sets the Available status condition
 // accordingly.
 func (r *BookmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	bookmark := &pagev1alpha1.Bookmark{}
-	if err := r.Get(ctx, req.NamespacedName, bookmark); err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to get Bookmark")
-		return ctrl.Result{}, err
-	}
-
-	cond, err := boundDashboardCondition(ctx, r.Client, bookmark.Namespace, pagev1alpha1.RefName(bookmark.Spec.DashboardRef), bookmark.Generation)
-	if err != nil {
-		log.Error(err, "Failed to get referenced Dashboard")
-		return ctrl.Result{}, err
-	}
-	meta.SetStatusCondition(&bookmark.Status.Conditions, cond)
-	bookmark.Status.Entries = int32(len(bookmark.Spec.Entries()))
-
-	if err := r.Status().Update(ctx, bookmark); err != nil {
-		log.Error(err, "Failed to update Bookmark status")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	return r.adapter().Reconcile(ctx, req)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BookmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&pagev1alpha1.Bookmark{}).
-		Named("bookmark").
-		// Watch Dashboard objects too: see ServiceCardReconciler.SetupWithManager
-		// for why (out-of-order apply self-heals without waiting for the
-		// Bookmark itself to be touched again).
-		Watches(
-			&pagev1alpha1.Dashboard{},
-			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				instance, ok := obj.(*pagev1alpha1.Dashboard)
-				if !ok {
-					return nil
-				}
-
-				var bookmarks pagev1alpha1.BookmarkList
-				if err := mgr.GetClient().List(ctx, &bookmarks, client.InNamespace(instance.Namespace)); err != nil {
-					return nil
-				}
-
-				var reqs []reconcile.Request
-				for _, b := range bookmarks.Items {
-					if dashboardWatchMayAffect(pagev1alpha1.RefName(b.Spec.DashboardRef), instance.Name) {
-						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
-							Name:      b.Name,
-							Namespace: b.Namespace,
-						}})
-					}
-				}
-				return reqs
-			}),
-		).
-		Complete(r)
+	return r.adapter().SetupWithManager(mgr, &pagev1alpha1.Bookmark{})
 }

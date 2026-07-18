@@ -138,26 +138,3 @@ func namespaceDashboardCount(ctx context.Context, c client.Client, namespace str
 	}
 	return len(dashboards.Items), nil
 }
-
-// dashboardWatchMayAffect reports whether a Dashboard-triggered watch event
-// on the Dashboard named instanceName could change a config object's own
-// bound status, given that object's dashboardRef.name refName (as returned
-// by pagev1alpha1.RefName; "" means unset). Used by each config CRD
-// controller's own Watches(&Dashboard{}) (see ServiceCardReconciler,
-// BookmarkReconciler, InfoWidgetReconciler SetupWithManager) to decide which
-// of its objects to re-reconcile on that event.
-//
-// An explicit ref only ever cares about the Dashboard it names. An unset ref
-// always needs a fresh look: unlike pagev1alpha1.BoundTo, which decides
-// whether an object binds to one specific Dashboard under the *current*
-// namespace Dashboard count, this predicate must fire on the event that
-// *changes* that count — a Dashboard newly created or deleted — even when
-// the object doesn't (yet, or any longer) bind to instanceName. Filtering by
-// BoundTo's post-event answer here would miss exactly the case where a
-// second Dashboard's creation should flip a previously-defaulted object from
-// Bound to AmbiguousDashboardRef: BoundTo(unset ref, new Dashboard's name,
-// count=2) is false, so the object would never get re-enqueued and its
-// stale Bound condition would never be corrected.
-func dashboardWatchMayAffect(refName, instanceName string) bool {
-	return refName == instanceName || refName == ""
-}

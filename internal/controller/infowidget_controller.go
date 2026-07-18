@@ -4,28 +4,23 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pagev1alpha1 "github.com/maverickd650/kubepage-operator/api/v1alpha1"
 )
 
 // InfoWidgetReconciler reconciles a InfoWidget object.
 //
-// Thin, like ServiceCardReconciler, BookmarkReconciler, and
-// BookmarkReconciler: it only validates that dashboardRef resolves to an
-// existing Dashboard and reflects that in status. Actually polling and
-// rendering an InfoWidget (datetime, greeting, openmeteo, kubemetrics)
-// happens in the native dashboard's poller (internal/dashboard/poller.go),
-// which reads InfoWidgets directly through its own namespace-scoped cache.
+// Thin, like ServiceCardReconciler and BookmarkReconciler: it only validates
+// that dashboardRef resolves to an existing Dashboard and reflects that in
+// status. Actually polling and rendering an InfoWidget (datetime, greeting,
+// openmeteo, kubemetrics) happens in the native dashboard's poller
+// (internal/dashboard/poller.go), which reads InfoWidgets directly through
+// its own namespace-scoped cache. The actual reconcile/watch logic is shared
+// with BookmarkReconciler/ServiceCardReconciler via boundConfigReconciler.
 type InfoWidgetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -36,78 +31,36 @@ type InfoWidgetReconciler struct {
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=infowidgets/finalizers,verbs=update
 // +kubebuilder:rbac:groups=page.kubepage.dev,resources=dashboards,verbs=get;list;watch
 
+func (r *InfoWidgetReconciler) adapter() *boundConfigReconciler[*pagev1alpha1.InfoWidget] {
+	return &boundConfigReconciler[*pagev1alpha1.InfoWidget]{
+		Client:         r.Client,
+		Scheme:         r.Scheme,
+		displayName:    "InfoWidget",
+		controllerName: "infowidget",
+		newObj:         func() *pagev1alpha1.InfoWidget { return &pagev1alpha1.InfoWidget{} },
+		newList:        func() client.ObjectList { return &pagev1alpha1.InfoWidgetList{} },
+		listItems: func(l client.ObjectList) []*pagev1alpha1.InfoWidget {
+			return toPointerSlice(l.(*pagev1alpha1.InfoWidgetList).Items)
+		},
+		refName:      func(w *pagev1alpha1.InfoWidget) string { return pagev1alpha1.RefName(w.Spec.DashboardRef) },
+		conditions:   func(w *pagev1alpha1.InfoWidget) *[]metav1.Condition { return &w.Status.Conditions },
+		applyEntries: func(w *pagev1alpha1.InfoWidget) { w.Status.Entries = int32(len(w.Spec.Entries())) },
+		widgetConfigs: func(w *pagev1alpha1.InfoWidget) []widgetConfigInstance {
+			return infoWidgetConfigInstances(w.Spec.Entries())
+		},
+	}
+}
+
 // Reconcile validates that the InfoWidget's dashboardRef resolves to an
 // existing Dashboard in the same namespace and sets the Available status
 // condition accordingly.
 func (r *InfoWidgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	widget := &pagev1alpha1.InfoWidget{}
-	if err := r.Get(ctx, req.NamespacedName, widget); err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to get InfoWidget")
-		return ctrl.Result{}, err
-	}
-
-	cond, err := boundDashboardCondition(ctx, r.Client, widget.Namespace, pagev1alpha1.RefName(widget.Spec.DashboardRef), widget.Generation)
-	if err != nil {
-		log.Error(err, "Failed to get referenced Dashboard")
-		return ctrl.Result{}, err
-	}
-
-	entries := widget.Spec.Entries()
-	availableOverride, configValid := validateWidgetConfigs(infoWidgetConfigInstances(entries), widget.Generation)
-	if cond.Status == metav1.ConditionTrue && availableOverride != nil {
-		cond = *availableOverride
-	}
-	meta.SetStatusCondition(&widget.Status.Conditions, cond)
-	meta.SetStatusCondition(&widget.Status.Conditions, configValid)
-	widget.Status.Entries = int32(len(entries))
-
-	if err := r.Status().Update(ctx, widget); err != nil {
-		log.Error(err, "Failed to update InfoWidget status")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	return r.adapter().Reconcile(ctx, req)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *InfoWidgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&pagev1alpha1.InfoWidget{}).
-		Named("infowidget").
-		// Watch Dashboard objects too: see ServiceCardReconciler.SetupWithManager
-		// for why (out-of-order apply self-heals without waiting for the
-		// InfoWidget itself to be touched again).
-		Watches(
-			&pagev1alpha1.Dashboard{},
-			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				instance, ok := obj.(*pagev1alpha1.Dashboard)
-				if !ok {
-					return nil
-				}
-
-				var widgets pagev1alpha1.InfoWidgetList
-				if err := mgr.GetClient().List(ctx, &widgets, client.InNamespace(instance.Namespace)); err != nil {
-					return nil
-				}
-
-				var reqs []reconcile.Request
-				for _, w := range widgets.Items {
-					if dashboardWatchMayAffect(pagev1alpha1.RefName(w.Spec.DashboardRef), instance.Name) {
-						reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
-							Name:      w.Name,
-							Namespace: w.Namespace,
-						}})
-					}
-				}
-				return reqs
-			}),
-		).
-		Complete(r)
+	return r.adapter().SetupWithManager(mgr, &pagev1alpha1.InfoWidget{})
 }
 
 // infoWidgetConfigInstances flattens entries into the widgetConfigInstance
