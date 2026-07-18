@@ -13,12 +13,19 @@ Encodes the seven-place checklist for adding a widget type (see
 `config/` (caught by CI's generated-file drift check, but better to avoid).
 
 1. Create `internal/dashboard/<type>.go` implementing `Widget`
-   (`Poll(ctx, httpClient, cfg) ([]Field, error)`) — model the shape on
-   `grafana.go` for a typical HTTP/JSON upstream. If the widget reads the
-   Kubernetes API directly instead of an HTTP upstream, also implement
-   `ClusterWidget.PollCluster` (model on `kubemetrics.go`). Self-register via
-   `Register("<type>", ...)` in an `init()` — the poller/server/store need no
-   other changes.
+   (`Poll(ctx, httpClient, cfg) ([]Field, error)`) — for a typical GET
+   JSON upstream, call `httpwidget.go`'s `fetchJSON(ctx, httpClient, cfg,
+   "<type>", path, headers, &out)` (model on `plex.go`/`netdata.go`; it
+   covers the URL-required check, endpoint join, request build, and header
+   set in one call) or `fetchJSONBasicAuth` for Basic-auth upstreams (model
+   on `adguard.go`). Only hand-roll the request (`buildJSONRequest` +
+   `doJSONRequest`) for something `fetchJSON` can't express — a POST body
+   (`stash.go`), multi-mode auth precedence (`nextcloud.go`), or a non-GET
+   transport (`truenas.go`'s WebSocket, `unifi.go`/`proxmox.go`'s per-widget
+   TLS client). If the widget reads the Kubernetes API directly instead of
+   an HTTP upstream, also implement `ClusterWidget.PollCluster` (model on
+   `kubemetrics.go`). Self-register via `Register("<type>", ...)` in an
+   `init()` — the poller/server/store need no other changes.
 2. Implement `Sampler` on the same type
    (`Sample(cfg WidgetConfig) []Field`): deterministic placeholder `Field`s
    for the preview subcommand's `--sample-data` mode. If the widget's
