@@ -61,6 +61,17 @@ func (b *Broadcaster) Unsubscribe(ch chan sseHashes) {
 	b.mu.Unlock()
 }
 
+// HasSubscribers reports whether at least one SSE connection is currently
+// subscribed. Poller.pollOnce checks this to skip computing currentHashes
+// (two full templ renders plus LoadSite) and calling Publish on a cycle with
+// no one listening — see pollOnce's comment for why that's safe even though
+// a client can connect in the gap between this check and the next cycle.
+func (b *Broadcaster) HasSubscribers() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.subs) > 0
+}
+
 // Publish sends fragment/header to every current subscriber. Never blocks: a
 // channel still holding an undelivered previous value has that value
 // replaced with the newer one instead of Publish waiting on it.

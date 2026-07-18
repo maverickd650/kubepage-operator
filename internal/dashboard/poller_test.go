@@ -236,6 +236,38 @@ func TestPollerPollOnceNilBroadcastIsFine(t *testing.T) {
 	p.pollOnce(t.Context())
 }
 
+// TestPollerPollOnceToleratesBroadcastWithNoSubscribers verifies pollOnce
+// runs cleanly when Broadcast is set but HasSubscribers() is false — the
+// path the perf optimization in pollOnce takes to skip currentHashes (two
+// full templ renders plus LoadSite) and Publish when no SSE client is
+// connected. currentHashes/Publish being skipped isn't independently
+// observable through Poller's public surface (Publish is itself a no-op
+// with zero subscribers), so this test exercises the code path rather than
+// asserting on the skip directly; TestBroadcasterHasSubscribers in
+// sse_test.go covers the predicate pollOnce gates on.
+func TestPollerPollOnceToleratesBroadcastWithNoSubscribers(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	broadcast := NewBroadcaster()
+	p := &Poller{
+		Reader:        cl,
+		SecretReader:  cl,
+		Namespace:     testNamespace,
+		DashboardName: testDashboardName,
+		Interval:      time.Hour,
+		HTTPClient:    http.DefaultClient,
+		Store:         NewStore(),
+		Broadcast:     broadcast,
+	}
+
+	p.pollOnce(t.Context())
+
+	if broadcast.HasSubscribers() {
+		t.Fatal("HasSubscribers() = true, want false (test setup never subscribed)")
+	}
+}
+
 // TestPollerMultiCardFormProducesPerEntryCards exercises a multi-entry
 // ServiceCard: one ServiceCard object with three entries — one
 // with a widget and its own group, one with a widget that falls back to

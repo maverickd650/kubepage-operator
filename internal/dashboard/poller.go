@@ -337,7 +337,15 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	p.pruneWidgetLastPolled(keep)
 	p.pruneCAClientCache()
 
-	if p.Broadcast != nil {
+	// Skip currentHashes (two full templ renders plus LoadSite) and Publish
+	// entirely when nobody's listening — with no open SSE connection there's
+	// no one to notify, and this runs every poll cycle regardless of whether
+	// the dashboard is even being viewed. Safe even though a client can
+	// subscribe in the gap between this check and the next cycle: each new
+	// SSE connection computes its own baseline hashes at connect time (see
+	// Server.handleEvents), so it just waits for the next cycle's Publish,
+	// the same as it would if it had connected moments earlier.
+	if p.Broadcast != nil && p.Broadcast.HasSubscribers() {
 		// Computed once here rather than once per SSE subscriber
 		// (Server.handleEvents used to call this on every broadcast): with N
 		// open dashboard tabs, that was N+ full LoadSite + Cards/Header
