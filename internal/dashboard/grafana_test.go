@@ -152,6 +152,16 @@ func TestGrafanaWidgetPollMissingURL(t *testing.T) {
 	}
 }
 
+// TestGrafanaWidgetPollInvalidURL covers grafanaRequest's own forwarding of
+// buildJSONRequest's request-build error (as opposed to the required-URL
+// check TestGrafanaWidgetPollMissingURL exercises): a non-empty but
+// malformed cfg.URL that http.NewRequestWithContext itself rejects.
+func TestGrafanaWidgetPollInvalidURL(t *testing.T) {
+	if _, err := (grafanaWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: "http://example.invalid/\x7f"}); err == nil {
+		t.Fatal("Poll() expected error for an invalid URL, got nil")
+	}
+}
+
 func TestGrafanaWidgetPollUnreachable(t *testing.T) {
 	got, err := (grafanaWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{URL: testUnreachableAddr})
 	if err != nil {

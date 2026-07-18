@@ -7,15 +7,20 @@ import (
 	"testing"
 )
 
+const (
+	opnsenseActivityPath  = "/api/diagnostics/activity/getActivity"
+	opnsenseInterfacePath = "/api/diagnostics/traffic/interface"
+)
+
 func TestOpnsenseWidgetPoll(t *testing.T) {
 	var gotUser, gotPass string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUser, gotPass, _ = r.BasicAuth()
 		w.WriteHeader(http.StatusOK)
 		switch r.URL.Path {
-		case "/api/diagnostics/activity/getActivity":
+		case opnsenseActivityPath:
 			_, _ = w.Write([]byte(`{"headers":["a","b","CPU: 5.0% user, 10.0% system, 85.0% idle","Mem: 512M Active, 200M Inact,"]}`))
-		case "/api/diagnostics/traffic/interface":
+		case opnsenseInterfacePath:
 			_, _ = w.Write([]byte(`{"interfaces":{"wan":{"bytes transmitted":12400000000,"bytes received":84700000000}}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -49,9 +54,9 @@ func TestOpnsenseWidgetPollConfiguredWAN(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		switch r.URL.Path {
-		case "/api/diagnostics/activity/getActivity":
+		case opnsenseActivityPath:
 			_, _ = w.Write([]byte(`{"headers":[]}`))
-		case "/api/diagnostics/traffic/interface":
+		case opnsenseInterfacePath:
 			_, _ = w.Write([]byte(`{"interfaces":{"wan2":{"bytes transmitted":1000,"bytes received":2000}}}`))
 		}
 	}))
@@ -68,6 +73,41 @@ func TestOpnsenseWidgetPollConfiguredWAN(t *testing.T) {
 		{Label: labelWANUpload, Value: "1.0 KB"},
 		{Label: labelWANDownload, Value: "2.0 KB"},
 	}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+func TestOpnsenseWidgetPollMalformedConfig(t *testing.T) {
+	if _, err := (opnsenseWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{
+		URL:    testExampleURL,
+		Config: []byte(`{not valid json`),
+	}); err == nil {
+		t.Fatal("Poll() expected error for malformed config, got nil")
+	}
+}
+
+// TestOpnsenseWidgetPollInterfaceRequestFails covers the second
+// fetchJSONBasicAuth call's own error path: the activity endpoint succeeds
+// but the traffic/interface endpoint doesn't, which must still surface as
+// the interface request's own status Field rather than being swallowed.
+func TestOpnsenseWidgetPollInterfaceRequestFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case opnsenseActivityPath:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"headers":[]}`))
+		case opnsenseInterfacePath:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+
+	got, err := (opnsenseWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: testHTTP403}}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("Poll() = %+v, want %+v", got, want)
 	}

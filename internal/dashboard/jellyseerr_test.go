@@ -59,6 +59,32 @@ func TestJellyseerrWidgetPollNon200(t *testing.T) {
 	}
 }
 
+// TestJellyseerrWidgetPollRequestCountFails covers the second fetchJSON
+// call's own error path: the status endpoint succeeds but the
+// request/count endpoint doesn't, which must still surface as that
+// endpoint's own status Field rather than being swallowed.
+func TestJellyseerrWidgetPollRequestCountFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/status":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"version":"2.1.0"}`))
+		case "/api/v1/request/count":
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+
+	got, err := (jellyseerrWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: testHTTP403}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
 func TestJellyseerrWidgetPollMissingURL(t *testing.T) {
 	if _, err := (jellyseerrWidget{}).Poll(t.Context(), http.DefaultClient, WidgetConfig{}); err == nil {
 		t.Fatal("Poll() expected error for missing URL, got nil")
