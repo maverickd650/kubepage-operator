@@ -88,6 +88,31 @@ func TestBroadcasterSubscribeRejectsPastMaxSubscribers(t *testing.T) {
 	}
 }
 
+// TestBroadcasterHasSubscribers verifies HasSubscribers reflects the current
+// subscriber count: false with none, true once one is subscribed, false
+// again once it's the last one unsubscribed. Poller.pollOnce uses this to
+// skip computing currentHashes and calling Publish on a cycle with no SSE
+// connections open.
+func TestBroadcasterHasSubscribers(t *testing.T) {
+	b := NewBroadcaster()
+	if b.HasSubscribers() {
+		t.Error("HasSubscribers() = true before any Subscribe, want false")
+	}
+
+	ch, ok := b.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe() ok = false, want true")
+	}
+	if !b.HasSubscribers() {
+		t.Error("HasSubscribers() = false after Subscribe, want true")
+	}
+
+	b.Unsubscribe(ch)
+	if b.HasSubscribers() {
+		t.Error("HasSubscribers() = true after Unsubscribe of the last subscriber, want false")
+	}
+}
+
 // TestBroadcasterUnsubscribeFreesSlotAtCap verifies Unsubscribe actually
 // frees the slot it held: at the cap, unsubscribing one connection must let
 // exactly one new Subscribe succeed, not zero (a leaked count) and not more

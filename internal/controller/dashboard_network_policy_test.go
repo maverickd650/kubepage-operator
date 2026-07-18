@@ -232,7 +232,7 @@ func TestReconcileNetworkPolicyUpdatesOnDrift(t *testing.T) {
 	stale := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
 		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard()},
+			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard(instance.Name)},
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 		},
 	}
@@ -261,7 +261,7 @@ func TestReconcileNetworkPolicyUpdateError(t *testing.T) {
 	stale := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
 		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard()},
+			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard(instance.Name)},
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 		},
 	}

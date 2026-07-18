@@ -104,6 +104,25 @@ func TestPropertyJSStringEscapeNoScriptClose(t *testing.T) {
 	})
 }
 
+// TestPropertyCSSBlockEscapeNoStyleClose mirrors
+// TestPropertyJSStringEscapeNoScriptClose above, but for cssBlockEscape
+// (used by customStyle to embed CustomCSS as raw <style> text content): it's
+// biased toward "</style"-shaped substrings in varying case, since that's
+// the exact pattern cssBlockEscape must break.
+func TestPropertyCSSBlockEscapeNoStyleClose(t *testing.T) {
+	fragment := rapid.SampledFrom([]string{"</style", "</STYLE", "</Style>", "x", " ", "style"})
+	adversarial := rapid.Map(rapid.SliceOfN(fragment, 0, 5), func(parts []string) string {
+		return strings.Join(parts, "")
+	})
+	rapid.Check(t, func(t *rapid.T) {
+		s := adversarial.Draw(t, "s")
+		escaped := cssBlockEscape(s)
+		if strings.Contains(strings.ToLower(escaped), "</style") {
+			t.Fatalf("cssBlockEscape(%q) = %q, still contains an unescaped </style", s, escaped)
+		}
+	})
+}
+
 func TestPropertyNumericValueNeverPanics(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		s := rapid.String().Draw(t, "s")

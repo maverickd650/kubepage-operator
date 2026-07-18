@@ -19,12 +19,16 @@ const statusDown = "Down"
 func probeHTTP(ctx context.Context, httpClient *http.Client, url string) (up bool, latency time.Duration, err error) {
 	start := time.Now()
 
-	// Prefer HEAD (cheaper); fall back to GET when the server rejects HEAD.
+	// Prefer HEAD (cheaper); fall back to GET when the server rejects HEAD
+	// outright (405) or doesn't implement it at all (501 — seen from some
+	// upstreams that only ever implement GET/POST). Deliberately not
+	// extended to any other status (e.g. 404): that would double every
+	// genuinely-down probe's request count for no benefit.
 	resp, err := doProbe(ctx, httpClient, http.MethodHead, url)
 	if err != nil {
 		return false, time.Since(start), err
 	}
-	if resp.StatusCode == http.StatusMethodNotAllowed {
+	if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
 		_ = resp.Body.Close()
 		resp, err = doProbe(ctx, httpClient, http.MethodGet, url)
 		if err != nil {

@@ -9,22 +9,23 @@ import (
 
 func TestProbeHTTP(t *testing.T) {
 	tests := map[string]struct {
-		status   int
-		wantUp   bool
-		method   string // expected to actually be served (HEAD or GET fallback)
-		headFail bool   // server 405s HEAD, forcing the GET fallback
+		status       int
+		wantUp       bool
+		method       string // expected to actually be served (HEAD or GET fallback)
+		headFailWith int    // if non-zero, server responds with this status to HEAD, forcing the GET fallback
 	}{
 		"200 up":            {status: http.StatusOK, wantUp: true},
 		"301 up":            {status: http.StatusMovedPermanently, wantUp: true},
 		"500 down":          {status: http.StatusInternalServerError, wantUp: false},
-		"head 405 then get": {status: http.StatusOK, wantUp: true, headFail: true},
+		"head 405 then get": {status: http.StatusOK, wantUp: true, headFailWith: http.StatusMethodNotAllowed},
+		"head 501 then get": {status: http.StatusOK, wantUp: true, headFailWith: http.StatusNotImplemented},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if tc.headFail && r.Method == http.MethodHead {
-					w.WriteHeader(http.StatusMethodNotAllowed)
+				if tc.headFailWith != 0 && r.Method == http.MethodHead {
+					w.WriteHeader(tc.headFailWith)
 					return
 				}
 				w.WriteHeader(tc.status)

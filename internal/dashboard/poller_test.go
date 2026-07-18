@@ -236,6 +236,38 @@ func TestPollerPollOnceNilBroadcastIsFine(t *testing.T) {
 	p.pollOnce(t.Context())
 }
 
+// TestPollerPollOnceToleratesBroadcastWithNoSubscribers verifies pollOnce
+// runs cleanly when Broadcast is set but HasSubscribers() is false — the
+// path the perf optimization in pollOnce takes to skip currentHashes (two
+// full templ renders plus LoadSite) and Publish when no SSE client is
+// connected. currentHashes/Publish being skipped isn't independently
+// observable through Poller's public surface (Publish is itself a no-op
+// with zero subscribers), so this test exercises the code path rather than
+// asserting on the skip directly; TestBroadcasterHasSubscribers in
+// sse_test.go covers the predicate pollOnce gates on.
+func TestPollerPollOnceToleratesBroadcastWithNoSubscribers(t *testing.T) {
+	scheme := testScheme(t)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	broadcast := NewBroadcaster()
+	p := &Poller{
+		Reader:        cl,
+		SecretReader:  cl,
+		Namespace:     testNamespace,
+		DashboardName: testDashboardName,
+		Interval:      time.Hour,
+		HTTPClient:    http.DefaultClient,
+		Store:         NewStore(),
+		Broadcast:     broadcast,
+	}
+
+	p.pollOnce(t.Context())
+
+	if broadcast.HasSubscribers() {
+		t.Fatal("HasSubscribers() = true, want false (test setup never subscribed)")
+	}
+}
+
 // TestPollerMultiCardFormProducesPerEntryCards exercises a multi-entry
 // ServiceCard: one ServiceCard object with three entries — one
 // with a widget and its own group, one with a widget that falls back to
@@ -1689,21 +1721,85 @@ func TestPollerDuePollNilOrZeroOverrideAlwaysDue(t *testing.T) {
 	}
 }
 
+// pruneTestKeepKey/pruneTestDropKey name the two bookkeeping-map entries
+// TestPollerPruneWidgetLastPolledRemovesUnkept and
+// TestPollerPruneWidgetLastPolledPrunesClampWarned exercise pruning against.
+const (
+	pruneTestKeepKey = "keep"
+	pruneTestDropKey = "drop"
+)
+
 // TestPollerPruneWidgetLastPolledRemovesUnkept verifies pruneWidgetLastPolled
 // mirrors Store.Prune: an entry not in this cycle's keep set is dropped, so
 // a deleted or edited-away-from-an-override widget's bookkeeping doesn't
 // accumulate forever.
 func TestPollerPruneWidgetLastPolledRemovesUnkept(t *testing.T) {
 	p := &Poller{
-		widgetLastPolled: map[string]time.Time{"keep": time.Now(), "drop": time.Now()},
+		widgetLastPolled: map[string]time.Time{pruneTestKeepKey: time.Now(), pruneTestDropKey: time.Now()},
 	}
-	p.pruneWidgetLastPolled(map[string]bool{"keep": true})
+	p.pruneWidgetLastPolled(map[string]bool{pruneTestKeepKey: true})
 
-	if _, ok := p.widgetLastPolled["keep"]; !ok {
+	if _, ok := p.widgetLastPolled[pruneTestKeepKey]; !ok {
 		t.Error("pruneWidgetLastPolled removed a kept key")
 	}
-	if _, ok := p.widgetLastPolled["drop"]; ok {
+	if _, ok := p.widgetLastPolled[pruneTestDropKey]; ok {
 		t.Error("pruneWidgetLastPolled did not remove an unkept key")
+	}
+}
+
+// TestPollerPruneWidgetLastPolledPrunesClampWarned verifies
+// pruneWidgetLastPolled also prunes clampWarned alongside widgetLastPolled,
+// so a deleted widget's "clamp already logged" bookkeeping doesn't leak
+// forever either.
+func TestPollerPruneWidgetLastPolledPrunesClampWarned(t *testing.T) {
+	p := &Poller{
+		clampWarned: map[string]bool{pruneTestKeepKey: true, pruneTestDropKey: true},
+	}
+	p.pruneWidgetLastPolled(map[string]bool{pruneTestKeepKey: true})
+
+	if !p.clampWarned[pruneTestKeepKey] {
+		t.Error("pruneWidgetLastPolled removed a kept clampWarned key")
+	}
+	if p.clampWarned[pruneTestDropKey] {
+		t.Error("pruneWidgetLastPolled did not remove an unkept clampWarned key")
+	}
+}
+
+// TestPollerDuePollWarnsAboutClampOncePerKey verifies duePoll records a
+// widget key in clampWarned the first time its override is actually clamped
+// by the poller's own Interval, and doesn't need to re-log on subsequent
+// calls for the same key (tested directly against the once-per-key set,
+// since asserting on log output isn't practical here).
+func TestPollerDuePollWarnsAboutClampOncePerKey(t *testing.T) {
+	overrideSeconds := int32(1)
+	p := &Poller{Interval: time.Hour}
+
+	p.duePoll("k", &overrideSeconds)
+	if !p.clampWarned["k"] {
+		t.Fatal("duePoll() did not record key in clampWarned after a clamping override")
+	}
+
+	// A second call for the same key (even though not-due) must not reset
+	// or otherwise misbehave — the key just stays marked as already warned.
+	p.duePoll("k", &overrideSeconds)
+	if !p.clampWarned["k"] {
+		t.Error("duePoll() clampWarned entry disappeared on a subsequent call for the same key")
+	}
+	if len(p.clampWarned) != 1 {
+		t.Errorf("clampWarned = %v, want exactly one entry", p.clampWarned)
+	}
+}
+
+// TestPollerDuePollNoClampWarningWhenOverrideNotShorter verifies an override
+// that's >= the poller's Interval (so the clamp is a no-op) never gets
+// recorded in clampWarned — there's nothing to warn about.
+func TestPollerDuePollNoClampWarningWhenOverrideNotShorter(t *testing.T) {
+	overrideSeconds := int32(30)
+	p := &Poller{Interval: 15 * time.Second}
+
+	p.duePoll("k", &overrideSeconds)
+	if p.clampWarned["k"] {
+		t.Error("duePoll() recorded clampWarned for an override that wasn't actually shortened")
 	}
 }
 
