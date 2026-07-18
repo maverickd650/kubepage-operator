@@ -714,7 +714,7 @@ var _ = Describe("Dashboard controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, svc)).To(Succeed())
 			}).Should(Succeed())
 			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", int32(8080))))
-			Expect(svc.Spec.Selector).To(Equal(selectorLabelsForDashboard()))
+			Expect(svc.Spec.Selector).To(Equal(selectorLabelsForDashboard(DashboardName)))
 
 			By("status reflects the bound Bookmark and ServiceCard counts")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, instance)).To(Succeed())

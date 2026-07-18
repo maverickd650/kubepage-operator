@@ -104,7 +104,7 @@ func (r *DashboardReconciler) serviceForDashboard(instance *pagev1alpha1.Dashboa
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     svcType,
-			Selector: selectorLabelsForDashboard(),
+			Selector: selectorLabelsForDashboard(instance.Name),
 			Ports:    ports,
 		},
 	}
@@ -597,7 +597,7 @@ func (r *DashboardReconciler) networkPolicyForDashboard(instance *pagev1alpha1.D
 	policy := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: instance.Name, Namespace: instance.Namespace},
 		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard()},
+			PodSelector: metav1.LabelSelector{MatchLabels: selectorLabelsForDashboard(instance.Name)},
 			PolicyTypes: policyTypes,
 			Ingress:     ingressRules,
 			Egress:      egressRules,

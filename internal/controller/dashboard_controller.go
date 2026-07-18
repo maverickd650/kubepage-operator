@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
@@ -741,14 +742,14 @@ func (r *DashboardReconciler) deploymentForDashboard(instance *pagev1alpha1.Dash
 			// is the fixed subset; labelsForDashboard() (used below for the
 			// pod template) is selectorLabelsForDashboard() plus version.
 			Selector: &metav1.LabelSelector{
-				MatchLabels: selectorLabelsForDashboard(),
+				MatchLabels: selectorLabelsForDashboard(instance.Name),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					// labelsForDashboard(...) is layered on top of user labels
 					// so the selector (a subset of it) can never be broken by
 					// a colliding user-supplied label.
-					Labels:      mergeStringMaps(instance.Spec.Labels, labelsForDashboard(r.DashboardImage)),
+					Labels:      mergeStringMaps(instance.Spec.Labels, labelsForDashboard(instance.Name, r.DashboardImage)),
 					Annotations: instance.Spec.Annotations,
 				},
 				Spec: corev1.PodSpec{
@@ -907,26 +908,42 @@ func mergeStringMaps(userValues, builtinValues map[string]string) map[string]str
 }
 
 // selectorLabelsForDashboard returns the fixed label subset used as both the
-// Deployment's (immutable) selector and the Service's selector. Deliberately
-// excludes app.kubernetes.io/version: that label changes whenever
-// DashboardImage does (an operator upgrade), and a selector that included it
-// would make the Deployment's selector update-incompatible with itself
-// across upgrades — Kubernetes rejects changing spec.selector after
-// creation.
+// Deployment's (immutable) selector and the Service's selector, plus the
+// NetworkPolicy podSelector. Deliberately excludes app.kubernetes.io/version:
+// that label changes whenever DashboardImage does (an operator upgrade), and
+// a selector that included it would make the Deployment's selector
+// update-incompatible with itself across upgrades — Kubernetes rejects
+// changing spec.selector after creation.
+//
+// Includes app.kubernetes.io/instance (instanceName, via instanceLabelValue)
+// so that two Dashboards in the same namespace get disjoint pod selectors —
+// without it, a Service or NetworkPolicy for one Dashboard would also match
+// the other Dashboard's pods, cross-routing traffic (and potentially
+// bypassing basic auth) between them.
+//
+// Note for existing clusters: Deployment spec.selector is immutable, so a
+// Dashboard's pre-existing Deployment (created before this label was added)
+// keeps its old, narrower selector (name + managed-by only, no instance).
+// That old selector still matches the new pod template labels below (which
+// are a superset: old labels plus the new instance label), so it continues
+// to work — reconcileDeployment deliberately never writes found.Spec.Selector
+// on update, only Replicas and Template, to avoid the invalid-selector-change
+// rejection this would otherwise trigger.
 // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-func selectorLabelsForDashboard() map[string]string {
+func selectorLabelsForDashboard(instanceName string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "kubepage-operator",
 		"app.kubernetes.io/managed-by": "DashboardController",
+		"app.kubernetes.io/instance":   instanceLabelValue(instanceName),
 	}
 }
 
-// labelsForDashboard returns selectorLabelsForDashboard() plus
+// labelsForDashboard returns selectorLabelsForDashboard(instanceName) plus
 // app.kubernetes.io/version (image's tag), for use on the pod template
 // itself (never on a Selector). image is the dashboard image currently in
 // use (DashboardImage).
-func labelsForDashboard(image string) map[string]string {
-	labels := selectorLabelsForDashboard()
+func labelsForDashboard(instanceName, image string) map[string]string {
+	labels := selectorLabelsForDashboard(instanceName)
 	labels["app.kubernetes.io/version"] = imageVersionLabel(image)
 	return labels
 }
@@ -934,6 +951,25 @@ func labelsForDashboard(image string) map[string]string {
 // maxLabelValueLen is the Kubernetes label value length limit.
 // https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
 const maxLabelValueLen = 63
+
+// instanceLabelValue returns a Kubernetes-label-safe value identifying a
+// Dashboard by name. Label values are capped at maxLabelValueLen (63)
+// characters, but Dashboard object names (like most Kubernetes object names)
+// may be up to 253 — long enough to exceed that limit. When it does, the
+// name is truncated and a short hash of the untruncated name is appended
+// (mirroring clusterRBACName in dashboard_rbac.go), so two long Dashboard
+// names that share a common prefix still produce distinct label values. The
+// result stays a valid label value: it starts with the original name's first
+// character, and ends with a hex digit from the hash suffix.
+func instanceLabelValue(name string) string {
+	if len(name) <= maxLabelValueLen {
+		return name
+	}
+
+	sum := sha256.Sum256([]byte(name))
+	suffix := fmt.Sprintf("-%x", sum[:8])
+	return name[:maxLabelValueLen-len(suffix)] + suffix
+}
 
 // imageVersionLabel extracts a Kubernetes-label-safe "version" string from an
 // image reference. For a tag reference (repo:tag) it returns the tag. For a
