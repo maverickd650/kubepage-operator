@@ -41,6 +41,9 @@ go.work.sum
 /bin/
 /dist-bin/
 
+# per-checkout golangci-lint issue cache (see GOLANGCI_LINT_CACHE in .mise/config.toml)
+/.cache/
+
 # Local-only working notes, never pushed
 /IMPLEMENTATION_PLAN.md
 

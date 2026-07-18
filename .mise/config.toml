@@ -21,6 +21,10 @@ KIND_CLUSTER = "{{ env.KIND_CLUSTER | default(value='kubepage-operator-test-e2e'
 CONTAINER_TOOL = "{{ env.CONTAINER_TOOL | default(value='docker') }}"
 # Passed to the Dockerfile's GO_VERSION build-arg; must match [tools].go above.
 GO_VERSION = "1.26.5"
+# Per-checkout issue cache: golangci-lint records findings with absolute paths,
+# so a cache shared across git worktrees surfaces phantom findings (and breaks
+# the generated_file_filter processor) once a worktree is deleted.
+GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"
 
 ##@ Development
 
