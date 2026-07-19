@@ -617,9 +617,6 @@ templ Index(data indexData) {
 				// on every poll.
 				let currentTab = 0;
 				function showTab(i) {
-					// withViewTransition is defined further down the page (SSE
-					// wiring); function declarations are hoisted, so it's already
-					// callable here regardless of source order.
 					withViewTransition(function () {
 						currentTab = i;
 						document.querySelectorAll(".tab-btn").forEach(function (b, idx) {
