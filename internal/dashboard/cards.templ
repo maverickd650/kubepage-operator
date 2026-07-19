@@ -42,6 +42,7 @@ templ serviceCardView(c Card, siteTarget string) {
 			@icon(c.IconURL, 32)
 			if c.Href != "" {
 				<a
+					class="card-title"
 					href={ c.Href }
 					target={ cardTarget(c, siteTarget) }
 					if isNewTabTarget(cardTarget(c, siteTarget)) {
@@ -49,7 +50,7 @@ templ serviceCardView(c Card, siteTarget string) {
 					}
 				>{ c.ServiceName }</a>
 			} else {
-				{ c.ServiceName }
+				<span class="card-title">{ c.ServiceName }</span>
 			}
 			if c.Status != "" || c.PodStatus != "" {
 				switch c.StatusStyle {
