@@ -54,11 +54,13 @@ var visualCases = []visualCase{
 
 // pixelColorTolerance is the maximum summed per-channel (R+G+B+A) delta
 // between a golden and a captured pixel before it counts as "different".
-// Anti-aliased text/edges can shift by a few color levels between Chrome
-// builds without any visible regression; a real one (a swapped accent
-// color, a contrast inversion, a moved element) moves whole regions by far
-// more than this.
-const pixelColorTolerance = 60
+// Anti-aliased text/edges shift between Chrome builds AND between font
+// rasterizers (macOS vs Linux render the same glyph edge up to ~150 summed
+// levels apart at the fractional font sizes the fluid clamp()/cqw type
+// scale produces) without any visible regression; a real one (a swapped
+// accent color, a contrast inversion, a moved element) moves whole regions
+// by hundreds of levels, far past this.
+const pixelColorTolerance = 150
 
 // maxMismatchRatio is the fraction of a golden image's pixels allowed to
 // exceed pixelColorTolerance before TestVisualRegression fails. Kept small
