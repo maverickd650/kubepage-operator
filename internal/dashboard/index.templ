@@ -202,11 +202,11 @@ templ Index(data indexData) {
 				.status-dot.status-Down { background: var(--danger); }
 				/* Pill metrics are em-based off a container-query-scaled font-size:
 				   on a narrow card (.card is an inline-size container) the whole
-				   pill — dot, padding, text — shrinks smoothly down to a 0.275rem
+				   pill — dot, padding, text — shrinks smoothly down to a 0.36rem
 				   floor before .card h3's flex-wrap kicks in as the last resort.
 				   The clamp() cap also bounds the cqw unit's no-container
 				   (older-browser) viewport fallback. */
-				.status-pill { display: inline-flex; align-items: center; gap: 0.48em; font-size: clamp(0.275rem, 2cqw, 0.33rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.24em 0.83em 0.24em 0.76em; border-radius: 999px; white-space: nowrap; background: color-mix(in srgb, var(--muted) 14%, transparent); border: 1px solid color-mix(in srgb, var(--muted) 38%, transparent); color: var(--muted); }
+				.status-pill { display: inline-flex; align-items: center; gap: 0.48em; font-size: clamp(0.36rem, 2.6cqw, 0.43rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.24em 0.83em 0.24em 0.76em; border-radius: 999px; white-space: nowrap; background: color-mix(in srgb, var(--muted) 14%, transparent); border: 1px solid color-mix(in srgb, var(--muted) 38%, transparent); color: var(--muted); }
 				.status-pill::before { content: ""; width: 0.64em; height: 0.64em; border-radius: 50%; background: currentColor; flex: none; }
 				.status-pill .detail { opacity: 0.72; font-weight: 600; white-space: pre; }
 				.status-pill.status-Up { background: color-mix(in srgb, var(--good) 14%, transparent); border-color: color-mix(in srgb, var(--good) 38%, transparent); color: var(--good); }
