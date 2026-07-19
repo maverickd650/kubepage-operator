@@ -21,8 +21,24 @@ func percentBarStyle(p int) string {
 	return fmt.Sprintf("width: %d%%;", p)
 }
 
+// gridStyle renders an explicit LayoutGroupSpec.Columns count as a
+// responsive *maximum* rather than a hard track count: repeat(auto-fit,
+// minmax(...)) still yields at most N columns at full width, but collapses
+// to fewer, wider tracks as the viewport narrows, and never forces a track
+// below a 220px-or-100%-of-container floor (matching .grid's own minmax
+// floor in index.templ) — a hard `repeat(N, 1fr)` would instead squeeze N
+// equal tracks into any width, overflowing or crushing cards on narrow
+// viewports. Each track's minimum is `max(floor, (100% - gaps) / N)`: the
+// (100% - gaps) / N term is what actually drops the track count below N as
+// the container narrows (a pure `min(220px, 100%)` floor alone would still
+// let auto-fit pack in more than N narrow tracks on a wide viewport); 1rem
+// matches .grid's own gap.
 func gridStyle(columns *int32) string {
-	return fmt.Sprintf("grid-template-columns: repeat(%d, 1fr);", *columns)
+	n := *columns
+	return fmt.Sprintf(
+		"grid-template-columns: repeat(auto-fit, minmax(max(min(220px, 100%%), calc((100%% - %d * 1rem) / %d)), 1fr));",
+		n-1, n,
+	)
 }
 
 // styleRow is LayoutGroupSpec.Style's "row" enum value (the other, "column",
