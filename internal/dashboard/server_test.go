@@ -2568,6 +2568,66 @@ func TestServerIndexBoxedWidgetsStylesHeaderWidgetsNotGroupHeaders(t *testing.T)
 	}
 }
 
+// TestServerIndexPlacesSearchBarInsideHeaderRow verifies the search bar sits
+// inline alongside the header info-widget strip by default: both live inside
+// a shared .header-row flex container, with #header (populated by htmx
+// morph, unmodified internally) and .search-bar as siblings inside it, not
+// nested inside one another.
+func TestServerIndexPlacesSearchBarInsideHeaderRow(t *testing.T) {
+	srv := newTestServer(t, NewStore())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	// The strip opens the row directly (nesting, not mere ordering — a
+	// bare index check would still pass if .search-bar leaked out after the
+	// row's closing tag).
+	if !strings.Contains(body, `<div class="header-row"><div class="header-strip" id="header"`) {
+		t.Fatalf("index body does not open .header-row with the #header strip inside it:\n%s", body)
+	}
+	rowStart := strings.Index(body, `<div class="header-row">`)
+	searchBarStart := strings.Index(body, `class="search-bar"`)
+	cardsStart := strings.Index(body, `id="cards"`)
+	if searchBarStart == -1 || cardsStart == -1 {
+		t.Fatalf("index body missing .search-bar/#cards:\n%s", body)
+	}
+	// The search bar must sit inside the row (before #cards, which is the
+	// row's next sibling).
+	if rowStart >= searchBarStart || searchBarStart >= cardsStart {
+		t.Errorf("expected .search-bar inside .header-row and before #cards; got row=%d searchBar=%d cards=%d:\n%s",
+			rowStart, searchBarStart, cardsStart, body)
+	}
+	// The switcher renders by default (theme/color both unfixed), so the row
+	// must carry the gutter gate that keeps an inline search bar clear of the
+	// absolutely-positioned switcher buttons.
+	if !strings.Contains(body, `class="wrap" data-has-switcher`) {
+		t.Errorf("index body missing data-has-switcher on .wrap with the switcher rendered:\n%s", body)
+	}
+}
+
+// TestServerIndexOmitsSwitcherGutterGateWhenSwitcherHidden verifies the
+// header-row's right-gutter gate is dropped when no switcher renders (theme
+// and color both fixed), so the inline search bar isn't needlessly shortened.
+func TestServerIndexOmitsSwitcherGutterGateWhenSwitcherHidden(t *testing.T) {
+	theme := themeLight
+	color := testColor
+	cfg := &pagev1alpha1.Dashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: testDashboardName, Namespace: testNamespace},
+		Spec: pagev1alpha1.DashboardSpec{
+			Style: &pagev1alpha1.StyleSpec{Theme: &theme, Color: &color},
+		},
+	}
+	srv := newTestServer(t, NewStore(), cfg)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+
+	if body := rec.Body.String(); strings.Contains(body, `class="wrap" data-has-switcher`) {
+		t.Errorf("index body has data-has-switcher with theme and color both fixed, want the gutter gate omitted:\n%s", body)
+	}
+}
+
 func TestServerFragmentRendersBookmarkIconTakesPrecedenceOverAbbr(t *testing.T) {
 	icon := "https://example.invalid/wiki.png"
 	abbr := "WK"
