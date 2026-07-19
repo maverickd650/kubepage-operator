@@ -22,6 +22,11 @@ spec:
     # port else its first port — instead of it being spelled out by hand
     # (see service_plex.yaml in this directory).
     - name: Plex
+      # order sorts cards within their group (ascending; ties broken by name,
+      # unset sorts last). Plex and Stash share the "Media" group and would
+      # otherwise fall in name order (Plex, Stash) — order 2 vs Stash's 1 puts
+      # Stash first instead, without renaming either card.
+      order: 2
       href: https://plex.example.com
       internalUrl: auto
       icon: plex
@@ -43,6 +48,7 @@ spec:
     # The one-URL shape: href doubles as the monitor probe target via
     # "monitor: self" — no URL is ever repeated.
     - name: Stash
+      order: 1
       href: http://stash.example.com
       icon: stash
       description: A type of media server.
