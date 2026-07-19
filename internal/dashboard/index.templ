@@ -310,6 +310,24 @@ templ Index(data indexData) {
 				}
 				.color-menu:popover-open { display: grid; }
 				.color-menu button { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); cursor: pointer; padding: 0; }
+				/* CSS anchor positioning ties the menu to the switcher button
+				   it opens from, replacing the fixed-corner guess above with
+				   the menu's actual position: anchor-name on the button,
+				   position-anchor + position-area on the menu (top-layer
+				   popovers can still participate in anchor positioning even
+				   though they're no longer laid out relative to their DOM
+				   ancestor — see the .color-menu comment above). Gated behind
+				   @supports since anchor positioning isn't supported
+				   everywhere the rest of this stylesheet's Baseline features
+				   are yet; the fixed fallback above still applies otherwise. */
+				@supports (anchor-name: --color-switcher-btn) {
+					#color-switcher-btn { anchor-name: --color-switcher-btn; }
+					.color-menu {
+						position-anchor: --color-switcher-btn;
+						position-area: bottom span-left;
+						top: auto; right: auto; margin-top: 0.3rem;
+					}
+				}
 				/* Motion-sensitive users get the same end states (hover lift,
 				   open caret) instantly rather than animated. Targeted rules
 				   rather than a blanket "* { transition: none }", matching this
