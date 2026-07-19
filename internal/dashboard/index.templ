@@ -290,6 +290,10 @@ templ Index(data indexData) {
 				@media (prefers-reduced-motion: reduce) {
 					.card { transition: none; }
 					details.group summary::before { transition: none; }
+					/* Same-document View Transitions (see the script below) cross-fade
+					   #cards/#header updates and tab switches; motion-sensitive users
+					   get the same before/after states with no animation at all. */
+					::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 				}
 			</style>
 			if data.Site.Background != nil {
@@ -448,13 +452,48 @@ templ Index(data indexData) {
 				// an in-place patch. Passing source explicitly (and, as a second line
 				// of defense, hx-ext="morph" on <body> itself below) keeps that from
 				// happening regardless of which element ends up as target.
+				// Same-document View Transitions (Baseline 2024) cross-fade a
+				// push-driven #cards/#header update instead of popping the new
+				// content in. Feature-detected — a browser without
+				// document.startViewTransition just runs the update function
+				// directly, i.e. exactly today's behavior. htmx.ajax(...) returns
+				// a promise that resolves once the request has been swapped AND
+				// settled, so passing it straight to startViewTransition's
+				// callback is the correct "wait for the DOM update" signal: the
+				// transition captures the "old" snapshot before the callback
+				// runs, waits for the returned promise, then captures "new" and
+				// cross-fades between them.
+				//
+				// Overlapping transitions are coalesced rather than queued: the
+				// View Transitions API doesn't support nesting, so if one is
+				// already in flight (e.g. a fragment update still settling when
+				// a tab switch or another push event fires) the newer update
+				// just runs immediately, without its own transition, rather than
+				// waiting its turn — a skipped cross-fade reads as far less
+				// janky than a delayed DOM update.
+				let activeViewTransition = null;
+				function withViewTransition(update) {
+					if (!document.startViewTransition || activeViewTransition) {
+						update();
+						return;
+					}
+					activeViewTransition = document.startViewTransition(update);
+					activeViewTransition.finished.finally(function () {
+						activeViewTransition = null;
+					});
+				}
+
 				if (window.EventSource) {
 					const events = new EventSource("/events");
 					events.addEventListener("fragmentChanged", function () {
-						htmx.ajax("GET", "/fragment", { source: "#cards", target: "#cards", swap: "morph:innerHTML" });
+						withViewTransition(function () {
+							return htmx.ajax("GET", "/fragment", { source: "#cards", target: "#cards", swap: "morph:innerHTML" });
+						});
 					});
 					events.addEventListener("headerChanged", function () {
-						htmx.ajax("GET", "/header", { source: "#header", target: "#header", swap: "morph:innerHTML" });
+						withViewTransition(function () {
+							return htmx.ajax("GET", "/header", { source: "#header", target: "#header", swap: "morph:innerHTML" });
+						});
 					});
 				}
 
@@ -509,14 +548,19 @@ templ Index(data indexData) {
 				// on every poll.
 				let currentTab = 0;
 				function showTab(i) {
-					currentTab = i;
-					document.querySelectorAll(".tab-btn").forEach(function (b, idx) {
-						const selected = idx === i;
-						b.classList.toggle("active", selected);
-						b.setAttribute("aria-selected", selected ? "true" : "false");
-						b.tabIndex = selected ? 0 : -1;
+					// withViewTransition is defined further down the page (SSE
+					// wiring); function declarations are hoisted, so it's already
+					// callable here regardless of source order.
+					withViewTransition(function () {
+						currentTab = i;
+						document.querySelectorAll(".tab-btn").forEach(function (b, idx) {
+							const selected = idx === i;
+							b.classList.toggle("active", selected);
+							b.setAttribute("aria-selected", selected ? "true" : "false");
+							b.tabIndex = selected ? 0 : -1;
+						});
+						document.querySelectorAll(".tab-panel").forEach(function (p, idx) { p.classList.toggle("hidden", idx !== i); });
 					});
-					document.querySelectorAll(".tab-panel").forEach(function (p, idx) { p.classList.toggle("hidden", idx !== i); });
 				}
 				// Keyboard navigation per the WAI-ARIA tabs pattern (automatic
 				// activation): ArrowLeft/ArrowRight move focus to and activate the
