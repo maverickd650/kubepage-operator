@@ -71,7 +71,29 @@ templ Index(data indexData) {
 					padding: 0.25rem 0.6rem; border-radius: 0.4rem;
 					background: color-mix(in srgb, var(--panel) 85%, transparent);
 				}
-				.header-strip { display: flex; flex-wrap: wrap; gap: clamp(0.6rem, 2vw, 1rem); margin-bottom: clamp(1rem, 2.5vw, 1.5rem); }
+				.header-strip { display: flex; flex-wrap: wrap; flex-grow: 0; gap: clamp(0.6rem, 2vw, 1rem); }
+				/* An empty strip (before the async /header load lands, or a
+				   dashboard with no InfoWidgets bound at all) would otherwise
+				   still occupy a flex slot — insetting the search bar by the row
+				   gap, and rendering a stray empty box under headerStyle: boxed.
+				   idiomorph swaps innerHTML, so :empty re-evaluates once widgets
+				   populate. */
+				.header-strip:empty { display: none; }
+				/* Header row: the info-widget strip and the search bar share one
+				   flex-wrap line by default (search bar inline, to the strip's
+				   right), and only the search bar drops to its own full-width
+				   line once the row runs out of horizontal room — .search-bar's
+				   flex-basis below is the "no room" threshold. .header-strip gets
+				   flex-grow: 0 above so the search bar alone absorbs any leftover
+				   horizontal slack; the strip itself never stretches to fill the
+				   row. The row (not its two children) owns the vertical gap above
+				   #cards, since the flex gap already covers the line1→line2 gap
+				   when the search bar wraps. [data-has-switcher] reserves a right
+				   gutter matching .switcher's width so an inline-line1 search bar
+				   never runs underneath the absolutely-positioned switcher
+				   buttons — see the .wrap[data-has-switcher] rule below. */
+				.header-row { display: flex; flex-wrap: wrap; align-items: center; gap: clamp(0.6rem, 2vw, 1rem); margin-bottom: clamp(1rem, 2.5vw, 1.5rem); }
+				.wrap[data-has-switcher] .header-row { padding-right: 4.5rem; }
 				/* Homepage keeps information widgets unboxed unless boxedWidgets is selected. */
 				.header-widget { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
 				.header-widget-push-right { margin-left: auto; }
@@ -89,7 +111,12 @@ templ Index(data indexData) {
 				.header-field.hl-danger .value { color: var(--danger); }
 				.greeting { font-size: 1.25rem; }
 				.clock { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
-				.search-bar { margin-bottom: clamp(1rem, 2.5vw, 1.5rem); }
+				/* 18rem flex-basis is the "no room" threshold (search wraps below
+				   once the strip's widgets + 18rem no longer fit the row); min-width:
+				   0 keeps the wrapped, full-width line-2 bar free to shrink with the
+				   viewport rather than forcing page-level horizontal overflow on very
+				   narrow screens or enlarged root fonts. */
+				.search-bar { flex: 1 1 18rem; min-width: 0; }
 				.search-bar input {
 					width: 100%; box-sizing: border-box; padding: 0.6rem 1rem; font-size: 1rem;
 					border: 1px solid var(--border); border-radius: 0.5rem; background: var(--panel); color: var(--text);
@@ -117,6 +144,14 @@ templ Index(data indexData) {
 					background: var(--panel); border: 1px solid var(--border); border-radius: 0.5rem;
 					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); padding: 0.75rem 1rem;
 				}
+				/* The boxed/underlined styles treat the header strip as a single
+				   visual block, so keep it full-width (basis 100% takes the whole
+				   first row) with the search bar wrapping onto its own line below —
+				   otherwise the box/underline would shrink-wrap to the widgets and
+				   float mid-row beside the input. The default (no header style) and
+				   boxedWidgets keep the search bar inline. */
+				[data-header-style="underlined"] .header-strip,
+				[data-header-style="boxed"] .header-strip { flex: 1 1 100%; }
 				[data-header-style="boxedWidgets"] .header-widget {
 					background: var(--panel); border: 1px solid var(--border); border-radius: 0.5rem;
 					box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); padding: 0.5rem 0.9rem;
@@ -411,7 +446,7 @@ templ Index(data indexData) {
 			}
 		</head>
 		<body hx-ext="morph">
-			<div class="wrap">
+			<div class="wrap" data-has-switcher?={ !data.Site.ThemeFixed || !data.Site.ColorFixed }>
 				if data.SampleData {
 					<div class="sample-data-banner">Sample data — no live upstreams polled</div>
 				}
@@ -421,7 +456,12 @@ templ Index(data indexData) {
 				if data.Site.Description != "" {
 					<p class="page-desc">{ data.Site.Description }</p>
 				}
-				<div class="header-strip" id="header" hx-ext="morph" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="morph:innerHTML"></div>
+				<div class="header-row">
+					<div class="header-strip" id="header" hx-ext="morph" hx-get="/header" hx-trigger={ "load, every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="morph:innerHTML"></div>
+					<div class="search-bar">
+						<input id="search-input" type="text" placeholder="Search or filter cards..." aria-label="Search or filter cards" autocomplete="off"/>
+					</div>
+				</div>
 				if !data.Site.ThemeFixed || !data.Site.ColorFixed {
 					<div class="switcher">
 						if !data.Site.ColorFixed {
@@ -444,9 +484,6 @@ templ Index(data indexData) {
 						}
 					</div>
 				}
-				<div class="search-bar">
-					<input id="search-input" type="text" placeholder="Search or filter cards..." autocomplete="off"/>
-				</div>
 				<div id="cards" hx-ext="morph" hx-get="/fragment" hx-trigger={ "every " + intToStr(data.RefreshSeconds) + "s" } hx-swap="morph:innerHTML">
 					@Cards(data.Fragment)
 				</div>
