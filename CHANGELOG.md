@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/maverickd650/kubepage-operator/compare/v0.5.2...v0.6.0) (2026-07-19)
+
+
+### Features
+
+* **dashboard:** place search bar inline in header, wrap below when no room ([#201](https://github.com/maverickd650/kubepage-operator/issues/201)) ([091b0d1](https://github.com/maverickd650/kubepage-operator/commit/091b0d163abc7fbd0ff5fd221f5e95304ad9de8c))
+* **dashboard:** responsive layout, container-query typography, and fluid page chrome ([#198](https://github.com/maverickd650/kubepage-operator/issues/198)) ([de3056d](https://github.com/maverickd650/kubepage-operator/commit/de3056d1148299bd650a79bb83f7bcf85c81042f))
+
+
+### Bug Fixes
+
+* **dashboard:** keep status pills top-aligned and shrink chip text to fit ([#200](https://github.com/maverickd650/kubepage-operator/issues/200)) ([0547971](https://github.com/maverickd650/kubepage-operator/commit/05479713c739c0d354cc36165bfb26ba5f9764ac))
+
 ## [0.5.2](https://github.com/maverickd650/kubepage-operator/compare/v0.5.1...v0.5.2) (2026-07-18)
 
 
