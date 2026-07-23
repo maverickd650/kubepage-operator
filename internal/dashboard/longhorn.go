@@ -23,10 +23,13 @@ type longhornWidget struct{}
 
 type longhornNodesResponse struct {
 	Data []struct {
-		DiskStatus map[string]struct {
+		// The Longhorn API's Node.disks is a map of DiskInfo, which embeds
+		// DiskStatus — so storageMaximum/storageAvailable are promoted
+		// directly onto each disk entry, not nested under a "diskStatus" key.
+		Disks map[string]struct {
 			StorageMaximum   int64 `json:"storageMaximum"`
 			StorageAvailable int64 `json:"storageAvailable"`
-		} `json:"diskStatus"`
+		} `json:"disks"`
 	} `json:"data"`
 }
 
@@ -38,7 +41,7 @@ func (longhornWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Wid
 
 	var maxBytes, availBytes int64
 	for _, node := range parsed.Data {
-		for _, disk := range node.DiskStatus {
+		for _, disk := range node.Disks {
 			maxBytes += disk.StorageMaximum
 			availBytes += disk.StorageAvailable
 		}

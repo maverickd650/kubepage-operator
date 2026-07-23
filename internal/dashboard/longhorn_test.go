@@ -16,7 +16,7 @@ func TestLonghornWidgetPoll(t *testing.T) {
 		trailingSlash bool
 	}{
 		"single node two disks": {
-			response: `{"data":[{"diskStatus":{
+			response: `{"data":[{"disks":{
 				"disk-1":{"storageMaximum":1000,"storageAvailable":500},
 				"disk-2":{"storageMaximum":1000,"storageAvailable":500}
 			}}]}`,
@@ -29,7 +29,7 @@ func TestLonghornWidgetPoll(t *testing.T) {
 			want:       []Field{{Label: labelStatus, Value: statusUnknown}},
 		},
 		"trailing slash on URL": {
-			response: `{"data":[{"diskStatus":{
+			response: `{"data":[{"disks":{
 				"disk-1":{"storageMaximum":1000,"storageAvailable":500},
 				"disk-2":{"storageMaximum":1000,"storageAvailable":500}
 			}}]}`,
