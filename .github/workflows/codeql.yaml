@@ -44,7 +44,7 @@ jobs:
       # extraction isn't available yet on this toolchain, so stick with
       # autobuild.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        uses: github/codeql-action/init@e0647621c2984b5ed2f768cb892365bf2a616ad1 # v4.37.2
         with:
           languages: go
           build-mode: autobuild
@@ -58,7 +58,7 @@ jobs:
       # inherent templ-codegen "useless assignment" findings from reaching
       # the SARIF — see the NOTE in .github/codeql/codeql-config.yml.
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        uses: github/codeql-action/analyze@e0647621c2984b5ed2f768cb892365bf2a616ad1 # v4.37.2
         with:
           category: "/language:go"
           upload: never
@@ -75,7 +75,7 @@ jobs:
           done
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        uses: github/codeql-action/upload-sarif@e0647621c2984b5ed2f768cb892365bf2a616ad1 # v4.37.2
         with:
           sarif_file: sarif-results
           category: "/language:go"
