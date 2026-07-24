@@ -18,13 +18,24 @@ func init() {
 // prometheusMetricWidget runs a single config-driven PromQL instant query
 // against /api/v1/query and shows its scalar result, unlike the fixed
 // /api/v1/targets summary the plain "prometheus" widget shows. Config is a
-// JSON object: {"query": "<promql>", "label": "<display label>"}. label
-// defaults to "Value" if unset.
+// JSON object:
+// {"query": "<promql>", "label": "<display label>", "emptyValue": "<display value>"}.
+// label defaults to "Value" if unset; emptyValue is what to show when the
+// query returns an empty result vector, defaulting to "Unknown".
 type prometheusMetricWidget struct{}
 
 type prometheusMetricConfig struct {
 	Query string `json:"query"`
 	Label string `json:"label"`
+	// EmptyValue is what to display when the query matches no series.
+	// Prometheus returns an empty result vector both for "this metric does
+	// not exist" and for a filtered aggregation whose answer is genuinely
+	// zero — count(up == 0) with everything up returns no rows, not 0 — and
+	// the API gives no way to tell those apart. Defaulting to "Unknown" is
+	// therefore right in general but wrong for exactly the counting queries
+	// this widget is most used for, so which of the two an operator gets is
+	// theirs to declare: set emptyValue: "0" on a count()-style query.
+	EmptyValue string `json:"emptyValue"`
 }
 
 type prometheusQueryResponse struct {
@@ -52,6 +63,7 @@ func (prometheusMetricWidget) Poll(ctx context.Context, httpClient *http.Client,
 		return nil, errors.New("prometheusmetric widget: config.query is required")
 	}
 	label := cmp.Or(metricCfg.Label, labelValue)
+	emptyValue := cmp.Or(metricCfg.EmptyValue, statusUnknown)
 
 	path := "/api/v1/query?query=" + url.QueryEscape(metricCfg.Query)
 
@@ -61,7 +73,7 @@ func (prometheusMetricWidget) Poll(ctx context.Context, httpClient *http.Client,
 	}
 
 	if len(parsed.Data.Result) == 0 {
-		return []Field{{Label: label, Value: statusUnknown}}, nil
+		return []Field{{Label: label, Value: emptyValue}}, nil
 	}
 
 	raw, ok := parsed.Data.Result[0].Value[1].(string)

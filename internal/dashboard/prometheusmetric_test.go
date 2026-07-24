@@ -34,6 +34,18 @@ func TestPrometheusMetricWidgetPoll(t *testing.T) {
 			statusCode: http.StatusOK,
 			want:       []Field{{Label: labelValue, Value: statusUnknown}},
 		},
+		"empty result with configured emptyValue": {
+			config:     `{"query":"count(longhorn_volume_robustness == 2)","label":"Degraded","emptyValue":"0"}`,
+			response:   `{"status":"success","data":{"result":[]}}`,
+			statusCode: http.StatusOK,
+			want:       []Field{{Label: "Degraded", Value: "0"}},
+		},
+		"emptyValue does not affect a non-empty result": {
+			config:     `{"query":"up","emptyValue":"0"}`,
+			response:   `{"status":"success","data":{"result":[{"value":[1700000000,"4"]}]}}`,
+			statusCode: http.StatusOK,
+			want:       []Field{{Label: labelValue, Value: "4"}},
+		},
 		testCaseNon200: {
 			config:     `{"query":"up"}`,
 			statusCode: http.StatusInternalServerError,
