@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/maverickd650/kubepage-operator/compare/v0.6.0...v0.7.0) (2026-07-24)
+
+
+### Features
+
+* **dashboard:** log why a monitor is Down and why a widget can't start ([#215](https://github.com/maverickd650/kubepage-operator/issues/215)) ([35356da](https://github.com/maverickd650/kubepage-operator/commit/35356dac6006eceebeb6f7fb2fbb091b4758b2a0))
+
+
+### Bug Fixes
+
+* **dashboard:** make a failed widget poll say why it failed ([#214](https://github.com/maverickd650/kubepage-operator/issues/214)) ([65372b2](https://github.com/maverickd650/kubepage-operator/commit/65372b29c4acc74f956f3d93c0fc6e1fd5affe1e))
+* **dashboard:** read Longhorn node storage from disks field ([#209](https://github.com/maverickd650/kubepage-operator/issues/209)) ([79e7605](https://github.com/maverickd650/kubepage-operator/commit/79e7605aeea3c3d2f9862cddb4497ef34bc5380f))
+* **deps:** update dependency kubectl (1.36.2 → 1.36.3) ([#207](https://github.com/maverickd650/kubepage-operator/issues/207)) ([6237f5a](https://github.com/maverickd650/kubepage-operator/commit/6237f5a455e7e27274e5ee302003ecc442ef9fda))
+
 ## [0.6.0](https://github.com/maverickd650/kubepage-operator/compare/v0.5.2...v0.6.0) (2026-07-19)
 
 
