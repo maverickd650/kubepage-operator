@@ -96,25 +96,39 @@ func (truenasWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widg
 
 	conn, _, err := websocket.Dial(callCtx, wsURL, &websocket.DialOptions{HTTPClient: httpClient})
 	if err != nil {
+		logPollFailure(wsURL, err, "truenas websocket dial failed", "url", wsURL)
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
 	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(truenasMaxFrameBytes)
 
 	var loggedIn bool
-	if err := truenasCall(callCtx, conn, "auth.login_with_api_key", []any{cfg.Secrets["token"]}, 1, &loggedIn); err != nil || !loggedIn {
+	if err := truenasCall(callCtx, conn, "auth.login_with_api_key", []any{cfg.Secrets["token"]}, 1, &loggedIn); err != nil {
+		logPollFailure(wsURL, err, "truenas login call failed", "url", wsURL)
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
+	}
+	if !loggedIn {
+		// TrueNAS answers a rejected API key with a plain `"result": false`
+		// and no JSON-RPC error object, so there is no reason to report
+		// beyond "the stored token is not accepted" — which is still far
+		// more actionable than the "Unreachable" this used to render, since
+		// it rules out DNS/TLS/connectivity entirely.
+		logPollFailure(wsURL, nil, "truenas rejected the API key: check secrets.token holds the full key", "url", wsURL)
+		return []Field{{Label: labelStatus, Value: statusUnauth}}, nil
 	}
 
 	var info truenasSystemInfoResult
 	if err := truenasCall(callCtx, conn, "system.info", []any{}, 2, &info); err != nil {
+		logPollFailure(wsURL, err, "truenas system.info call failed", "url", wsURL)
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
 
 	var alerts []truenasAlert
 	if err := truenasCall(callCtx, conn, "alert.list", []any{}, 3, &alerts); err != nil {
+		logPollFailure(wsURL, err, "truenas alert.list call failed", "url", wsURL)
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
+	clearPollFailure(wsURL)
 
 	_ = conn.Close(websocket.StatusNormalClosure, "")
 
@@ -164,10 +178,23 @@ func truenasWebSocketURL(rawURL string) (string, error) {
 	return u.String(), nil
 }
 
+// truenasMaxSkippedFrames bounds how many non-matching frames truenasCall
+// will discard while waiting for its own response (see its doc comment). A
+// server that only ever sends frames this call isn't waiting for would
+// otherwise spin here until callCtx's deadline; failing after a small fixed
+// number turns that into a prompt, reported error instead.
+const truenasMaxSkippedFrames = 8
+
 // truenasCall sends one JSON-RPC 2.0 request over conn and decodes its
 // result into out (skipped if out is nil, e.g. auth.login_with_api_key's
 // boolean result is decoded by the caller directly). Returns an error on a
 // transport failure, a malformed response, or a JSON-RPC-level error object.
+//
+// Frames arriving with a different id (or none — JSON-RPC notifications carry
+// no id) are discarded rather than decoded as this call's response: the
+// middleware is free to push a message at any point, and treating the first
+// frame off the wire as the answer would misread it and then leave every
+// subsequent call reading one response behind.
 func truenasCall(ctx context.Context, conn *websocket.Conn, method string, params []any, id int, out any) error {
 	req := jsonrpcRequest{JSONRPC: "2.0", Method: method, Params: params, ID: id}
 	if err := wsjson.Write(ctx, conn, req); err != nil {
@@ -175,8 +202,17 @@ func truenasCall(ctx context.Context, conn *websocket.Conn, method string, param
 	}
 
 	var resp jsonrpcResponse
-	if err := wsjson.Read(ctx, conn, &resp); err != nil {
-		return fmt.Errorf("reading %s response: %w", method, err)
+	for skipped := 0; ; skipped++ {
+		if skipped > truenasMaxSkippedFrames {
+			return fmt.Errorf("reading %s response: no reply after %d unrelated frames", method, truenasMaxSkippedFrames)
+		}
+		resp = jsonrpcResponse{}
+		if err := wsjson.Read(ctx, conn, &resp); err != nil {
+			return fmt.Errorf("reading %s response: %w", method, err)
+		}
+		if resp.ID == id {
+			break
+		}
 	}
 	if resp.Error != nil {
 		return fmt.Errorf("%s: jsonrpc error %d: %s", method, resp.Error.Code, resp.Error.Message)

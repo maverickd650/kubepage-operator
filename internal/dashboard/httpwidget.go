@@ -26,16 +26,28 @@ const maxWidgetResponseBytes = 2 << 20 // 2 MiB
 // metrics. Callers should return immediately when the returned fields or err
 // is non-nil; a nil, nil result means out was populated and the caller
 // should build its own success Fields from it.
+//
+// "Unreachable" on its own can't distinguish a DNS failure from a refused
+// connection from a rejected TLS certificate, so the underlying transport
+// error is additionally logged (deduplicated — see logPollFailure) against
+// the redacted request URL. Without that, the only signal an operator gets
+// for, say, a self-signed upstream certificate is an "Unreachable" card.
 func doJSONRequest(httpClient *http.Client, req *http.Request, out any) ([]Field, error) {
+	target := req.URL.Redacted()
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		logPollFailure(target, err, "widget request failed", "url", target)
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		logPollFailure(target, nil, "widget request returned an unexpected status",
+			"url", target, "status", resp.StatusCode)
 		return []Field{{Label: labelStatus, Value: fmt.Sprintf("HTTP %d", resp.StatusCode)}}, nil
 	}
+	clearPollFailure(target)
 
 	body := io.LimitReader(resp.Body, maxWidgetResponseBytes)
 	if err := json.NewDecoder(body).Decode(out); err != nil {

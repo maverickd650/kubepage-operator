@@ -71,7 +71,7 @@ var ConfigSchemas = map[string]ConfigSchema{
 	// Service widget types with known Config keys (internal/dashboard/*.go).
 	"cloudflared":      {Required: []string{keyAccountID, keyTunnelID}},
 	"customapi":        {Required: []string{"mappings"}},
-	"prometheusmetric": {Required: []string{keyQuery}, Optional: []string{keyLabel}},
+	"prometheusmetric": {Required: []string{keyQuery}, Optional: []string{keyLabel, "emptyValue"}},
 	"unifi":            {Optional: []string{"site", "insecureTLS"}},
 	"iframe":           {Optional: []string{"height"}},
 	"proxmox":          {Optional: []string{"node", "insecureTLS"}},

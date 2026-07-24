@@ -364,7 +364,9 @@ spec:
                               per-widget source for the authoritative shape). Known keys by type:
                                 - cloudflared: accountId, tunnelId (both required)
                                 - customapi: mappings (required) — a list of {label, jsonpath, suffix}
-                                - prometheusmetric: query (required), label (defaults to "Value")
+                                - prometheusmetric: query (required), label (defaults to "Value"),
+                                  emptyValue (shown when the query matches no series; defaults to
+                                  "Unknown" — set "0" for a count()-style query)
                                 - unifi: site (defaults to "default"), insecureTLS (bool)
                                 - iframe: height (a CSS length, e.g. "300px"; defaults to "300px")
                                 - glances: apiVersion ("3" or "4"; defaults to "4")
