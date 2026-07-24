@@ -1137,7 +1137,7 @@ func metricErr(err error, fields []Field) error {
 		if f.Label != labelStatus {
 			continue
 		}
-		if f.Value == statusUnreach || strings.HasPrefix(f.Value, "HTTP ") {
+		if f.Value == statusUnreach || f.Value == statusUnauth || strings.HasPrefix(f.Value, "HTTP ") {
 			return fmt.Errorf("widget reported status %q", f.Value)
 		}
 	}

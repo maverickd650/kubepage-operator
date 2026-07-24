@@ -19,6 +19,15 @@ const (
 	statusDegraded    = "Degraded"
 	statusUnknown     = "Unknown"
 	statusUnreach     = "Unreachable"
+	// statusUnauth is reported when an upstream was reached and answered but
+	// rejected the widget's credential — distinct from statusUnreach so an
+	// expired/revoked API key isn't indistinguishable from a DNS, TLS, or
+	// connection failure. Widgets whose upstream signals this with an HTTP
+	// status don't need it (doJSONRequest already renders "HTTP 401"); it
+	// exists for the ones that report rejection in-band, like truenas.go's
+	// JSON-RPC login returning false. Counted as a poll failure by
+	// poller.go's metricErr, same as statusUnreach.
+	statusUnauth = "Unauthorized"
 	// statusInactive is cloudflared.go's own tunnel-status mapping (alongside
 	// monitor.go's statusDown, reused here) — distinct from statusUnreach so
 	// that a legitimately down/inactive tunnel (a fact reported by a
