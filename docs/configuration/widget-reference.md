@@ -117,6 +117,7 @@ Give the credential under `secrets:` using the field name shown.
 | Type | Shows | Config |
 |------|-------|--------|
 | `uptime-kuma` | Uptime Kuma status-page up/down counts | **`slug`** (required). The status page must be **published**. No auth. |
+| `prometheusmetric` | The result of one PromQL instant query | **`query`** (required); `label` (default `"Value"`); `emptyValue` (default `"Unknown"`) |
 | `iframe` | Embeds a web page directly on the card (instead of stats) | `url` is the page to embed; `height` (a CSS length like `"300px"`, default `"300px"`) |
 
 ```yaml
@@ -125,6 +126,24 @@ Give the credential under `secrets:` using the field name shown.
   config:
     slug: my-status-page
 ```
+
+> **`prometheusmetric` and empty results.** Prometheus returns *nothing* — not
+> `0` — for a query that matches no series, and it gives no way to tell "this
+> metric doesn't exist" from "the answer really is zero". The widget shows
+> `Unknown` by default, which is right for the first case and wrong for the
+> second. On a counting query, say which you meant with `emptyValue`:
+>
+> ```yaml
+> - type: prometheusmetric
+>   url: http://prometheus.example.com
+>   config:
+>     query: count(longhorn_volume_robustness == 2)
+>     label: Degraded
+>     emptyValue: "0"
+> ```
+>
+> Without `emptyValue: "0"`, a healthy cluster with no degraded volumes shows
+> **Degraded: Unknown**.
 
 ### Special: the do-anything widget — `customapi`
 

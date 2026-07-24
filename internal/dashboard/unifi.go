@@ -145,7 +145,13 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		// A named site that doesn't exist (typo, or a site never adopted by
 		// this API key) is a poll failure to report, not a Go programmer
 		// error: the same widget config might start working again once the
-		// site/permissions are fixed controller-side.
+		// site/permissions are fixed controller-side. It renders as
+		// "Unreachable" like any other failure, so log which site was looked
+		// for and which the controller actually offers — otherwise a widget
+		// left on the default site name against a renamed site is
+		// indistinguishable from the controller being unreachable.
+		logPollFailure(baseURL, nil, "unifi site not found",
+			"url", baseURL, "site", site, "availableSites", unifiSiteNames(sites.Data))
 		return []Field{{Label: labelStatus, Value: statusUnreach}}, nil
 	}
 
@@ -193,6 +199,17 @@ func (unifiWidget) Poll(ctx context.Context, httpClient *http.Client, cfg Widget
 		{Label: labelLANUsers, Value: fmt.Sprintf("%d", lanUsers)},
 		{Label: labelWLANUsers, Value: fmt.Sprintf("%d", wlanUsers)},
 	}, nil
+}
+
+// unifiSiteNames returns the site names the controller reported, for the
+// "site not found" log line — a controller's real site names are the one
+// thing that turns that failure into an obvious config fix.
+func unifiSiteNames(sites []unifiIntegrationSite) []string {
+	names := make([]string, 0, len(sites))
+	for _, s := range sites {
+		names = append(names, s.Name)
+	}
+	return names
 }
 
 func (unifiWidget) Sample(WidgetConfig) []Field {

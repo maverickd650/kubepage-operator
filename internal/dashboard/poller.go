@@ -922,6 +922,13 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 
 	impl, ok := Lookup(widget.Type)
 	if !ok {
+		// Almost always means the running image predates the config: the CRD
+		// enum accepted the type, so some operator version knows it. Worth a
+		// log line even though the card also says so, since "upgrade the
+		// dashboard image" isn't something the card text can tell you, and
+		// hideErrors would suppress the card text entirely.
+		logPollFailure(key, nil, "unsupported widget type: the running dashboard image may be older than this config",
+			"serviceEntry", se.Name, "widgetType", widget.Type)
 		if !card.HideErrors {
 			card.Err = fmt.Sprintf("unsupported widget type %q", widget.Type)
 		}
@@ -957,6 +964,11 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 
 	caCert, err := p.resolveWidgetSecrets(ctx, namespace, widget.Type, widget.Secrets, widget.SecretRef, widget.CACert, widgetDefaults, cfg.Secrets)
 	if err != nil {
+		// A missing Secret/key (or one the dashboard's Role can't read) is a
+		// config error the operator has to go fix, not an upstream flake —
+		// and hideErrors would otherwise leave it with no signal anywhere.
+		logPollFailure(key, err, "resolving widget secrets failed",
+			"serviceEntry", se.Name, "widgetType", widget.Type)
 		if !card.HideErrors {
 			card.Err = err.Error()
 		}
@@ -966,6 +978,8 @@ func (p *Poller) pollWidget(ctx context.Context, key string, namespace string, s
 
 	httpClient, err := p.httpClientForCACert(ctx, namespace, caCert, p.HTTPClient)
 	if err != nil {
+		logPollFailure(key, err, "building widget HTTP client from caCert failed",
+			"serviceEntry", se.Name, "widgetType", widget.Type)
 		if !card.HideErrors {
 			card.Err = err.Error()
 		}
@@ -1137,7 +1151,7 @@ func metricErr(err error, fields []Field) error {
 		if f.Label != labelStatus {
 			continue
 		}
-		if f.Value == statusUnreach || strings.HasPrefix(f.Value, "HTTP ") {
+		if f.Value == statusUnreach || f.Value == statusUnauth || strings.HasPrefix(f.Value, "HTTP ") {
 			return fmt.Errorf("widget reported status %q", f.Value)
 		}
 	}
@@ -1186,6 +1200,11 @@ func (p *Poller) pollInfoWidget(ctx context.Context, key string, iw pagev1alpha1
 
 	caCert, err := p.resolveWidgetSecrets(ctx, iw.Namespace, entry.Type, entry.Secrets, entry.SecretRef, entry.CACert, widgetDefaults, cfg.Secrets)
 	if err != nil {
+		// Same reasoning as pollWidget's: a header strip has far less room
+		// to show an error than a card does, so the log is where the detail
+		// belongs.
+		logPollFailure(key, err, "resolving header widget secrets failed",
+			"infoWidget", iw.Name, "widgetType", entry.Type)
 		card.Err = err.Error()
 		p.Store.Set(card)
 		return
