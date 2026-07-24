@@ -107,6 +107,26 @@ order of likelihood:
 The card prints the raw error from the service, which usually points straight at
 the cause.
 
+### "The widget shows Unreachable"
+
+`Unreachable` means the request never got an answer — DNS, routing, a refused
+connection, a timeout, or a rejected TLS certificate. The card can't show which,
+so the **dashboard pod log names the cause**:
+
+```sh
+kubectl logs -n <namespace> deploy/<dashboard-name> | grep -i widget
+```
+
+You'll get one line per target, e.g. `widget request failed ... tls: failed to
+verify certificate` — that's cause 5 above, fix it with `caCert` or
+`config: { insecureTLS: true }`. The line repeats only when the reason changes,
+so a widget that's been broken for a week logs once, not every 15 seconds.
+
+`Unauthorized` is a different thing: the service *answered* and refused the
+credential. Connectivity and TLS are fine — regenerate the key, and check the
+Secret holds the whole value (some services show an API key exactly once, and a
+partially-copied key fails the same way a revoked one does).
+
 ### "The card is blank / shows nothing"
 
 - If it's a **widget** you expect stats from: the widget may be returning no

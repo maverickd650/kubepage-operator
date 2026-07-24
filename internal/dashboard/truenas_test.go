@@ -126,6 +126,11 @@ func TestTruenasWidgetPoll(t *testing.T) {
 	}
 }
 
+// TestTruenasWidgetPollAuthFailure covers a reachable TrueNAS that rejects
+// the API key (JSON-RPC "result": false, no error object). That must report
+// statusUnauth, not statusUnreach: the two used to be indistinguishable on
+// the card, which made a revoked or partially-copied key look identical to a
+// DNS/TLS/connection failure.
 func TestTruenasWidgetPollAuthFailure(t *testing.T) {
 	srv, _ := truenasMockServer(t, false, "", "")
 	defer srv.Close()
@@ -133,6 +138,104 @@ func TestTruenasWidgetPollAuthFailure(t *testing.T) {
 	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
 		URL:     srv.URL,
 		Secrets: map[string]string{testSecretField: "wrong"},
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{{Label: labelStatus, Value: statusUnauth}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+// truenasMockServerNoisy answers every call correctly but pushes an
+// unsolicited notification (no id) and a stale response (an id no call is
+// waiting on) ahead of each real reply, exercising truenasCall's id matching.
+func truenasMockServerNoisy(t *testing.T) *httptest.Server {
+	t.Helper()
+	results := []string{annotationValueTrue, `{"uptime_seconds":266461,"loadavg":[1.23,0.98,0.75]}`, `[]`}
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		ctx := r.Context()
+
+		for _, result := range results {
+			var req jsonrpcRequest
+			if err := wsjson.Read(ctx, conn, &req); err != nil {
+				return
+			}
+			// A notification: JSON-RPC carries no id, so this decodes to 0
+			// and must never be mistaken for a reply.
+			if err := wsjson.Write(ctx, conn, map[string]any{
+				"jsonrpc": "2.0", "method": "collection_update", "params": []any{},
+			}); err != nil {
+				return
+			}
+			// A reply to some other id, e.g. one left over from a call that
+			// already timed out.
+			if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: 99, Result: json.RawMessage(`"stale"`)}); err != nil {
+				return
+			}
+			if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: req.ID, Result: json.RawMessage(result)}); err != nil {
+				return
+			}
+		}
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}))
+}
+
+func TestTruenasWidgetPollSkipsUnrelatedFrames(t *testing.T) {
+	srv := truenasMockServerNoisy(t)
+	defer srv.Close()
+
+	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{testSecretField: truenasTestToken},
+	})
+	if err != nil {
+		t.Fatalf("Poll() unexpected error: %v", err)
+	}
+	want := []Field{
+		{Label: labelLoad, Value: "1.23"},
+		{Label: labelUptime, Value: "3d 2h"},
+		{Label: labelAlerts, Value: "0"},
+	}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("Poll() = %+v, want %+v", got, want)
+	}
+}
+
+// TestTruenasCallGivesUpOnEndlessUnrelatedFrames covers the bound on frame
+// skipping: a server that only ever sends frames this call isn't waiting for
+// must fail promptly rather than block until the poll deadline.
+func TestTruenasCallGivesUpOnEndlessUnrelatedFrames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		ctx := r.Context()
+
+		var req jsonrpcRequest
+		if err := wsjson.Read(ctx, conn, &req); err != nil {
+			return
+		}
+		for range truenasMaxSkippedFrames + 2 {
+			if err := wsjson.Write(ctx, conn, jsonrpcResponse{ID: req.ID + 100, Result: json.RawMessage(`true`)}); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	got, err := (truenasWidget{}).Poll(t.Context(), srv.Client(), WidgetConfig{
+		URL:     srv.URL,
+		Secrets: map[string]string{testSecretField: truenasTestToken},
 	})
 	if err != nil {
 		t.Fatalf("Poll() unexpected error: %v", err)
