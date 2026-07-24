@@ -32,7 +32,7 @@ func TestProbeHTTP(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			up, latency, err := probeHTTP(t.Context(), srv.Client(), srv.URL)
+			up, statusCode, latency, err := probeHTTP(t.Context(), srv.Client(), srv.URL)
 			if err != nil {
 				t.Fatalf("probeHTTP() unexpected error: %v", err)
 			}
@@ -42,12 +42,15 @@ func TestProbeHTTP(t *testing.T) {
 			if up && latency <= 0 {
 				t.Errorf("probeHTTP() latency = %v, want > 0 when up", latency)
 			}
+			if statusCode != tc.status {
+				t.Errorf("probeHTTP() statusCode = %d, want %d", statusCode, tc.status)
+			}
 		})
 	}
 }
 
 func TestProbeHTTPUnreachable(t *testing.T) {
-	up, _, err := probeHTTP(t.Context(), http.DefaultClient, testUnreachableAddr)
+	up, _, _, err := probeHTTP(t.Context(), http.DefaultClient, testUnreachableAddr)
 	if err == nil {
 		t.Fatal("probeHTTP() expected transport error for unreachable host, got nil")
 	}
@@ -64,7 +67,7 @@ func TestProbeHTTPUnreachable(t *testing.T) {
 func TestProbeHTTPMalformedURL(t *testing.T) {
 	const malformedURL = "http://example.com/\x7f"
 
-	up, _, err := probeHTTP(t.Context(), http.DefaultClient, malformedURL)
+	up, _, _, err := probeHTTP(t.Context(), http.DefaultClient, malformedURL)
 	if err == nil {
 		t.Fatal("probeHTTP() error = nil, want a request-building error for a malformed URL")
 	}
@@ -97,4 +100,67 @@ func TestMonitorResult(t *testing.T) {
 	if downLatency != "" {
 		t.Errorf("monitorResult() latency = %q, want empty when down", downLatency)
 	}
+}
+
+// TestMonitorResultLogsWhyItIsDown covers the two distinct ways a monitor
+// reports Down. The pill itself is the same word for both, and there is
+// nowhere on the card to put a reason, so the log line is the only thing
+// telling an operator whether to fix the network or fix the URL.
+func TestMonitorResultLogsWhyItIsDown(t *testing.T) {
+	t.Run("no response logs the transport error", func(t *testing.T) {
+		got := captureWidgetLog(t)
+
+		if status, _ := monitorResult(t.Context(), http.DefaultClient, testUnreachableAddr); status != statusDown {
+			t.Fatalf("monitorResult() status = %q, want Down", status)
+		}
+		if len(*got) != 1 {
+			t.Fatalf("logged %d lines, want 1: %v", len(*got), *got)
+		}
+		if !strings.Contains((*got)[0], testUnreachableAddr) {
+			t.Errorf("log line = %q, want it to name the probed URL", (*got)[0])
+		}
+	})
+
+	t.Run("a rejected status logs the code", func(t *testing.T) {
+		got := captureWidgetLog(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		if status, _ := monitorResult(t.Context(), srv.Client(), srv.URL); status != statusDown {
+			t.Fatalf("monitorResult() status = %q, want Down", status)
+		}
+		if len(*got) != 1 {
+			t.Fatalf("logged %d lines, want 1: %v", len(*got), *got)
+		}
+		if !strings.Contains((*got)[0], "404") {
+			t.Errorf("log line = %q, want it to carry the status code", (*got)[0])
+		}
+	})
+
+	t.Run("recovery is silent and re-arms the next failure", func(t *testing.T) {
+		got := captureWidgetLog(t)
+		var fail bool
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if fail {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		fail = true
+		monitorResult(t.Context(), srv.Client(), srv.URL)
+		monitorResult(t.Context(), srv.Client(), srv.URL) // deduplicated
+		fail = false
+		monitorResult(t.Context(), srv.Client(), srv.URL) // recovery, silent
+		fail = true
+		monitorResult(t.Context(), srv.Client(), srv.URL) // same reason, logs again
+
+		if len(*got) != 2 {
+			t.Errorf("logged %d lines across break/recover/break, want 2: %v", len(*got), *got)
+		}
+	})
 }
