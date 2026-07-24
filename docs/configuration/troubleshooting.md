@@ -127,6 +127,28 @@ credential. Connectivity and TLS are fine — regenerate the key, and check the
 Secret holds the whole value (some services show an API key exactly once, and a
 partially-copied key fails the same way a revoked one does).
 
+### "The status light says Down"
+
+Same idea, and the status pill has even less room to explain itself. The same
+log tells you which of the two happened:
+
+- `monitor probe failed` — nothing answered. DNS, routing, a refused
+  connection, a timeout, or a certificate the dashboard won't accept. Check the
+  URL is one the *dashboard pod* can reach, not just your laptop.
+- `monitor probe returned a status treated as down` — something answered, with
+  a status outside 2xx/3xx (the line carries the code). The host is fine and
+  the URL is wrong: often a 404 path, or a 401/403 because the URL needs a
+  login. Point `monitor` at a path that answers anonymously, such as a health
+  endpoint.
+
+The same log also covers two config mistakes that otherwise only show up as
+card text (or not at all, with `errorDisplay: false`):
+
+- `resolving widget secrets failed` — the Secret or key doesn't exist, or the
+  dashboard's Role can't read it. See [Secrets](secrets.md).
+- `unsupported widget type` — the running dashboard image is older than your
+  config. Upgrade the operator.
+
 ### "The card is blank / shows nothing"
 
 - If it's a **widget** you expect stats from: the widget may be returning no
