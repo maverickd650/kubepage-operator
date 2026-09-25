@@ -11,7 +11,7 @@ helm = "4.2.3"
 kind = "0.32.0"
 kubectl = "1.36.3"
 cosign = "3.1.2"
-kubebuilder = "4.15.0"
+kubebuilder = "4.16.0"
 kubeconform = "0.8.0"
 
 [env]
