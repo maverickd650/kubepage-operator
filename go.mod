@@ -1,10 +1,10 @@
 module github.com/maverickd650/kubepage-operator
 
-go 1.26.4
+go 1.27
 
 require (
 	github.com/a-h/templ v0.3.1020
-	github.com/chromedp/cdproto v0.0.0-20260719223732-95f6af754cfe
+	github.com/chromedp/cdproto v0.157.4
 	github.com/chromedp/chromedp v0.16.0
 	github.com/cli/browser v1.3.0
 	github.com/coder/websocket v1.8.15
@@ -38,7 +38,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
